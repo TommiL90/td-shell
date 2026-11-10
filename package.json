@@ -1,6 +1,6 @@
 {
 	"name": "tomidev",
-	"version": "4.7.0",
+	"version": "1.0.0",
 	"private": true,
 	"description": "Tomidev Shell turns Pi into a controlled ODD development harness: Direct, Checks-only, and Full Lean lanes, focused subagents, configured TDD evidence, on-request code review, and skill discovery.",
 	"license": "MIT",

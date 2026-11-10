@@ -29,11 +29,11 @@ test("ordinary install requires actual unmanaged postinstall output, never npm p
   const packageRoot = join(root, "package");
   mkdirSync(packageRoot);
   const message = `tomidev skipped enabling fullscreen in global Pi settings: ${realpathSync.native(packageRoot)} is not a pi-managed install.`;
-  for (const output of ["", "npm warn allow-scripts tomidev@4.7.0 postinstall is not covered by allowScripts\n", message.replace(realpathSync.native(packageRoot), join(root, "other"))]) {
+  for (const output of ["", "npm warn allow-scripts tomidev@1.0.0 postinstall is not covered by allowScripts\n", message.replace(realpathSync.native(packageRoot), join(root, "other"))]) {
     assert.throws(() => runner.assertPackedPostinstallOutput(output, packageRoot), /postinstall execution was not observed/);
     assert.deepEqual(readdirSync(packageRoot), [], "missing hook evidence must not mutate installed data");
   }
-  assert.doesNotThrow(() => runner.assertPackedPostinstallOutput(`> tomidev@4.7.0 postinstall\n${message}\n`, packageRoot));
+  assert.doesNotThrow(() => runner.assertPackedPostinstallOutput(`> tomidev@1.0.0 postinstall\n${message}\n`, packageRoot));
 }));
 
 test("all packed children receive disposable homes/config/cache without inherited credentials", () => disposable(root => {

@@ -299,15 +299,15 @@ test("/api/plan reports blockers with guidance and no profile change when alread
 test("/api/plan names the found and required version of an older Tomidev Shell and how to resolve it", async () => {
 	const { host, port, login } = await start({ collect: async () => collected({
 		pi: { available: true, version: "1.2.4", usable: true },
-		shell: { available: true, version: "3.4.0", usable: false, global: true },
+		shell: { available: true, version: "0.9.0", usable: false, global: true },
 		gentleAi: { available: null }, setup: { available: null },
 	}) });
 	try {
 		const view = await plan(port, await login());
 		assert.deepEqual(view.blockers.map((blocker: { code: string; tool: string }) => [blocker.code, blocker.tool]), [["incompatible-tool", "shell"]]);
 		assert.equal(view.blockers[0].guidance,
-			"Tomidev Shell 3.4.0 is installed globally with pnpm, but this installer needs 4.7.0 or newer. Nothing was replaced. " +
-			"Update it with `pnpm add -g git:github.com/TommiL90/tomidev-shell#v4.7.0`, or remove it with `pnpm remove -g tomidev`, then select Check again.");
+			"Tomidev Shell 0.9.0 is installed globally with pnpm, but this installer needs 1.0.0 or newer. Nothing was replaced. " +
+			"Update it with `pnpm add -g git:github.com/TommiL90/tomidev-shell#v1.0.0`, or remove it with `pnpm remove -g tomidev`, then select Check again.");
 		assert.deepEqual(view.actions, []);
 	} finally {
 		await host.close("test");
@@ -511,7 +511,7 @@ test("the outcome says which Pi Tomidev Shell runs whenever a valid version is r
 });
 
 test("/api/plan describes updating an existing Tomidev Shell on either channel", async () => {
-	const shell = { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" };
+	const shell = { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" };
 	const { host, port, login } = await start({ collect: async (channel) => collectedFor(channel, { pi: { available: true, version: "1.2.4", usable: true },
 		shell, go: { available: true, version: "1.26.0", usable: true }, gentleAi: { available: null }, setup: { available: null } }) });
 	try {

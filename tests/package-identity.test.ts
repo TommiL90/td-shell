@@ -45,7 +45,7 @@ test("the retired gentle-pi package name is no longer recognised as this package
 test("help and version name the tomidev command", () => {
 	assert.match(helpText(), /^Usage: tomidev \[options\]/m);
 	assert.doesNotMatch(helpText(), /(?<![.\w-])gentle-shell(?=[ \x27\]\[:])/);
-	assert.match(describeVersion({ gentlePiVersion: "4.7.0", piVersion: "1.2.0", home: { mode: "isolated", source: "default", dir: "/h" } } as never), /^tomidev 4\.7\.0$/m);
+	assert.match(describeVersion({ gentlePiVersion: "1.0.0", piVersion: "1.2.0", home: { mode: "isolated", source: "default", dir: "/h" } } as never), /^tomidev 1\.0\.0$/m);
 });
 
 test("launch has no startup release lookup, prompt, cache or relaunch flow", () => {
