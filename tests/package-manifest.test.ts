@@ -254,7 +254,7 @@ test("double-click installers are attached to the release only after the verifie
 	const job = workflow.match(/^ {2}installers:\n([\s\S]*?)(?=^ {2}[A-Za-z0-9_-]+:\n|(?![\s\S]))/m)?.[1];
 	assert.ok(job, "publish.yml has an installers job");
 	assert.match(job, /^ {4}needs: release$/m, "installers wait for the verified release tag");
-	assert.match(job, /^ {4}if: github\.repository == 'TommiL90\/tomidev-shell'$/m);
+	assert.match(job, /^ {4}if: github\.repository == 'TommiL90\/td-shell'$/m);
 	assert.match(job, /^ {6}contents: write$/m, "only the release jobs may write the release");
 	assert.match(job, /ref: \$\{\{ github\.sha \}\}/, "the installers come from the verified release commit");
 	assert.match(job, /persist-credentials: false/);
@@ -311,7 +311,7 @@ test("the GitHub release is bound to the exact package tag and triggering commit
 		packageJson.repository,
 		{
 			type: "git",
-			url: "git+https://github.com/TommiL90/tomidev-shell.git",
+			url: "git+https://github.com/TommiL90/td-shell.git",
 		},
 		"the release repository is the fork, as its Git source is",
 	);

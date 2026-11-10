@@ -307,7 +307,7 @@ test("/api/plan names the found and required version of an older Tomidev Shell a
 		assert.deepEqual(view.blockers.map((blocker: { code: string; tool: string }) => [blocker.code, blocker.tool]), [["incompatible-tool", "shell"]]);
 		assert.equal(view.blockers[0].guidance,
 			"Tomidev Shell 0.9.0 is installed globally with pnpm, but this installer needs 1.0.0 or newer. Nothing was replaced. " +
-			"Update it with `pnpm add -g git:github.com/TommiL90/tomidev-shell#v1.0.0`, or remove it with `pnpm remove -g tomidev`, then select Check again.");
+			"Update it with `pnpm add -g git:github.com/TommiL90/td-shell#v1.0.0`, or remove it with `pnpm remove -g tomidev`, then select Check again.");
 		assert.deepEqual(view.actions, []);
 	} finally {
 		await host.close("test");
@@ -1503,8 +1503,8 @@ test("wizardHandlers plans the bundled install only when the gate says so, and r
 		assert.equal(bundled.plan.bundled.shell, requirements.shell);
 		assert.equal(bundled.plan.bundled.root, join(home, ".tomidev"));
 		assert.equal(bundled.plan.bundled.path.kind, "profile");
-		assert.deepEqual(urls, [`https://github.com/TommiL90/tomidev-shell/releases/download/v${requirements.shell}/tomidev-distribution.json`,
-			`https://github.com/TommiL90/tomidev-shell/releases/download/v${requirements.shell}/tomidev-distribution-lock.yaml`]);
+		assert.deepEqual(urls, [`https://github.com/TommiL90/td-shell/releases/download/v${requirements.shell}/tomidev-distribution.json`,
+			`https://github.com/TommiL90/td-shell/releases/download/v${requirements.shell}/tomidev-distribution-lock.yaml`]);
 		// Without the assets (v4.0.0 today), on main, or with an existing Tomidev Shell: the standard plan, unchanged.
 		urls.length = 0;
 		assert.deepEqual((await handlers(false).collectPlan("release")).plan, planPreflight(cleanInventory));

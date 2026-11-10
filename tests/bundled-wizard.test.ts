@@ -46,7 +46,7 @@ function fakeDownload(files: Record<string, string | number | Error>) {
 }
 
 test("fetchDistribution reads the asset pair of v<version> and tells published, missing, unavailable and rejected apart", async () => {
-	assert.equal(DISTRIBUTION_RELEASES, "https://github.com/TommiL90/tomidev-shell/releases/download");
+	assert.equal(DISTRIBUTION_RELEASES, "https://github.com/TommiL90/td-shell/releases/download");
 	const asset = distributionAsset(manifest, lockfile);
 	const both = fakeDownload({ "tomidev-distribution.json": asset, "tomidev-distribution-lock.yaml": lockfile });
 	assert.deepEqual(await fetchDistribution({ version: "4.1.0", download: both.download }), published);

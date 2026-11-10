@@ -139,8 +139,8 @@ export async function installTuiModeSetting(options = {}) {
 		},
 		{
 			// The fork is installed from its repository, so Pi names the folder after it.
-			packageRoot: join(home, "git", "github.com", "TommiL90", "tomidev-shell"),
-			paths: [home, join(home, "git"), join(home, "git", "github.com"), join(home, "git", "github.com", "TommiL90"), join(home, "git", "github.com", "TommiL90", "tomidev-shell")],
+			packageRoot: join(home, "git", "github.com", "TommiL90", "td-shell"),
+			paths: [home, join(home, "git"), join(home, "git", "github.com"), join(home, "git", "github.com", "TommiL90"), join(home, "git", "github.com", "TommiL90", "td-shell")],
 		},
 	];
 	// Canonical agent-home aliases (including macOS /var) are supported.

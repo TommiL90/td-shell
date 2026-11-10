@@ -84,7 +84,7 @@ test("main upgrade packs only the fork with no Go lookup or dev registration", a
 		const sha = "a".repeat(40), calls: string[][] = [], fetches: string[] = [], lookups: string[] = [], lines: string[] = [];
 		const code = await runUpgrade({ args: ["--channel", "main"], ctx, platform: "linux", packageRoot, currentVersion: "1.0.0", out: (line: string) => lines.push(line), adapters: {
 			fs, which: async (name: string) => { lookups.push(name); return name === "pnpm" ? "/fake/pnpm" : null; },
-			fetch: async (url: string) => { fetches.push(url); assert.match(url, /TommiL90\/tomidev-shell/); return { ok: true, text: async () => sha, arrayBuffer: async () => Buffer.from("source") }; },
+			fetch: async (url: string) => { fetches.push(url); assert.match(url, /TommiL90\/td-shell/); return { ok: true, text: async () => sha, arrayBuffer: async () => Buffer.from("source") }; },
 			run: async (command: string, argv: string[], options: { cwd?: string }) => {
 				calls.push([command, ...argv]);
 				if (command === "tar") writeFileSync(join(argv[argv.indexOf("-C") + 1], "package.json"), JSON.stringify({ name: "tomidev", version: "1.0.0" }));

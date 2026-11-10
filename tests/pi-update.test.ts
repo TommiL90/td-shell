@@ -5,7 +5,7 @@ import { bundledUpdatePlan, bundledUpdateNext } from '../runtime/gentle-shell-bu
 
 const PI = '@earendil-works/pi-coding-agent';
 const CLI = 'dist/bundle/cli.js';
-const SOURCE = 'git:github.com/TommiL90/tomidev-shell#v4.1.0';
+const SOURCE = 'git:github.com/TommiL90/td-shell#v4.1.0';
 
 // The layouts pnpm v11 and npm really produce. pnpm links each top-level
 // package from its own global group into the linked store, where Shell's

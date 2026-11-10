@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { latestRelease } from "../scripts/main-channel.mjs";
 
-const releases = "https://api.github.com/repos/TommiL90/tomidev-shell/releases/latest";
+const releases = "https://api.github.com/repos/TommiL90/td-shell/releases/latest";
 
 test("upgrade discovers the latest stable version from the source repository release tag", async () => {
 	const requests: unknown[] = [];

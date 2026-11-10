@@ -31,7 +31,7 @@ test("isPiManagedInstall recognizes Pi's git-managed layout", () => {
 });
 
 test("isPiManagedInstall recognizes Pi's git-managed layout of the Tomidev Shell fork (TommiL90)", () => {
-	assert.equal(isPiManagedInstall(join("/home/alan", ".pi", "agent", "git", "github.com", "TommiL90", "tomidev-shell")), true);
+	assert.equal(isPiManagedInstall(join("/home/alan", ".pi", "agent", "git", "github.com", "TommiL90", "td-shell")), true);
 });
 
 test("isPiManagedInstall rejects a global npm -g install", () => {

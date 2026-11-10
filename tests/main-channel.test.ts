@@ -38,12 +38,12 @@ test("malformed channel records fail closed and rejected writes preserve state",
 });
 test("main resolution accepts only exact SHAs from the fork and mainVersion preserves the base", async () => {
 	const requests: string[] = [];
-	assert.equal(await resolveMainCommit("TommiL90/tomidev-shell", { fetch: async (url: string, init: { headers: Record<string, string> }) => {
+	assert.equal(await resolveMainCommit("TommiL90/td-shell", { fetch: async (url: string, init: { headers: Record<string, string> }) => {
 		requests.push(url); assert.equal(init.headers.Accept, "application/vnd.github.sha"); return { ok: true, text: async () => `${SHA}\n` };
 	} }), SHA);
-	assert.deepEqual(requests, ["https://api.github.com/repos/TommiL90/tomidev-shell/commits/main"]);
+	assert.deepEqual(requests, ["https://api.github.com/repos/TommiL90/td-shell/commits/main"]);
 	for (const response of [{ ok: true, status: 200, text: async () => "abc123" }, { ok: false, status: 403, text: async () => SHA }]) {
-		await assert.rejects(resolveMainCommit("TommiL90/tomidev-shell", { fetch: async () => response }), (e: MainChannelError) => e.code === "main-commit-unavailable");
+		await assert.rejects(resolveMainCommit("TommiL90/td-shell", { fetch: async () => response }), (e: MainChannelError) => e.code === "main-commit-unavailable");
 	}
 	assert.equal(mainVersion("4.0.0", SHA), "4.0.0-main.6e7e3a18f794");
 });
@@ -51,7 +51,7 @@ for (const platform of ["linux", "darwin", "win32"]) test(`packMainShell on ${pl
 	const s = sandbox();
 	try {
 		const calls: string[] = [];
-		const fetch = async (url: string) => { assert.equal(url, `https://codeload.github.com/TommiL90/tomidev-shell/tar.gz/${SHA}`); return { ok: true, arrayBuffer: async () => Buffer.from("archive") }; };
+		const fetch = async (url: string) => { assert.equal(url, `https://codeload.github.com/TommiL90/td-shell/tar.gz/${SHA}`); return { ok: true, arrayBuffer: async () => Buffer.from("archive") }; };
 		const run = async (command: string, argv: string[], options: { cwd?: string }) => {
 			calls.push(command);
 			if (argv[0] === "-xzf") writeFileSync(join(argv[argv.indexOf("-C") + 1], "package.json"), JSON.stringify({ name: "tomidev", version: "4.0.0", scripts: { prepack: "suite", prepare: "prepare", postinstall: "fullscreen" } }));
@@ -84,7 +84,7 @@ test("main adapter exposes shell operations only and records shell-only channel 
 	try {
 		const adapter = mainChannelAdapter({ fs, fetch: async () => ({ ok: true, text: async () => SHA }) });
 		assert.deepEqual(Object.keys(adapter).sort(), ["packShell", "resolveCommit", "writeChannel"]);
-		assert.equal(await adapter.resolveCommit("TommiL90/tomidev-shell"), SHA);
+		assert.equal(await adapter.resolveCommit("TommiL90/td-shell"), SHA);
 		await adapter.writeChannel(s.ctx, { channel: "main", shellCommit: SHA });
 		assert.deepEqual(await readChannel(s.ctx, fs), { channel: "main", shellCommit: SHA });
 	} finally { s.cleanup(); }

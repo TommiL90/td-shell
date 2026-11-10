@@ -6,8 +6,8 @@ export const LOG_PREFIX = `${BRAND_NAME}:`;
 export const COMMAND_PREFIX = "td";
 export const BIN_NAME = "tomidev";
 export const PACKAGE_NAME = "tomidev";
-export const SOURCE_REPOSITORY = "TommiL90/tomidev-shell";
-export const GIT_SOURCE = "git:github.com/TommiL90/tomidev-shell";
+export const SOURCE_REPOSITORY = "TommiL90/td-shell";
+export const GIT_SOURCE = "git:github.com/TommiL90/td-shell";
 export const HOME_DIRNAME = ".tomidev";
 export const ENV_PREFIX = "TOMIDEV_";
 // Environment names used by more than a few modules. Build them here from ENV_PREFIX.

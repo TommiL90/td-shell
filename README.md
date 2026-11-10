@@ -9,7 +9,7 @@
 <p align="center"><strong>Your coding agent for controlled development in the workspace you lead.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/TommiL90/tomidev-shell"><img src="https://img.shields.io/badge/repo-TommiL90%2Ftomidev--shell-F095C8?style=for-the-badge&labelColor=1A1218" alt="Fork repository"></a>
+  <a href="https://github.com/TommiL90/td-shell"><img src="https://img.shields.io/badge/repo-TommiL90%2Ftd--shell-F095C8?style=for-the-badge&labelColor=1A1218" alt="Fork repository"></a>
   <a href="https://pi.dev/"><img src="https://img.shields.io/badge/Pi-native-F095C8?style=for-the-badge&labelColor=1A1218" alt="Pi-native package"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F095C8?style=for-the-badge&labelColor=1A1218" alt="MIT license"></a>
   <a href="https://github.com/Gentleman-Programming/gentle-shell"><img src="https://img.shields.io/badge/forked%20from-gentle--shell-D7A0B8?style=for-the-badge&labelColor=1A1218" alt="Forked from gentle-shell"></a>
@@ -21,11 +21,11 @@
     &nbsp;·&nbsp;
     <a href="#documentation">Docs</a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/TommiL90/tomidev-shell">Repository</a>
+    <a href="https://github.com/TommiL90/td-shell">Repository</a>
   </strong>
 </p>
 
-> **Forked from [gentle-shell](https://github.com/Gentleman-Programming/gentle-shell)** by Gentleman Programming, under the MIT License. This fork renames the product to **Tomidev Shell** (`tomidev` command, `/td:*` slash commands, `~/.tomidev` home) and is maintained at [TommiL90/tomidev-shell](https://github.com/TommiL90/tomidev-shell). The original copyright notice stays in [LICENSE](LICENSE); upstream credits are kept in [About the author](#about-the-author).
+> **Forked from [gentle-shell](https://github.com/Gentleman-Programming/gentle-shell)** by Gentleman Programming, under the MIT License. This fork renames the product to **Tomidev Shell** (`tomidev` command, `/td:*` slash commands, `~/.tomidev` home) and is maintained at [TommiL90/td-shell](https://github.com/TommiL90/td-shell). The original copyright notice stays in [LICENSE](LICENSE); upstream credits are kept in [About the author](#about-the-author).
 
 <br>
 
@@ -63,7 +63,7 @@ https://github.com/user-attachments/assets/6d2bc422-a4dd-4ecf-a04b-fcd3bea7fea9
 
 ## ✨ What's new in v4.1
 
-Historical upstream highlights from [v4.1.0](https://github.com/TommiL90/tomidev-shell/releases/tag/v4.1.0) are listed below. This fork no longer installs Gentle AI or requires Go: setup provisions gentle-engram, pi-web-access and pi-btw through Pi directly.
+Historical upstream highlights from [v4.1.0](https://github.com/TommiL90/td-shell/releases/tag/v4.1.0) are listed below. This fork no longer installs Gentle AI or requires Go: setup provisions gentle-engram, pi-web-access and pi-btw through Pi directly.
 
 - **Clean-machine installers:** a browser wizard and double-click installers for macOS, Windows, and Linux install what is missing, update what you have, and ask once before changing anything. See [Get started](#get-started).
 - **Bundled installation:** a new installation keeps its Node, pnpm, Pi, Engram and state in one prefix; existing global installs can migrate. Neither install channel downloads a Go toolchain or native review binary.
@@ -132,7 +132,7 @@ The routing rules came from benchmarks. These runs use a local benchmark with hi
 | Data migration (high risk) | 559 s · $0.403 · needed a feedback round | 539 s · $0.555 · **accepted on the first round** — one independent verifier |
 | 73-line spec, 26 hidden checks | Paraphrased handoffs: 13 failing, still 23/26 after two feedback rounds | Spec passed by reference ([#1718](https://github.com/Gentleman-Programming/gentle-shell/pull/1718)) |
 
-Against the same model in Codex CLI, with blind review of every solution, Tomidev Shell was accepted on the first round in every cell and ranked higher on the medium (3 of 3 runs) and large tasks; it was close on the small one. The large task still took about three times longer (17.5–17.9 min vs 6.1 min) — that gap is open work. Sources: [#1723](https://github.com/Gentleman-Programming/gentle-shell/pull/1723), [#1794](https://github.com/Gentleman-Programming/gentle-shell/pull/1794), [#1713](https://github.com/TommiL90/tomidev-shell/issues/1713).
+Against the same model in Codex CLI, with blind review of every solution, Tomidev Shell was accepted on the first round in every cell and ranked higher on the medium (3 of 3 runs) and large tasks; it was close on the small one. The large task still took about three times longer (17.5–17.9 min vs 6.1 min) — that gap is open work. Sources: [#1723](https://github.com/Gentleman-Programming/gentle-shell/pull/1723), [#1794](https://github.com/Gentleman-Programming/gentle-shell/pull/1794), [#1713](https://github.com/TommiL90/td-shell/issues/1713).
 
 ---
 
@@ -395,7 +395,7 @@ Thinking levels follow NaN's [reasoning contract](https://nan.builders/docs/mode
 
 ## ⚡ Get started
 
-> ℹ️ **Distribution:** this fork installs from `git:github.com/TommiL90/tomidev-shell`, not from the npm registry. The npm name `tomidev` belongs to someone else and is not used by this project.
+> ℹ️ **Distribution:** this fork installs from `git:github.com/TommiL90/td-shell`, not from the npm registry. The npm name `tomidev` belongs to someone else and is not used by this project.
 
 **Which path is for me?**
 
@@ -412,9 +412,9 @@ Download the installer for your computer, double-click it, and follow the steps 
 
 | Your computer | Download | Then |
 | --- | --- | --- |
-| **macOS** | [tomidev-installer-macos.zip](https://github.com/TommiL90/tomidev-shell/releases/latest/download/tomidev-installer-macos.zip) | Open the zip, then double-click **Install Tomidev Shell.command** inside the *Tomidev Shell Installer* folder. |
-| **Windows** | [tomidev-installer-windows.zip](https://github.com/TommiL90/tomidev-shell/releases/latest/download/tomidev-installer-windows.zip) | Right-click the zip → **Extract All**. Open the extracted folder, then the *Tomidev Shell Installer* folder inside it, and double-click **Install Tomidev Shell.cmd**. It does not run from inside the zip. |
-| **Linux** | [tomidev-installer-linux.tar.gz](https://github.com/TommiL90/tomidev-shell/releases/latest/download/tomidev-installer-linux.tar.gz) | Extract it, then double-click **install-tomidev.sh**. If your file manager does not run scripts, run `sh install-tomidev.sh` in that folder. |
+| **macOS** | [tomidev-installer-macos.zip](https://github.com/TommiL90/td-shell/releases/latest/download/tomidev-installer-macos.zip) | Open the zip, then double-click **Install Tomidev Shell.command** inside the *Tomidev Shell Installer* folder. |
+| **Windows** | [tomidev-installer-windows.zip](https://github.com/TommiL90/td-shell/releases/latest/download/tomidev-installer-windows.zip) | Right-click the zip → **Extract All**. Open the extracted folder, then the *Tomidev Shell Installer* folder inside it, and double-click **Install Tomidev Shell.cmd**. It does not run from inside the zip. |
+| **Linux** | [tomidev-installer-linux.tar.gz](https://github.com/TommiL90/td-shell/releases/latest/download/tomidev-installer-linux.tar.gz) | Extract it, then double-click **install-tomidev.sh**. If your file manager does not run scripts, run `sh install-tomidev.sh` in that folder. |
 
 A small window opens, then the installer appears in your browser. Use the tab it opens, and keep the small window open until the installer says it is done.
 
@@ -424,7 +424,7 @@ A small window opens, then the installer appears in your browser. Use the tab it
 > - **Windows:** you see *Windows protected your PC*: click **More info**, then **Run anyway**. If you see *Open File – Security Warning* instead, click **Run**.
 > - **Linux:** if double-click opens the file in an editor, run `sh install-tomidev.sh` in that folder instead.
 >
-> Only download from this repository's [Releases](https://github.com/TommiL90/tomidev-shell/releases) page. To check a download, compare its SHA-256 with [tomidev-installers-SHA256SUMS.txt](https://github.com/TommiL90/tomidev-shell/releases/latest/download/tomidev-installers-SHA256SUMS.txt).
+> Only download from this repository's [Releases](https://github.com/TommiL90/td-shell/releases) page. To check a download, compare its SHA-256 with [tomidev-installers-SHA256SUMS.txt](https://github.com/TommiL90/td-shell/releases/latest/download/tomidev-installers-SHA256SUMS.txt).
 
 A new installation gets Tomidev Shell as one self-contained product. Its own Node.js, npm, pnpm and Pi live in `~/.tomidev`, and your own tools are not used or changed ([bundled installation](docs/install-wizard.md#bundled-installation)).
 
@@ -432,7 +432,7 @@ The installer is a preview: it is tested on Linux and in CI, while clean-machine
 
 ### Path C: browser installer from a checkout
 
-**Tomidev distribution:** this fork installs from `git:github.com/TommiL90/tomidev-shell`,
+**Tomidev distribution:** this fork installs from `git:github.com/TommiL90/td-shell`,
 not the unowned npm package name `tomidev`. Standard and bundled installer projects
 pin `#v<version>`; `tomidev upgrade` discovers the latest stable `vX.Y.Z` tag through
 that repository's GitHub Releases API. Git must be available to the package manager.
@@ -441,7 +441,7 @@ See [Git distribution](docs/git-distribution.md) for source pins and update beha
 The same installer as the [download above](#easiest-download-and-double-click-no-terminal-needed), started from a clone instead of a download:
 
 ```bash
-git clone https://github.com/TommiL90/tomidev-shell.git
+git clone https://github.com/TommiL90/td-shell.git
 cd tomidev-shell
 
 # macOS and Linux
@@ -482,7 +482,7 @@ Details: **[installation wizard](docs/install-wizard.md)**.
 `tomidev` opens Pi with the Tomidev Shell package loaded, without installing it into your pi agent or editing its `settings.json`. It requires Pi 1.2.0 or newer.
 
 ```bash
-pnpm add -g git:github.com/TommiL90/tomidev-shell
+pnpm add -g git:github.com/TommiL90/td-shell
 
 # Own home, never touches your pi install
 tomidev
@@ -523,13 +523,13 @@ Every other argument is forwarded to pi unchanged, for example `tomidev --mode r
 Install the fork from git into an existing pi agent, restart Pi, then check the installation with `/td:doctor`.
 
 ```bash
-pi install git:github.com/TommiL90/tomidev-shell
+pi install git:github.com/TommiL90/td-shell
 
 # Start Pi in your project, then run /td:doctor inside it
 pi
 ```
 
-For a reproducible pin, use `pi install git:github.com/TommiL90/tomidev-shell#v<version>` with a release tag. Check the [releases](https://github.com/TommiL90/tomidev-shell/releases) for version-specific changes and runtime pairing; the unpinned command follows the repository's default branch.
+For a reproducible pin, use `pi install git:github.com/TommiL90/td-shell#v<version>` with a release tag. Check the [releases](https://github.com/TommiL90/td-shell/releases) for version-specific changes and runtime pairing; the unpinned command follows the repository's default branch.
 
 <details>
 <summary><kbd>More</kbd> <strong>Seeing a builtin codemode warning?</strong> — why it appears and how to silence it</summary>
@@ -578,9 +578,9 @@ tomidev upgrade --channel release
 tomidev upgrade --rollback
 ```
 
-Release upgrades query `https://api.github.com/repos/TommiL90/tomidev-shell/releases/latest`
+Release upgrades query `https://api.github.com/repos/TommiL90/td-shell/releases/latest`
 and install the returned stable `vX.Y.Z` tag as
-`git:github.com/TommiL90/tomidev-shell#vX.Y.Z` with the owning package manager.
+`git:github.com/TommiL90/td-shell#vX.Y.Z` with the owning package manager.
 An unavailable or invalid release response fails without installing anything;
 there is no fallback to the npm registry's `tomidev` package.
 
@@ -651,17 +651,17 @@ Start with the product-facing destination, then move into the operational refere
 This project is built in public. Bring a real workflow, a sharp question, a bug report, or a small improvement that makes the next person’s work clearer.
 
 <p align="center">
-  <a href="https://github.com/TommiL90/tomidev-shell/issues"><img src="https://img.shields.io/badge/Issues-join%20the%20conversation-F095C8?style=for-the-badge&labelColor=1A1218" alt="GitHub issues"></a>
-  <a href="https://github.com/TommiL90/tomidev-shell/graphs/contributors"><img src="https://img.shields.io/badge/Contributors-thank%20you-D7A0B8?style=for-the-badge&labelColor=1A1218" alt="Contributors"></a>
+  <a href="https://github.com/TommiL90/td-shell/issues"><img src="https://img.shields.io/badge/Issues-join%20the%20conversation-F095C8?style=for-the-badge&labelColor=1A1218" alt="GitHub issues"></a>
+  <a href="https://github.com/TommiL90/td-shell/graphs/contributors"><img src="https://img.shields.io/badge/Contributors-thank%20you-D7A0B8?style=for-the-badge&labelColor=1A1218" alt="Contributors"></a>
   <a href="https://discord.com/invite/gentleman-programming-769863833996754944"><img src="https://img.shields.io/badge/Discord-Gentleman%20Programming-F095C8?style=for-the-badge&labelColor=1A1218" alt="Gentleman Programming Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/TommiL90/tomidev-shell/graphs/contributors"><img src="https://contrib.rocks/image?repo=TommiL90/tomidev-shell" alt="Tomidev Shell contributors"></a>
+  <a href="https://github.com/TommiL90/td-shell/graphs/contributors"><img src="https://contrib.rocks/image?repo=TommiL90/td-shell" alt="Tomidev Shell contributors"></a>
 </p>
 
-- Open an [issue](https://github.com/TommiL90/tomidev-shell/issues) with the context needed to reproduce or understand the idea.
-- See the people shaping the project in the [contributors graph](https://github.com/TommiL90/tomidev-shell/graphs/contributors).
+- Open an [issue](https://github.com/TommiL90/td-shell/issues) with the context needed to reproduce or understand the idea.
+- See the people shaping the project in the [contributors graph](https://github.com/TommiL90/td-shell/graphs/contributors).
 - Follow [Gentleman Programming](https://github.com/Gentleman-Programming) for the wider ecosystem.
 
 <p align="right"><a href="#top">Back to top ↑</a></p>

@@ -39,8 +39,8 @@ test("upstream attribution, community links and original MIT license remain", ()
 	assert.match(readme, /Upstream \*\*gentle-shell\*\* is built by \[Alan Buscaglia\]/);
 	assert.match(readme, /Startup intro collaboration: thanks to \[@aporcelli\]/);
 	assert.match(readme, /## 🤝 Community/);
-	assert.match(readme, /tomidev-shell\/issues/);
-	assert.match(readme, /tomidev-shell\/graphs\/contributors/);
+	assert.match(readme, /td-shell\/issues/);
+	assert.match(readme, /td-shell\/graphs\/contributors/);
 	assert.match(readme, /\[LICENSE\]\(LICENSE\)/);
 	const license = read("LICENSE");
 	assert.match(license, /^MIT License\n/);

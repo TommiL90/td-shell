@@ -76,7 +76,7 @@ function launch(args: string[], scenario = 'owned', piVersion = '1.2.0', seed?: 
 for (const scenario of ['owned','adjacent','separate']) test(`public linked-store update succeeds for ${scenario}`, () => {
  const result = launch(['update'], scenario);
  assert.equal(result.status, 0, result.stderr);
- assert.match(result.stdout, scenario === 'adjacent' ? /MUTATION \["add","-g","git:github\.com\/TommiL90\/tomidev-shell#v4\.1\.0","--allow-build=tomidev"\]/ : /MUTATION \["add","-g","@earendil-works\/pi-coding-agent@latest"\]/);
+ assert.match(result.stdout, scenario === 'adjacent' ? /MUTATION \["add","-g","git:github\.com\/TommiL90\/td-shell#v4\.1\.0","--allow-build=tomidev"\]/ : /MUTATION \["add","-g","@earendil-works\/pi-coding-agent@latest"\]/);
  assert.doesNotMatch(result.stdout, /FORWARD/);
  // The fake manager changes nothing, so the readback reports the same version and pnpm's release-age rule.
  assert.match(result.stdout, /the selected Pi is still 1\.2\.0\./);

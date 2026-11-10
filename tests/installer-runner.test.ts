@@ -228,7 +228,7 @@ function harness({ env = {}, results = {}, files = [] as string[], integrity = {
 	return { adapters, calls, logs, pnpmCalls, integrityCalls };
 }
 
-const INSTALL = `add -g @earendil-works/pi-coding-agent@${PI_INSTALL_VERSION} git:github.com/TommiL90/tomidev-shell#v${requirements.shell} --allow-build=tomidev`;
+const INSTALL = `add -g @earendil-works/pi-coding-agent@${PI_INSTALL_VERSION} git:github.com/TommiL90/td-shell#v${requirements.shell} --allow-build=tomidev`;
 
 test("bootstrap runner installs the source repository tag, never the registry package", async () => {
 	const h = harness();
@@ -277,7 +277,7 @@ test("preflight blockers and unsupported T4 plans are blocked before any command
 		plan("linux", { node: tool("20.0.0") }),
 		plan("linux", { node: absent }),
 		// (Pi present with Shell missing is the shell-only installation, covered below.)
-		plan("linux", { pi: tool("1.2.0"), shell: { ...tool("4.0.0"), global: true } }),
+		plan("linux", { pi: tool("1.2.0"), shell: { ...tool("0.9.0"), global: true } }),
 	];
 	for (const fixed of cases) {
 		const h = harness();
@@ -1467,7 +1467,7 @@ test("the main plan installs and sets up the main Shell without a native build",
 	assert.deepEqual(h.pnpmCalls(), ["bin -g", LIST, PI_VIEW, INSTALL, LIST, MAIN_ADD, LIST]);
 	const ctx = { env: h.adapters.env, home: HOME };
 	assert.deepEqual(h.main.calls, [
-		["resolveCommit", { repository: "TommiL90/tomidev-shell" }],
+		["resolveCommit", { repository: "TommiL90/td-shell" }],
 		["packShell", { commit: SHELL_SHA, ctx, platform: "linux" }],
 		["writeChannel", { ctx, state: { channel: "main", shellCommit: SHELL_SHA } }],
 	]);
@@ -1521,7 +1521,7 @@ test("a failed main step reports the main channel's error and its cause, the hom
 	};
 	const resolved = await runStandardInstall({ plan: mainPlan(), consent: true }, limited.adapters);
 	assert.deepEqual([resolved.failedStep, resolved.detail],
-		["install-shell-main", "main-commit-unavailable: GitHub did not return the latest main commit of TommiL90/tomidev-shell (HTTP 403)"]);
+		["install-shell-main", "main-commit-unavailable: GitHub did not return the latest main commit of TommiL90/td-shell (HTTP 403)"]);
 	// The main package's own pnpm add reports pnpm's line, as install-global does.
 	const add = mainHarness(undefined, { results: { [LIST]: [emptyList, { code: 0, stdout: listing() }], add: [{ code: 0 }, { code: 1, stdout: PNPM_ADD_POSTINSTALL }] } });
 	const added = await runStandardInstall({ plan: mainPlan(), consent: true }, add.adapters);
@@ -1566,7 +1566,7 @@ function existingPlan(change: object, channel = "release") {
 		pi: tool("1.2.0"), shell: absent, gentleAi: absent, go: tool("1.26.0"),
 		globalBin: { available: true, path: BIN, writable: true, onPath: true }, setup: false, ...change }, { channel });
 }
-const SHELL_ONLY_ADD = `add -g git:github.com/TommiL90/tomidev-shell#v${requirements.shell} --allow-build=tomidev`;
+const SHELL_ONLY_ADD = `add -g git:github.com/TommiL90/td-shell#v${requirements.shell} --allow-build=tomidev`;
 const NPM_SHELL_ROOT = "/usr/local/lib/node_modules/gentle-pi";
 
 test("with a compatible Pi already installed, only Tomidev Shell is added and Pi is left as it is", async () => {
@@ -1592,7 +1592,7 @@ test("adding only Tomidev Shell still refuses a gentle-pi that pnpm already list
 // --- The Pi that Tomidev Shell runs: pnpm 11 installs every `add -g` argument as its own
 // group, so gentle-pi may get a newer Pi beside it than PI_INSTALL_VERSION (at least the minimum).
 test("Pi and gentle-pi are added as separate pnpm groups, so a later `pi update` keeps gentle-pi", async () => {
-	const separate = ["add", "-g", `${PI_PACKAGE_NAME}@${PI_INSTALL_VERSION}`, `git:github.com/TommiL90/tomidev-shell#v${requirements.shell}`, "--allow-build=tomidev"];
+	const separate = ["add", "-g", `${PI_PACKAGE_NAME}@${PI_INSTALL_VERSION}`, `git:github.com/TommiL90/td-shell#v${requirements.shell}`, "--allow-build=tomidev"];
 	const h = harness();
 	const result = await runStandardInstall({ plan: plan(), consent: true }, h.adapters);
 	assert.equal(result.outcome, "ready");
@@ -1651,9 +1651,9 @@ test("the main Shell is added alone and its adjacent Pi is verified like the rel
 
 test("a pnpm-owned Tomidev Shell update is verified with a Pi at the minimum or newer beside it; an npm-owned one is not", async () => {
 	const OLD_ROOT = `${PNPM_HOME}/global/v11/old/node_modules/tomidev`;
-	const fixed = existingPlan({ shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "pnpm" },
+	const fixed = existingPlan({ shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "pnpm" },
 		gentleAi: { available: null }, setup: { available: null } });
-	const located = [{ root: OLD_ROOT, version: "3.9.0", owner: "pnpm" }, { root: PACKAGE_ROOT, version: requirements.shell, owner: "pnpm" }];
+	const located = [{ root: OLD_ROOT, version: "0.9.0", owner: "pnpm" }, { root: PACKAGE_ROOT, version: requirements.shell, owner: "pnpm" }];
 	const h = updateHarness({ located, texts: { [besidePi(PACKAGE_ROOT)]: piPackage("1.2.1") } });
 	const result = await runStandardInstall({ plan: fixed, consent: true }, h.adapters);
 	assert.equal(result.outcome, "ready");
@@ -1666,7 +1666,7 @@ test("a pnpm-owned Tomidev Shell update is verified with a Pi at the minimum or 
 	}
 	// npm keeps resolving its own peer; nothing beside an npm Shell is read.
 	const npm = updateHarness();
-	const npmResult = await runStandardInstall({ plan: existingPlan({ shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" },
+	const npmResult = await runStandardInstall({ plan: existingPlan({ shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" },
 		gentleAi: { available: null }, setup: { available: null } }), consent: true }, npm.adapters);
 	assert.equal(npmResult.outcome, "ready");
 });
@@ -1680,7 +1680,7 @@ test("a setup recovery accepts a newer Pi beside gentle-pi but not one below the
 	assert.equal(h.calls.some((call) => call.args[0] === SHELL_ENTRY), false);
 });
 
-function updateHarness({ located = [{ root: NPM_SHELL_ROOT, version: "3.9.0", owner: "npm" }, { root: NPM_SHELL_ROOT, version: requirements.shell, owner: "npm" }] as Array<object | null>,
+function updateHarness({ located = [{ root: NPM_SHELL_ROOT, version: "0.9.0", owner: "npm" }, { root: NPM_SHELL_ROOT, version: requirements.shell, owner: "npm" }] as Array<object | null>,
 	upgrade = async () => true as boolean, results = {} as Record<string, Result>, texts = {} as Record<string, string> } = {}) {
 	const h = harness({ results: { [`${NPM_SHELL_ROOT}/bin/tomidev.mjs setup`]: { code: 0 }, ...results }, texts });
 	const upgrades: object[] = [];
@@ -1696,12 +1696,12 @@ function updateHarness({ located = [{ root: NPM_SHELL_ROOT, version: "3.9.0", ow
 
 test("an older Tomidev Shell is updated to the latest release with its owner's logic, verified, then set up", async () => {
 	const h = updateHarness();
-	const result = await runStandardInstall({ plan: existingPlan({ shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" },
+	const result = await runStandardInstall({ plan: existingPlan({ shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" },
 		gentleAi: { available: null }, setup: { available: null } }), consent: true }, h.adapters);
 	assert.equal(result.outcome, "ready");
 	assert.deepEqual(result.completed, ["check-npm", "check-global-bin", "check-installed-shell", "update-shell", "verify-updated-shell",
 		"shell-setup"]);
-	assert.deepEqual(h.upgrades, [{ channel: "release", packageRoot: NPM_SHELL_ROOT, currentVersion: "3.9.0" }]);
+	assert.deepEqual(h.upgrades, [{ channel: "release", packageRoot: NPM_SHELL_ROOT, currentVersion: "0.9.0" }]);
 	assert.deepEqual(h.integrityCalls, []);
 	assert.deepEqual(h.calls.at(-1)?.args, [`${NPM_SHELL_ROOT}/bin/tomidev.mjs`, "setup"]);
 	assert.equal(h.calls.some((call) => call.args[1] === "add"), false);
@@ -1737,7 +1737,7 @@ test("updating to main without usable Go never acquires or hands Go to the upgra
 
 test("a missing Pi is installed before the existing Tomidev Shell is updated", async () => {
 	const h = updateHarness();
-	const plan = existingPlan({ pi: absent, shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" },
+	const plan = existingPlan({ pi: absent, shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" },
 		gentleAi: { available: null }, setup: { available: null } });
 	const result = await runStandardInstall({ plan, consent: true }, h.adapters);
 	assert.equal(result.outcome, "ready");
@@ -1747,7 +1747,7 @@ test("a missing Pi is installed before the existing Tomidev Shell is updated", a
 
 test("a failed Pi installation stops before the existing Tomidev Shell is touched", async () => {
 	const h = updateHarness({ results: { add: { code: 1 } } });
-	const plan = existingPlan({ pi: absent, shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" },
+	const plan = existingPlan({ pi: absent, shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" },
 		gentleAi: { available: null }, setup: { available: null } });
 	const result = await runStandardInstall({ plan, consent: true }, h.adapters);
 	assert.deepEqual([result.outcome, result.failedStep], ["failed", "install-pi"]);
@@ -1755,9 +1755,9 @@ test("a failed Pi installation stops before the existing Tomidev Shell is touche
 });
 
 test("an update stops before changing anything when the installed Tomidev Shell or its owner cannot be confirmed", async () => {
-	const plan = existingPlan({ shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" },
+	const plan = existingPlan({ shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" },
 		gentleAi: { available: null }, setup: { available: null } });
-	for (const located of [[null], [{ root: "/home/u/work/gentle-pi", version: "3.9.0", owner: null }]]) {
+	for (const located of [[null], [{ root: "/home/u/work/gentle-pi", version: "0.9.0", owner: null }]]) {
 		const h = updateHarness({ located });
 		const result = await runStandardInstall({ plan, consent: true }, h.adapters);
 		assert.deepEqual([result.outcome, result.reason], ["blocked", "existing-stack-unverified"]);
@@ -1770,7 +1770,7 @@ test("an update stops before changing anything when the installed Tomidev Shell 
 });
 
 test("a failed Tomidev Shell update reports the upgrade's main-channel error, the home as ~", async () => {
-	const plan = existingPlan({ shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" },
+	const plan = existingPlan({ shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" },
 		gentleAi: { available: null }, setup: { available: null } });
 	const h = updateHarness({ upgrade: async () => {
 		throw new MainChannelError("main-shell-pack-failed", "the Tomidev Shell source archive could not be extracted",
@@ -1807,7 +1807,7 @@ test("global installer resolves latest stable Pi and installs its exact version"
 	const result = await runStandardInstall({ plan: plan(), consent: true }, h.adapters);
 	assert.equal(result.outcome, "ready");
 	assert.equal(h.calls.filter((call) => call.args.includes("view")).length, 1);
-	assert.ok(h.pnpmCalls().includes(`add -g ${PI_PACKAGE_NAME}@1.9.0 git:github.com/TommiL90/tomidev-shell#v${requirements.shell} --allow-build=tomidev`));
+	assert.ok(h.pnpmCalls().includes(`add -g ${PI_PACKAGE_NAME}@1.9.0 git:github.com/TommiL90/td-shell#v${requirements.shell} --allow-build=tomidev`));
 });
 
 test("global installer updates an older owned Pi to the exact resolved stable version", async () => {
@@ -1934,7 +1934,7 @@ test("a Pi update is only accepted for a Pi that preflight found older and owned
 });
 
 test("an older Pi is updated before an existing Tomidev Shell is updated; its failure leaves the Shell untouched", async () => {
-	const plan = existingPlan({ pi: olderPi("pnpm"), shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" },
+	const plan = existingPlan({ pi: olderPi("pnpm"), shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" },
 		gentleAi: { available: null }, setup: { available: null } });
 	const h = locatingPi(updateHarness(), [piBefore, piAfter]);
 	const result = await runStandardInstall({ plan, consent: true }, h.adapters);
@@ -2074,11 +2074,11 @@ test("a private PNPM_HOME that changed, or could not be claimed, stops before an
 
 test("an update with a private PNPM_HOME still persists it with pnpm setup", async () => {
 	const root = "C:\\Users\\u\\AppData\\Roaming\\npm\\node_modules\\gentle-pi";
-	const fixed = plan("win32", { pi: tool("1.2.0"), shell: { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" },
+	const fixed = plan("win32", { pi: tool("1.2.0"), shell: { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" },
 		gentleAi: { available: null }, setup: { available: null } });
 	const h = preparing(harness({ layout: windowsLayout, env: { Path: `${W_NODE_DIR};C:\\Windows` }, results: { [`${root}\\bin\\tomidev.mjs setup`]: { code: 0 } } }));
 	let locates = 0;
-	const located = [{ root, version: "3.9.0", owner: "npm" }, { root, version: requirements.shell, owner: "npm" }];
+	const located = [{ root, version: "0.9.0", owner: "npm" }, { root, version: requirements.shell, owner: "npm" }];
 	const adapters = { ...h.adapters, locateShell: async () => located[Math.min(locates++, 1)], upgradeShell: async () => true };
 	const withHome = { ...fixed, tools: { ...fixed.tools, pnpmHome: privatePlan().tools.pnpmHome } };
 	const result = await runStandardInstall({ plan: withHome, consent: true }, adapters);

@@ -28,7 +28,7 @@ function link(target: string, path: string, directory = false) {
 for (const [name, packagePath] of [
 	["npm", ["npm", "node_modules", "tomidev"]],
 	["Pi Git", ["git", "github.com", "Gentleman-Programming", "tomidev"]],
-	["Pi Git (Tomidev Shell fork)", ["git", "github.com", "TommiL90", "tomidev-shell"]],
+	["Pi Git (Tomidev Shell fork)", ["git", "github.com", "TommiL90", "td-shell"]],
 ] as const) {
 	test(`recognized global ${name} installation persists fullscreen and preserves other settings`, async (t) => {
 		const f = fixture(t, packagePath);

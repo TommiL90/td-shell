@@ -640,7 +640,7 @@ posixTest("installVersion runs our pnpm frozen in the final versions/<shell>-<pi
 	assert.equal(realpathSync(join(result.path, "node_modules", "tomidev")).startsWith(`${realpathSync(result.path)}/`), true);
 	assert.equal(install.env.pnpm_config_store_dir, layout.store);
 	const files = distributionFiles(manifest);
-	assert.deepEqual(JSON.parse(files["package.json"]).dependencies, { "tomidev": "git:github.com/TommiL90/tomidev-shell#v4.1.0", "@earendil-works/pi-coding-agent": "1.0.2" });
+	assert.deepEqual(JSON.parse(files["package.json"]).dependencies, { "tomidev": "git:github.com/TommiL90/td-shell#v4.1.0", "@earendil-works/pi-coding-agent": "1.0.2" });
 	assert.match(files["pnpm-workspace.yaml"], /^allowBuilds:\n {2}tomidev: true\nstrictDepBuilds: false\n$/);
 	for (const [name, text] of Object.entries({ ...files, "pnpm-lock.yaml": "lockfileVersion: '9.0'\n" })) assert.equal(readFileSync(join(result.path, name), "utf8"), text, name);
 	assert.deepEqual(readdirSync(layout.versions), ["4.1.0-1.0.2"]);

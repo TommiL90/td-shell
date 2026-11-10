@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   release:
-    if: github.repository == 'TommiL90/tomidev-shell'
+    if: github.repository == 'TommiL90/td-shell'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -49,14 +49,14 @@ jobs:
 
           const expectedRepository = {
             type: "git",
-            url: "git+https://github.com/TommiL90/tomidev-shell.git",
+            url: "git+https://github.com/TommiL90/td-shell.git",
           };
           if (
             packageJson.repository?.type !== expectedRepository.type ||
             packageJson.repository?.url !== expectedRepository.url
           ) {
             throw new Error(
-              "package.json.repository must exactly match TommiL90/tomidev-shell.",
+              "package.json.repository must exactly match TommiL90/td-shell.",
             );
           }
           NODE
@@ -223,7 +223,7 @@ jobs:
     # built from the same verified release commit once the release tag was verified,
     # with stable names so releases/latest/download/<name> links keep working.
     needs: release
-    if: github.repository == 'TommiL90/tomidev-shell'
+    if: github.repository == 'TommiL90/td-shell'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -253,10 +253,10 @@ jobs:
   distribution:
     # The release distribution (S3): tomidev at the verified tag and the exact
     # Pi, with the pnpm-lock.yaml our pinned pnpm resolves for them. tomidev is
-    # resolved from its Git tag (git:github.com/TommiL90/tomidev-shell#v<version>),
+    # resolved from its Git tag (git:github.com/TommiL90/td-shell#v<version>),
     # so the tag must exist; nothing is published to the npm registry.
     needs: release
-    if: github.repository == 'TommiL90/tomidev-shell'
+    if: github.repository == 'TommiL90/td-shell'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -291,7 +291,7 @@ jobs:
     # The exact assets install with --frozen-lockfile on every system, with our
     # pinned Node and pnpm (and Go on Windows), and the launcher runs them.
     needs: distribution
-    if: github.repository == 'TommiL90/tomidev-shell'
+    if: github.repository == 'TommiL90/td-shell'
     strategy:
       fail-fast: false
       matrix:
@@ -326,7 +326,7 @@ jobs:
   distribution-assets:
     # Attached only after every verify lane passed, with stable names.
     needs: [release, distribution-verify]
-    if: github.repository == 'TommiL90/tomidev-shell'
+    if: github.repository == 'TommiL90/td-shell'
     runs-on: ubuntu-latest
     permissions:
       contents: write

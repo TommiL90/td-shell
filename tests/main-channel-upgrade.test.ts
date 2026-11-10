@@ -30,7 +30,7 @@ function world({ owner = "pnpm", latest = "4.1.0", commit = SHA, tools = ["pnpm"
 	const which = async (name: string) => { lookups.push(name); return tools.includes(name) ? `/fake/${name}${platform === "win32" ? ".cmd" : ""}` : null; };
 	const adapters = { fs: platform === "win32" ? { ...fs, realpath: (path: string) => fs.realpath(path.replaceAll("\\", "/")) } : fs, run, which,
 		fetch: async (url: string) => {
-			fetches.push(url); assert.match(url, /TommiL90\/tomidev-shell/);
+			fetches.push(url); assert.match(url, /TommiL90\/td-shell/);
 			if (url.endsWith("releases/latest")) return { ok: latest !== "", json: async () => ({ tag_name: `v${latest}` }) };
 			return { ok: true, text: async () => commit, arrayBuffer: async () => Buffer.from("source") };
 		}, ...(invocation ? { invocation } : {}), ...(migrate ? { migrate } : {}) };
@@ -52,7 +52,7 @@ for (const owner of ["pnpm", "npm"]) test(`release upgrades only tomidev with it
 	const w = world({ owner });
 	try {
 		assert.equal(await w.upgrade(), 0);
-		assert.deepEqual(w.calls.filter((c) => c.includes("-g") && !c.includes("root")), [[`/fake/${owner}`, owner === "pnpm" ? "add" : "install", "-g", "git:github.com/TommiL90/tomidev-shell#v4.1.0", ...(owner === "pnpm" ? ["--allow-build=tomidev"] : [])]]);
+		assert.deepEqual(w.calls.filter((c) => c.includes("-g") && !c.includes("root")), [[`/fake/${owner}`, owner === "pnpm" ? "add" : "install", "-g", "git:github.com/TommiL90/td-shell#v4.1.0", ...(owner === "pnpm" ? ["--allow-build=tomidev"] : [])]]);
 		assert.deepEqual(await readChannel(w.ctx, fs), { channel: "release" });
 		assert.deepEqual(w.lines, ["Updated tomidev 4.0.0 to 4.1.0 (release)."]);
 		assert.equal((await w.manager("uninstall")).name, owner);

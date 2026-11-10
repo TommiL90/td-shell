@@ -189,10 +189,10 @@ posixTest("buildDistribution resolves tomidev from its Git tag in one attempt an
 	assert.equal(result.assets[DISTRIBUTION_ASSETS.lockfile], LOCKFILE);
 	assert.equal(resolved.runs.length, 1);
 	assert.deepEqual(resolved.runs[0].files, distributionFiles(manifest));
-	assert.equal(JSON.parse(resolved.runs[0].files["package.json"]).dependencies.tomidev, "git:github.com/TommiL90/tomidev-shell#v4.1.0", "tomidev comes from its Git tag, never from the npm registry");
+	assert.equal(JSON.parse(resolved.runs[0].files["package.json"]).dependencies.tomidev, "git:github.com/TommiL90/td-shell#v4.1.0", "tomidev comes from its Git tag, never from the npm registry");
 	const missingTag = fakeResolver({ status: 1 });
 	await assert.rejects(buildDistribution({ layout, shell: "4.1.0", pi: "1.0.2", adapters: { run: missingTag.run, sleep } }),
-		(error: Error & { output?: string }) => /lockfile resolution failed for git:github\.com\/TommiL90\/tomidev-shell#v4\.1\.0; check that tag v4\.1\.0 exists in TommiL90\/tomidev-shell/.test(error.message) && error.output === "ERR_PNPM_FETCH_404");
+		(error: Error & { output?: string }) => /lockfile resolution failed for git:github\.com\/TommiL90\/td-shell#v4\.1\.0; check that tag v4\.1\.0 exists in TommiL90\/td-shell/.test(error.message) && error.output === "ERR_PNPM_FETCH_404");
 	assert.equal(missingTag.runs.length, 1, "a missing tag is a failure, never retried");
 	assert.deepEqual(sleeps, [], "nothing waits for a registry");
 	assert.deepEqual(readdirSync(layout.tmp), [], "no resolution folder is left behind");

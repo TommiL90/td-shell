@@ -8,8 +8,8 @@ test("brand constants name the tomidev rename", () => {
 	assert.equal(brand.COMMAND_PREFIX, "td");
 	assert.equal(brand.BIN_NAME, "tomidev");
 	assert.equal(brand.PACKAGE_NAME, "tomidev");
-	assert.equal(brand.SOURCE_REPOSITORY, "TommiL90/tomidev-shell");
-	assert.equal(brand.GIT_SOURCE, "git:github.com/TommiL90/tomidev-shell");
+	assert.equal(brand.SOURCE_REPOSITORY, "TommiL90/td-shell");
+	assert.equal(brand.GIT_SOURCE, "git:github.com/TommiL90/td-shell");
 	assert.equal(brand.HOME_DIRNAME, ".tomidev");
 	assert.equal(brand.ENV_PREFIX, "TOMIDEV_");
 	assert.equal(brand.SCHEMA_PREFIX, "tomidev");
