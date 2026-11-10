@@ -824,6 +824,7 @@ test("setup on a fresh machine publishes the bundled core; the next launch start
 		["install", "npm:pi-btw"],
 		["install", "npm:pi-antigravity"],
 		["install", "npm:pi-cursor-sdk"],
+		["install", "npm:pi-claude-bridge"],
 	]);
 	assert.equal(existsSync(prefix.engram), true);
 	// Setup itself never starts a server.
@@ -871,7 +872,7 @@ test("setup with an existing store installs native companions and the launch reu
 	writeFileSync(join(data, "engram.db"), "untouched database sentinel");
 	const setup = prefix.run(["setup"]);
 	assert.equal(setup.status, 0, setup.stderr);
-	assert.equal(nativeInstalls(prefix).length, 5);
+	assert.equal(nativeInstalls(prefix).length, 6);
 	assert.equal(existsSync(prefix.engram), true);
 	assert.doesNotMatch(setup.stderr, /memory disabled|deferred/);
 	const guarded = prefix.run([]);
@@ -897,7 +898,7 @@ test("a setupVersion change reruns setup once and keeps memory on the shared ser
 	const auto = { TOMIDEV_NO_AUTO_SETUP: "" };
 	const first = prefix.run([], auto);
 	assert.equal(first.status, 0, first.stderr);
-	assert.equal(nativeInstalls(prefix).length, 5);
+	assert.equal(nativeInstalls(prefix).length, 6);
 	assert.deepEqual(memoryOf(first), ["allow", prefix.guard, DEFAULT_URL]);
 	const configPath = join(prefix.root, "config.json");
 	const config = JSON.parse(readFileSync(configPath, "utf8"));
@@ -915,7 +916,7 @@ test("a setupVersion change reruns setup once and keeps memory on the shared ser
 	const again = prefix.run([], auto);
 	assert.equal(again.status, 0, again.stderr);
 	assert.doesNotMatch(again.stderr, /provisioning|setup version changed/);
-	assert.equal(nativeInstalls(prefix).length, 5, "already declared companions are not reinstalled");
+	assert.equal(nativeInstalls(prefix).length, 6, "already declared companions are not reinstalled");
 });
 
 test("a missing companion is registered through Pi configuration; a failed readback warns and the guard still protects memory", { skip: posixHost }, (t) => {
@@ -1029,7 +1030,7 @@ test("bundled native setup gives Pi the prefix environment and leaves personas a
 	const result = prefix.run(["setup"]);
 	assert.equal(result.status, 0, result.stderr);
 	const installs = nativeInstalls(prefix);
-	assert.equal(installs.length, 5);
+	assert.equal(installs.length, 6);
 	for (const { env } of installs) {
 		assert.equal(env.PI_CODING_AGENT_DIR, join(prefix.root, "agent"));
 		assert.equal(env.TOMIDEV_PREFIX, prefix.root);

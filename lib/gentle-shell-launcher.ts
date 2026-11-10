@@ -720,7 +720,7 @@ export function provisionedEntry(config: RawLauncherConfig, homeDir: string): Pr
 
 // Bump when the launcher-owned setup plan changes. Legacy gentleAi records
 // count as stale, without losing the ownership evidence they carry.
-export const SETUP_VERSION = 2;
+export const SETUP_VERSION = 3;
 
 export function needsProvisioning(config: RawLauncherConfig, homeDir: string, setupVersion: number, gentlePiVersion: string): boolean {
 	const entry = provisionedEntry(config, homeDir);
@@ -916,6 +916,7 @@ export const SETUP_COMPANION_SOURCES: readonly string[] = [
 	"npm:pi-btw",
 	"npm:pi-antigravity",
 	"npm:pi-cursor-sdk",
+	"npm:pi-claude-bridge",
 ];
 
 export function missingSetupCompanions(settingsText: string | undefined): string[] {
@@ -1580,7 +1581,7 @@ export function helpText(): string {
 		"                   level when it has none. Never overwrites a file or setting, never copies",
 		"                   packages, extensions or caches, and never changes your pi home.",
 		"                   --dry-run only shows the plan. Refuses --link (nothing to import).",
-		"  setup            Install missing gentle-engram, pi-web-access, pi-btw, pi-antigravity and pi-cursor-sdk via the resolved Pi.",
+		"  setup            Install missing gentle-engram, pi-web-access, pi-btw, pi-antigravity, pi-cursor-sdk and pi-claude-bridge via the resolved Pi.",
 		"                   Skips declared companions at any version; removes conflicting rpiv and",
 		"                   the legacy npm:gentle-pi package. Does not require gentle-ai.",
 		"                   Preserves personas, shared Gentle AI state and background-subagent policy.",

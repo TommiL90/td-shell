@@ -816,20 +816,21 @@ test("checkPiVersion accepts a custom minimum", () => {
 });
 
 test("missingSetupCompanions returns the launcher-owned list for a fresh home", () => {
-	assert.equal(SETUP_VERSION, 2);
+	assert.equal(SETUP_VERSION, 3);
 	assert.deepEqual(missingSetupCompanions(undefined), [
 		"npm:gentle-engram",
 		"npm:pi-web-access",
 		"npm:pi-btw",
 		"npm:pi-antigravity",
 		"npm:pi-cursor-sdk",
+		"npm:pi-claude-bridge",
 	]);
 });
 
 test("missingSetupCompanions matches string and object declarations by exact npm identity", () => {
 	assert.deepEqual(missingSetupCompanions(JSON.stringify({ packages: [
 		{ source: "npm:gentle-engram@0.4.2", extensions: [] }, "npm:pi-btw@latest", "npm:pi-web-access-extra",
-	] })), ["npm:pi-web-access", "npm:pi-antigravity", "npm:pi-cursor-sdk"]);
+	] })), ["npm:pi-web-access", "npm:pi-antigravity", "npm:pi-cursor-sdk", "npm:pi-claude-bridge"]);
 });
 
 // --- settingsDeclareGentlePi ------------------------------------------------
