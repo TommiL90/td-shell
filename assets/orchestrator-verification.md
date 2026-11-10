@@ -27,6 +27,14 @@ For substantial planned work, review the same project plan before execution, eve
 
 Code review is `requesting-code-review` and runs only on explicit request or at the final checkpoint, never per task. The orchestrator selects the review lenses that fit the touched surface, as `requesting-code-review` defines them, and dispatches each as an independent read-only reviewer. Lens findings are adjudicated like judge findings and never applied automatically. A lens never replaces the named-item verifier or a functional check.
 
+## Frontend and in-browser verification
+
+For web frontend code, user interfaces, and browser-facing components, prefer observed in-browser verification with `ego-browser` (Ego Lite) over simulated DOM or unit tests alone. When a local dev server can be started:
+1. Ensure the dev server is active or start it in background.
+2. Use `ego-browser nodejs` to open the local route (`localhost:<port>`).
+3. Take snapshots/screenshots and inspect console errors to verify layout, rendering, and interactive behavior.
+4. Cite observed browser state in the verification result.
+
 ## Verifier preparation failure
 
 If setup fails, stop with one **Needs your decision** result identifying the missing prerequisite and exact unrun checks as unverified. Do not keep repairing helpers. Do not automatically relaunch the verifier for the same missing prerequisite. Distinguish setup or infrastructure failure from genuine code findings. Auxiliary tooling defects remain subject to the existing correction bound. Follow **Authorized work continuity** for stop and blocker rules; scratch: `gentle-ai-verify`.

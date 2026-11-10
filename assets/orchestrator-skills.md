@@ -49,5 +49,8 @@ Common intent hints, not hard routing:
 | Software testing rules     | `testing`                              |
 | Consensus loop protocol    | `consensus`                            |
 | Tomidev harness & lanes    | `tomidev`                              |
+| Frontend / browser UI / QA | `ego-browser`                          |
+
+For frontend tasks (web apps, UI components, layout, visual dogfooding, forms, and browser interaction), check and use `ego-browser` (Ego Lite). Use `ego-browser nodejs` to open pages, verify live rendering on local dev servers, inspect console errors, take screenshots, and test user interactions in a real Chromium browser rather than relying solely on headless unit tests or simulated DOM.
 
 Keep this lightweight: loading a skill should improve the immediate task, not force extra ceremony.
