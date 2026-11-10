@@ -12,7 +12,7 @@ import { formatTokens } from "../lib/shell-bar.ts";
 import { CARD_STYLE, cardStyle, setCardStyle, type CardStyle } from "../lib/shell-card.ts";
 import { stripAnsi } from "../lib/terminal-theme.ts";
 
-// Gentle Agents widget: the card above the editor that shows what the
+// Tomidev Agents widget: the card above the editor that shows what the
 // subagents are doing, drawn from task records only (never from threads).
 // Layout: glyph, agent, task summary (wrapped), then model · tokens · cost · time.
 
@@ -422,6 +422,35 @@ test("renderAgentsCard in the float style is a float panel two rows taller than 
 // one row per agent, the task first, then the agent kind and its tokens and
 // time, ordered by what needs you; finished work folds into one row.
 
+test("reviewer kinds stay distinct in normal and narrow Agents sections without changing task IDs", () => {
+	const reviewers = [
+		["review-risk", "Risk", "Risk"],
+		["review-readability", "Readability", "Readabili…"],
+		["review-reliability", "Reliability", "Reliabili…"],
+		["review-resilience", "Resilience", "Resilience"],
+	] as const;
+	const tasks = reviewers.map(([agent], index) => task({ id: `review-${index}`, agent, label: "inspect", tokens: 0 }));
+	for (const width of [50, 36]) {
+		const rows = renderAgentsSection(tasks, plainTheme, width, 5000, { collapsed: false });
+		for (const row of rows) assert.equal(visibleWidth(row), width);
+		for (const [index, [, , short]] of reviewers.entries()) {
+			assert.ok(rows[index + 1]!.includes(short), `${width} columns must identify ${short}: ${rows[index + 1]}`);
+		}
+	}
+	for (const [agent, label] of reviewers) {
+		const alert = renderAgentsAlert([task({ agent, status: TASK_STATUS.WAITING, lastStep: "asked: Continue?" })], plainTheme, 80).join("\n");
+		assert.ok(alert.includes(label), `alert identifies ${label}`);
+	}
+	assert.deepEqual(tasks.map((entry) => entry.agent), reviewers.map(([agent]) => agent));
+});
+
+test("custom reviewer names and existing builtin worker kinds retain their labels", () => {
+	const tasks = [task({ agent: "review-custom", id: "custom", label: "custom", tokens: 0 }), task({ agent: "gentle-ai-worker", id: "worker", label: "build", tokens: 0 })];
+	const rows = renderAgentsSection(tasks, plainTheme, 50, 5000, { collapsed: false });
+	assert.ok(rows[1]!.includes("review-cu…"));
+	assert.ok(rows[2]!.includes("worker"));
+});
+
 test("the Agents section orders rows by what needs you and aligns kind and time columns", () => {
 	const now = 400_000;
 	const tasks = [
@@ -444,7 +473,7 @@ test("the Agents section orders rows by what needs you and aligns kind and time 
 		` | ◐ verify T2 editor rule | verify | ${verify}`,
 		" | ○ T5 mobile work row | worker | queued",
 		` | ✗ T6 customize presets | worker | failed ${formatElapsed(70_000)}`,
-		" | ✓ 1 done · /gentle:agents",
+		" | ✓ 1 done · /td:agents",
 	]);
 	const kindColumn = rows.slice(1, 6).map((row) => [...row.matchAll(/(explore|worker|verify)(?= )/g)].at(-1)!.index);
 	assert.equal(new Set(kindColumn).size, 1, `agent kinds line up in one column: ${kindColumn}`);
@@ -496,8 +525,8 @@ test("agent widget routes row hover, reset, collapse and clicks through its publ
 		events: { on: () => () => {}, emit() {} },
 		registerTool() {}, registerCommand() {}, registerShortcut() {}, registerMarkdownTransformer() {}, registerMessageRenderer() {}, registerEntryRenderer() {},
 	};
-	installGentleAgents(pi as never, { GENTLE_PI_CONFIG_HOME: "/dev/null" }, {
-		home: "/dev/null", agentHome: "/dev/null", env: { GENTLE_PI_CONFIG_HOME: "/dev/null" },
+	installGentleAgents(pi as never, { TOMIDEV_CONFIG_HOME: "/dev/null" }, {
+		home: "/dev/null", agentHome: "/dev/null", env: { TOMIDEV_CONFIG_HOME: "/dev/null" },
 		now: () => 5_000, schedule: () => () => {}, resolveWorktree: () => undefined,
 	});
 	let factory: ((tui: unknown, theme: unknown) => Component) | undefined;
@@ -570,9 +599,9 @@ test("agent widget routes row hover, reset, collapse and clicks through its publ
 	(component as Component & { dispose?(): void }).dispose?.();
 });
 
-test("an idle Agents section keeps one muted row pointing at /gentle:agents", () => {
+test("an idle Agents section keeps one muted row pointing at /td:agents", () => {
 	const lines = renderAgentsSection([], plainTheme, 50, 0, { collapsed: false }).map((line) => line.trimEnd());
-	assert.deepEqual(lines.map((row) => row.replace(/\s{2,}/g, " | ")), ["▾ AGENTS | idle", " | none running · /gentle:agents"]);
+	assert.deepEqual(lines.map((row) => row.replace(/\s{2,}/g, " | ")), ["▾ AGENTS | idle", " | none running · /td:agents"]);
 });
 
 test("a collapsed Agents section keeps the row that needs you most", () => {
@@ -590,7 +619,7 @@ test("more agents than the section's rows keep waiting and running rows and coun
 	assert.match(rows[1]!, /^\? Need you\?/);
 	assert.match(rows[2]!, /^◐ the running one/);
 	assert.equal(rows.length, 1 + 8, "eight rows, the last one counting the rest");
-	assert.match(rows.at(-1)!, /^… 7 more · \/gentle:agents$/);
+	assert.match(rows.at(-1)!, /^… 7 more · \/td:agents$/);
 });
 
 test("the agents alert names the agent asking the user and its question, above the editor", () => {
@@ -605,8 +634,8 @@ test("the agents alert names the agent asking the user and its question, above t
 	assert.ok(lines[0]!.startsWith("\x1b[48;5;52m"), "the alert sits on the selection surface");
 	const row = stripAnsi(lines[0]!);
 	assert.equal(visibleWidth(row), 110);
-	assert.match(stripAnsi(renderAgentsAlert(waiting, painted, 60)[0]!), /…\s+\+1 more · \/gentle:agents $/, "a narrow row clips the question, never the way to the agents view");
-	assert.match(row, /^ \? explore asked: Which base branch should the chain use\? +\+1 more · \/gentle:agents $/);
+	assert.match(stripAnsi(renderAgentsAlert(waiting, painted, 60)[0]!), /…\s+\+1 more · \/td:agents $/, "a narrow row clips the question, never the way to the agents view");
+	assert.match(row, /^ \? explore asked: Which base branch should the chain use\? +\+1 more · \/td:agents $/);
 	assert.deepEqual(renderAgentsAlert([task({ id: "c" })], painted, 80), [], "nothing waits, nothing paints");
 });
 

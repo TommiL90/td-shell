@@ -37,14 +37,14 @@ test("generic ODD agents declare exact role tool allowlists without child delega
 test("ODD explorer and verifier remain read-only while writer is bounded", () => {
 	for (const file of ["gentle-ai-explore.md", "gentle-ai-verify.md"]) {
 		const source = readFileSync(join(agents, file), "utf8");
-		assert.match(source, /generic ODD work/);
+		assert.match(source, /(?:generic ODD work|Tomidev Shell tasks)/);
 		assert.match(source, /Do not edit, write|read and search only/);
 		assert.ok(!tools(file).includes("edit") && !tools(file).includes("write"));
-		assert.match(source, /RDD review remains independent and parent-owned/);
+		assert.match(source, /(?:RDD review|Code review) remains independent and parent-owned/);
 	}
 	const worker = readFileSync(join(agents, "gentle-ai-worker.md"), "utf8");
 	assert.match(worker, /exact allowed edit surfaces/);
-	assert.match(worker, /Work-unit commit decisions and the independent RDD review lifecycle remain parent-owned/);
+	assert.match(worker, /(?:Work-unit commit decisions and the independent RDD review lifecycle remain parent-owned|Work-unit commit decisions and code review remain parent-owned)/);
 });
 
 test("economical explorer retrieves web evidence directly without broader child authority", () => {

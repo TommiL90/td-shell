@@ -26,7 +26,7 @@ import gentleMusicExtension, {
 const gentleMusic = (pi: Parameters<typeof gentleMusicExtension>[0], deps: Parameters<typeof gentleMusicExtension>[1] = {}) =>
 	gentleMusicExtension(pi, { platform: "linux", ...deps });
 
-// /gentle:music hands the terminal to gentle-stream's own TUI, the way Pi's
+// /td:music hands the terminal to gentle-stream's own TUI, the way Pi's
 // external editor does, and controls the background player with
 // `gentle-stream ctl …` without taking the terminal.
 
@@ -38,7 +38,7 @@ function fakePi() {
 	const handlers = new Map<string, Handler[]>();
 	const pi = {
 		registerCommand: (name: string, registration: Command) => commands.set(name, registration),
-		registerShortcut: () => assert.fail("/gentle:music registers no shortcut"),
+		registerShortcut: () => assert.fail("/td:music registers no shortcut"),
 		on: (event: string, handler: Handler) => handlers.set(event, [...(handlers.get(event) ?? []), handler]),
 	} as unknown as ExtensionAPI;
 	const fire = async (event: string, payload: unknown, ctx: ExtensionContext) => {
@@ -160,10 +160,10 @@ test("status output becomes a one-line summary", () => {
 	assert.equal(formatMusicStatus("[]"), undefined);
 });
 
-test("registers /gentle:music without a shortcut", () => {
+test("registers /td:music without a shortcut", () => {
 	const { pi, commands } = fakePi();
 	gentleMusic(pi, { which: onPath({}) });
-	assert.equal(MUSIC_COMMAND_NAME, "gentle:music");
+	assert.equal(MUSIC_COMMAND_NAME, "td:music");
 	assert.match(commands.get(MUSIC_COMMAND_NAME)!.description, /gentle-stream/);
 });
 
@@ -174,7 +174,7 @@ test("non-TUI modes get a notice and spawn nothing", async () => {
 	for (const mode of ["rpc", "json", "print"]) {
 		const context = fakeContext(mode);
 		await commands.get(MUSIC_COMMAND_NAME)!.handler("", context.ctx);
-		assert.deepEqual(context.notices, [["/gentle:music needs the interactive terminal.", "warning"]]);
+		assert.deepEqual(context.notices, [["/td:music needs the interactive terminal.", "warning"]]);
 		assert.deepEqual(context.calls, []);
 	}
 	assert.equal(spawned.length, 0);
@@ -283,7 +283,7 @@ test("a control word without gentle-stream or uv explains how to install", async
 	assert.match(context.notices[0]![0], /uv tool install/);
 });
 
-test("quitting Pi stops the music only after /gentle:music was used", async () => {
+test("quitting Pi stops the music only after /td:music was used", async () => {
 	const unused = fakePi();
 	const quiet = fakeSpawn([]);
 	gentleMusic(unused.pi, { which: onPath({ "gentle-stream": "/bin/gentle-stream" }), spawn: quiet.spawn, signals: fakeSignals().signals, usage: { used: false } });
@@ -344,9 +344,9 @@ test("Windows .cmd and .bat shims are not picked, so resolution falls back to uv
 	assert.equal(resolved?.command, join(dir, "uv.EXE"));
 });
 
-// S5: a bundled Gentle Shell offers to install the player inside its own
+// S5: a bundled Tomidev Shell offers to install the player inside its own
 // folder; any other install keeps the manual hint.
-const PREVIOUS_HINT = "/gentle:music needs gentle-stream, and neither gentle-stream nor uv is on PATH. Install uv (https://docs.astral.sh/uv/getting-started/installation/) and run /gentle:music again, or install gentle-stream with: uv tool install 'gentle-stream[samples] @ git+https://github.com/Gentleman-Programming/gentle-stream'";
+const PREVIOUS_HINT = "/td:music needs gentle-stream, and neither gentle-stream nor uv is on PATH. Install uv (https://docs.astral.sh/uv/getting-started/installation/) and run /td:music again, or install gentle-stream with: uv tool install 'gentle-stream[samples] @ git+https://github.com/Gentleman-Programming/gentle-stream'";
 
 function withConfirm(context: ReturnType<typeof fakeContext>, answer: boolean) {
 	const asked: Array<[string, string]> = [];
@@ -395,7 +395,7 @@ test("a bundled install without the player offers it; declining shows the hint a
 	const asked = withConfirm(context, false);
 	await commands.get(MUSIC_COMMAND_NAME)!.handler("", context.ctx);
 	assert.deepEqual(asked, [[MUSIC_INSTALL_TITLE, MUSIC_INSTALL_OFFER]]);
-	assert.equal(MUSIC_INSTALL_OFFER, "Install the gentle-stream music player inside Gentle Shell? It downloads uv, Python 3.13 and the player (about 150 MB) into the Gentle Shell folder.");
+	assert.equal(MUSIC_INSTALL_OFFER, "Install the gentle-stream music player inside Tomidev Shell? It downloads uv, Python 3.13 and the player (about 150 MB) into the Tomidev Shell folder.");
 	assert.equal(state.installs, 0);
 	assert.deepEqual(context.notices, [[PREVIOUS_HINT, "warning"]]);
 	assert.equal(spawned.length, 0);
@@ -417,8 +417,8 @@ test("accepting the offer installs the player with progress, then starts the mus
 	assert.deepEqual(spawned[0]!.args, ["--model", "anthropic/claude-sonnet-5-5", "--mood", "calm"]);
 });
 
-test("on Windows /gentle:music explains it is not available yet and never offers, installs or runs anything", async () => {
-	assert.equal(MUSIC_WINDOWS_UNSUPPORTED, "/gentle:music is not available on Windows yet: the gentle-stream player runs on macOS and Linux. It works when Gentle Shell runs inside WSL.");
+test("on Windows /td:music explains it is not available yet and never offers, installs or runs anything", async () => {
+	assert.equal(MUSIC_WINDOWS_UNSUPPORTED, "/td:music is not available on Windows yet: the gentle-stream player runs on macOS and Linux. It works when Tomidev Shell runs inside WSL.");
 	for (const args of ["", "calm", "status", "stop"]) {
 		const { pi, commands } = fakePi();
 		const context = fakeContext();

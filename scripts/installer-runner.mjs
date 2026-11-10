@@ -1,36 +1,29 @@
-import { readFileSync } from "node:fs";
+import { GIT_SOURCE } from "../runtime/brand.mjs";
 import { posix, win32 } from "node:path";
-import {
-	gentleAiBinaryPath,
-	gentleAiDevBinaryOverrideConfigured,
-	resolveGentleAiBinary,
-} from "../runtime/gentle-ai-binary.mjs";
-import { PI_INSTALL_VERSION, goAcquisition, persistencePins, pnpmGlobalBin, requirements } from "./installer-preflight.mjs";
-import { GENTLE_AI_REPOSITORY, MainChannelError, SHELL_REPOSITORY, installOwner, mainVersion } from "./main-channel.mjs";
+import { PI_INSTALL_VERSION, persistencePins, pnpmGlobalBin, requirements } from "./installer-preflight.mjs";
+import { MainChannelError, SHELL_REPOSITORY, installOwner, mainVersion } from "./main-channel.mjs";
 import { windowsShim } from "./installer-windows.mjs";
 
 // Standard installation runner: one fixed, consented global pnpm installation
-// of Pi plus gentle-pi, then the public `gentle-shell setup`. Every adapter is
+// of Pi plus gentle-pi, then the public `tomidev setup`. Every adapter is
 // injected by trusted local code; requests carry no commands, URLs, roots or env.
 // When Node is bootstrap-only or no usable npm resolves, fixed steps first persist
 // node, npm and pnpm under PNPM_HOME through pnpm itself. When an earlier run
 // installed the pinned stack but stopped in setup, a fixed recovery re-verifies
-// that stack and reruns only `gentle-shell setup` (and `pnpm setup`), never `add -g`.
+// that stack and reruns only `tomidev setup` (and `pnpm setup`), never `add -g`.
 // An older Pi that pnpm or npm owns is first updated with that package manager.
-// When a build needs Go and the user's is missing, older or unchecked, the installer's pinned
-// Go is acquired first and given only to the build children, first on PATH.
+// Neither channel acquires Go or provisions a native review binary.
 
 /** Pi version installed next to gentle-pi (optional peer, resolved in one add). */
 export { PI_INSTALL_VERSION };
 export const PI_PACKAGE = "@earendil-works/pi-coding-agent";
-export const SHELL_PACKAGE = "gentle-pi";
+export const SHELL_PACKAGE = "tomidev";
 
 /** Every `reason` a `blocked` outcome can carry (for host guidance; no behavior). */
 export const blockedReasons = Object.freeze([
 	"invalid-request",
 	"consent-required",
 	"preflight-blocked",
-	"go-required",
 	"unsupported-plan",
 	"pnpm-home-unknown",
 	"pnpm-home-changed",
@@ -55,15 +48,11 @@ export const failedSteps = Object.freeze([
 	"verify-persistent-pnpm",
 	"check-npm",
 	"configure-npm-prefix",
-	"acquire-go",
-	"verify-go",
 	"install-global",
 	"verify-global-list",
 	"verify-shell-bin",
-	"verify-gentle-ai",
 	"shell-setup",
 	"persist-path",
-	"build-gentle-ai-main",
 	"install-shell-main",
 	"record-channel",
 	"install-pi",
@@ -90,14 +79,10 @@ const knownActions = Object.freeze({
 	"configure-npm-prefix": { kind: "configure", target: "npm-prefix" },
 	"persist-npm": { kind: "install-global", target: "npm", version: persistencePins.npm },
 	"persist-pnpm": { kind: "install-global", target: "pnpm", version: persistencePins.pnpm },
-	"acquire-go": { kind: "acquire", target: "go", version: goAcquisition.version },
-	"verify-go": { kind: "verify", target: "go" },
 	"install-pi": { kind: "install-global", target: "pi", version: requirements.pi },
 	"install-shell": { kind: "install-global", target: "shell", version: requirements.shell },
-	"provision-native": { kind: "existing-installer", target: "gentleAi", version: requirements.gentleAi },
 	"setup-shell": { kind: "normal-setup", target: "shell" },
 	"verify-readiness": { kind: "verify", target: "stack" },
-	"build-gentle-ai-main": { kind: "build-native-main", target: "gentleAi" },
 	"install-shell-main": { kind: "install-global", target: "shell" },
 	"record-channel": { kind: "configure", target: "channel" },
 	"update-shell-release": { kind: "upgrade", target: "shell" },
@@ -115,9 +100,7 @@ const updateActions = ["update-shell-release", "update-shell-main"];
 // Pi added next to an older one neither pnpm nor npm owns; then readiness.
 const piOnlyVariants = Object.freeze([["update-pi", "verify-readiness"], ["install-pi", "verify-readiness"]]);
 // The main channel overlay: all three after a release installation, or none.
-const mainActions = ["build-gentle-ai-main", "install-shell-main", "record-channel"];
-// The pinned Go: both, only when preflight recorded a missing, older or unchecked Go, or none.
-const goActions = ["acquire-go", "verify-go"];
+const mainActions = ["install-shell-main", "record-channel"];
 // Setup recovery: the pinned stack this pnpm installed is present (planPreflight
 // saw a recoverable setup), so only setup and the optional PATH step remain.
 const recoveryActions = ["setup-shell", "verify-readiness"];
@@ -173,12 +156,9 @@ function validRequest(request) {
 function planGate(plan, platform) {
 	if (plan.blockers.length > 0) return "preflight-blocked";
 	const all = plan.actions.map((action) => action.id);
-	const acquiringGo = goActions.filter((id) => all.includes(id)).length;
-	if (acquiringGo === 1 || (acquiringGo === 2 && plan.tools.go?.status !== "needs-acquire")) return "unsupported-plan";
-	const goReady = plan.tools.go?.status === "reusable" || acquiringGo === 2;
 	const overlay = mainActions.filter((id) => all.includes(id));
-	if (overlay.length > 0 && (overlay.length !== mainActions.length || !goReady)) return "unsupported-plan";
-	const ids = all.filter((id) => !mainActions.includes(id) && !goActions.includes(id));
+	if (overlay.length > 0 && overlay.length !== mainActions.length) return "unsupported-plan";
+	const ids = all.filter((id) => !mainActions.includes(id));
 	const only = (allowed) => ids.every((id) => allowed.includes(id));
 	// All or nothing, like the persistence variants: never part of an installation.
 	const recovery = recoveryActions.every((id) => ids.includes(id)) && only([...recoveryActions, ...optionalActions]);
@@ -188,20 +168,13 @@ function planGate(plan, platform) {
 	const piOnly = overlay.length === 0 && plan.tools.shell?.status === "reusable" &&
 		piOnlyVariants.some((variant) => variant.every((id) => ids.includes(id)) && only(variant)) &&
 		(updatingPi || ["unavailable", "needs-install"].includes(plan.tools.pi?.status));
-	// gentle-pi's postinstall may build Gentle AI from source on Windows. A recovery
-	// runs no postinstall: its binary is verified. A Pi-only update touches no
-	// Gentle Shell package either. Go is acquired only for a build that uses it.
-	const windowsBuild = platform === "win32" && !recovery && !piOnly;
-	if (acquiringGo === 2 && overlay.length === 0 && !ids.includes("update-shell-main") && !windowsBuild) return "unsupported-plan";
-	if (windowsBuild && !goReady) return "go-required";
 	const persisting = persistenceActions.filter((id) => ids.includes(id));
 	if (persisting.length > 0 && !persistenceVariants.some((variant) =>
 		variant.length === persisting.length && variant.every((id) => persisting.includes(id)))) return "unsupported-plan";
 	const updating = updateActions.filter((id) => ids.includes(id));
 	if (updating.length > 0) {
 		const valid = updating.length === 1 && overlay.length === 0 && ["setup-shell", "verify-readiness"].every((id) => ids.includes(id)) &&
-			only([...updating, "install-pi", "update-pi", "setup-shell", "verify-readiness"]) &&
-			(updating[0] !== "update-shell-main" || goReady);
+			only([...updating, "install-pi", "update-pi", "setup-shell", "verify-readiness"]);
 		return valid ? null : "unsupported-plan";
 	}
 	const clean = requiredActions.every((id) => ids.includes(id)) && only([...requiredActions, ...optionalActions, ...persistenceActions]);
@@ -227,7 +200,7 @@ function envValue(env, name, platform) {
  * %LOCALAPPDATA%, which another principal may write, and trusts its cached registry
  * metadata for exact versions. TEMP and TMP always move to its `tmp` folder
  * (created by prepare-pnpm-home), so a postinstall's os.tmpdir(), such as the
- * Gentle AI source build, stays private. Only these children get them; nothing
+ * lifecycle script, stays private. Only these children get them; nothing
  * persists them.
  */
 export function childEnvironment(env, platform, globalBin, { privateHome = false } = {}) {
@@ -242,32 +215,24 @@ export function childEnvironment(env, platform, globalBin, { privateHome = false
 	return { ...kept, PNPM_HOME: globalBin.pnpmHome, ...xdg, ...(temp ? { TEMP: temp, TMP: temp } : {}), [key]: [globalBin.path, ...rest].join(path.delimiter) };
 }
 
-/** A build child's env: `env` with the pinned Go's bin directory first on PATH. */
-export function goFirstEnvironment(env, platform, goPath) {
-	const path = platform === "win32" ? win32 : posix;
-	const key = pathKeyOf(env, platform);
-	const rest = String(env[key] ?? "").split(path.delimiter).filter((entry) => entry.length > 0);
-	return { ...env, [key]: [path.dirname(goPath), ...rest].join(path.delimiter) };
-}
-
-/** gentle-shell setup gets no bootstrap handoff keys (case-insensitive on Windows). */
+/** tomidev setup gets no bootstrap handoff keys (case-insensitive on Windows). */
 function setupEnvironment(child, platform) {
-	const bootstrap = platform === "win32" ? /^GENTLE_(BOOTSTRAP|INSTALL)_/i : /^GENTLE_(BOOTSTRAP|INSTALL)_/;
+	const bootstrap = platform === "win32" ? /^TOMIDEV_(BOOTSTRAP|INSTALL)_/i : /^TOMIDEV_(BOOTSTRAP|INSTALL)_/;
 	return Object.fromEntries(Object.entries(child).filter(([key]) => !bootstrap.test(key)));
 }
 
 /** pnpm comes from the bootstrap handoff, or a PATH executable on POSIX only. */
 export async function pnpmInvocation(env, platform, fs) {
 	const path = platform === "win32" ? win32 : posix;
-	const node = env.GENTLE_INSTALL_PNPM_NODE;
-	const entry = env.GENTLE_INSTALL_PNPM_ENTRY;
+	const node = env.TOMIDEV_INSTALL_PNPM_NODE;
+	const entry = env.TOMIDEV_INSTALL_PNPM_ENTRY;
 	if (node && entry) {
 		return path.isAbsolute(node) && path.isAbsolute(entry) ? { command: node, prefix: [entry] } : null;
 	}
 	// A Windows .cmd shim cannot be spawned with shell:false; require the direct
 	// handoff: Node plus pnpm's JS entry, or a native pnpm.exe on its own.
 	if (platform === "win32") {
-		const command = env.GENTLE_INSTALL_PNPM_COMMAND;
+		const command = env.TOMIDEV_INSTALL_PNPM_COMMAND;
 		return command && win32.isAbsolute(command) && win32.extname(command).toLowerCase() === ".exe" ? { command, prefix: [] } : null;
 	}
 	for (const directory of String(env.PATH ?? "").split(path.delimiter)) {
@@ -288,7 +253,7 @@ function pathExtensions(env) {
  * paths are not: even looking one up can reach a remote share. */
 const LOCAL_DRIVE = /^[A-Za-z]:\\/;
 
-/** First `name` the way Go's exec.LookPath (used by Gentle AI) finds it: each
+/** First `name` in PATH order: each
  * absolute PATH directory in order and, on Windows, every PATHEXT extension in
  * PATHEXT order (lowercased, dot-prefixed, default .com/.exe/.bat/.cmd). On
  * Windows only local drive directories are searched; any other one is skipped,
@@ -456,7 +421,7 @@ function inGlobalBin(file, platform, globalBin) {
 /** The npm the user runs works in the user's environment: run from the drive
  * root (`/` on POSIX) with the child env, `npm --version` prints a stable version
  * and `npm config get prefix` one absolute path. Whatever installed it (Node,
- * Homebrew, nvm, fnm, or a mise, asdf or Volta shim), this is how Gentle AI's
+ * Homebrew, nvm, fnm, or a mise, asdf or Volta shim), this is how companion
  * Engram step will run it. `npm` is { command, prefix }.
  */
 async function worksAsNpm(npm, child, adapters, platform) {
@@ -679,23 +644,8 @@ async function configureNpmPrefix({ node, cli, child, platform, globalBin, adapt
 	return after !== null && samePath(after, globalBin.pnpmHome, platform) ? "configured" : null;
 }
 
-/** Default integrity adapter: the package-local resolver, never a dev override.
- * `resolve` is injectable only so trusted tests can stand in for a pinned binary.
- */
-export async function packageNativeGentleAi({ packageRoot, platform, env, home }, resolve = resolveGentleAiBinary) {
-	const environment = { env, home };
-	if (gentleAiDevBinaryOverrideConfigured(environment)) return { ok: false, reason: "development-override" };
-	try {
-		const binary = resolve(packageRoot, platform, readFileSync, environment);
-		if (binary === gentleAiBinaryPath(packageRoot, platform)) return { ok: true };
-	} catch {
-		// Resolver errors name local paths; report only the classification.
-	}
-	return { ok: false, reason: "package-native-unverified" };
-}
-
 /** The failed steps whose sanitized detail line the outcome may carry. */
-const detailSteps = Object.freeze(["shell-setup", "persist-path", "acquire-go", "install-global", "install-shell-main", "build-gentle-ai-main", "update-shell"]);
+const detailSteps = Object.freeze(["shell-setup", "persist-path", "install-global", "install-shell-main", "update-shell"]);
 
 /** One displayable line from the bounded output of a failed `gentle-shell
  * setup` or `pnpm setup`: the last error line (`Error:` or a pnpm `ERR_` code),
@@ -728,20 +678,17 @@ export function setupErrorDetail(text, home, platform) {
  * Outcomes: blocked (nothing installed), failed (stopped after `completed`),
  * terminal-action-required (installed; user PATH persisted, open a new
  * terminal) or ready. A failed `shell-setup`, `persist-path`, `install-global`,
- * `install-shell-main`, `build-gentle-ai-main` or `update-shell` may add `detail`, one
- * sanitized line (setupErrorDetail) of the failed command's output or of the main
- * channel's error, and a failed `acquire-go` the Go folder in its way, with the home
- * as ~; no other output is kept. When the plan persists the Node runtime, successful
+ * `install-shell-main` or `update-shell` may add `detail`, one sanitized line
+ * (setupErrorDetail) of the failed command's output or the main channel's error,
+ * with the home as ~; no other output is kept. When the plan persists the Node runtime, successful
  * outcomes also report npmPrefix: "configured" or "unchanged". When the Pi beside a pnpm
  * gentle-pi (the one Gentle Shell runs) is not PI_INSTALL_VERSION, they also report its
  * piVersion (pnpm 11 may install a newer peer Pi, at least requirements.pi). Adapters: platform, nodePath, env (user env), home?,
  * run(command, argv, { env, deadlineMs, stderrTail? }) with shell:false semantics returning
  * { code, signal, timedOut, stdout, stderrTail? }, fs { isFile, realpath, readText },
- * verifyGentleAi({ packageRoot, platform, env, home }) and log({ step, status }).
- * An update plan also uses locateShell() and upgradeShell({ channel, packageRoot,
- * currentVersion, goPath? }); a plan that updates an older Pi uses locatePi(), which returns
- * the single installed Pi as { root, version, owner } or null. A plan that acquires
- * Go uses acquireGo(), which returns the published pinned Go as { goPath }. A plan
+ * log({ step, status }). An update plan also uses locateShell() and
+ * upgradeShell({ channel, packageRoot, currentVersion }); a plan that updates an
+ * older Pi uses locatePi(), returning { root, version, owner } or null. A plan
  * with a private Windows PNPM_HOME (tools.pnpmHome, S6) uses preparePnpmHome(home)
  * before any command, then persists it with `pnpm setup`.
  * Nothing is ever deleted; no provisioning marker is written. A setup-recovery
@@ -947,54 +894,21 @@ export async function runStandardInstall(request, adapters) {
 			return after.owner === "pnpm" || samePath(after.root, installedPi.root, platform);
 		}],
 	] : [];
-	// The installer's pinned Go, when acquired: never on the user's PATH, only first
-	// on the PATH of the children that may build Gentle AI (gentle-pi's Windows
-	// postinstall finds go.exe there) and passed by path to the main build.
-	let pinnedGo = null;
-	const buildEnv = () => (pinnedGo ? goFirstEnvironment(child, platform, pinnedGo) : child);
-	const goSteps = ids.includes("acquire-go") ? [
-		["acquire-go", async () => {
-			try {
-				pinnedGo = (await adapters.acquireGo())?.goPath ?? null;
-			} catch (error) {
-				// Only a folder in the way is reported, by its path with the home as ~.
-				const cause = String(error?.cause?.message ?? "");
-				if (cause.startsWith("Conflicting Go destination: ")) setupDetail = setupErrorDetail(cause, home, platform);
-				return false;
-			}
-			return typeof pinnedGo === "string";
-		}],
-		// It runs and reports exactly the pinned version; GOTOOLCHAIN=local keeps it from switching toolchains.
-		["verify-go", async () => {
-			if (!path.isAbsolute(pinnedGo) || !spawnable(pinnedGo, platform)) return false;
-			const result = await adapters.run(pinnedGo, ["version"], { env: { ...child, GOTOOLCHAIN: "local" }, cwd: path.dirname(pinnedGo),
-				deadlineMs: deadlines.probe });
-			return succeeded(result) && new RegExp(`^go version go${escapeRegExp(goAcquisition.version)} \\S+$`).test(String(result.stdout ?? "").trim());
-		}],
-	] : [];
 	// Pi and gentle-pi stay separate pnpm groups, so `pi update` (which replaces Pi's
 	// own group) never removes gentle-pi; gentle-pi gets pnpm's peer Pi beside it.
 	const install = ["install-global", () => addGlobal([...(shellOnly ? [] : [`${PI_PACKAGE}@${piVersion}`]),
-		`${SHELL_PACKAGE}@${requirements.shell}`, `--allow-build=${SHELL_PACKAGE}`], buildEnv())];
+		`${GIT_SOURCE}#v${requirements.shell}`, `--allow-build=${SHELL_PACKAGE}`], child)];
 	function mainSteps() {
 		const channel = adapters.mainChannel;
 		const ctx = { env, home };
 		const runIn = (command, argv, options = {}) => adapters.run(command, argv, { env: options.env ?? child, cwd: options.cwd, deadlineMs: options.deadlineMs ?? deadlines.install,
 			...(options.stderrTail === undefined ? {} : { stderrTail: options.stderrTail }) });
-		let gentleAiCommit = null;
 		let shellCommit = null;
 		return [
-			["build-gentle-ai-main", withMainDetail(async () => {
-				const goPath = pinnedGo ?? await lookPath("go", env, platform, adapters.fs);
-				if (!goPath || !channel) return false;
-				gentleAiCommit = await channel.resolveCommit(GENTLE_AI_REPOSITORY);
-				await channel.buildGentleAi({ commit: gentleAiCommit, goPath, platform, ctx, run: runIn });
-				return true;
-			})],
 			["install-shell-main", withMainDetail(async () => {
 				shellCommit = await channel.resolveCommit(SHELL_REPOSITORY);
 				const tgz = await channel.packShell({ commit: shellCommit, ctx, run: runIn, pnpm, platform });
-				if (!(await addGlobal([tgz, `--allow-build=${SHELL_PACKAGE}`], buildEnv()))) return false;
+				if (!(await addGlobal([tgz, `--allow-build=${SHELL_PACKAGE}`], child))) return false;
 				const result = await list();
 				if (!succeeded(result)) return false;
 				const verified = await verifiedPackageRoot(String(result.stdout ?? ""), globalBin.pnpmHome, platform, adapters.fs,
@@ -1004,14 +918,12 @@ export async function runStandardInstall(request, adapters) {
 				return true;
 			})],
 			["record-channel", async () => {
-				await channel.writeChannel(ctx, { channel: "main", shellCommit, gentleAiCommit });
+				await channel.writeChannel(ctx, { channel: "main", shellCommit });
 				return true;
 			}],
 		];
 	}
 	const steps = [
-		// The pinned Go first: a failed download leaves nothing persisted or installed.
-		...goSteps,
 		...(persistRuntime ? persistence : addOnly ? packageManagers : []),
 		...piSteps,
 		...(recovering ? [] : [install]),
@@ -1024,15 +936,13 @@ export async function runStandardInstall(request, adapters) {
 			({ root: packageRoot, pi: runsPi } = verified);
 			return true;
 		}],
-		["verify-shell-bin", () => adapters.fs.isFile(path.join(globalBin.path, platform === "win32" ? "gentle-shell.cmd" : "gentle-shell"))],
-		["verify-gentle-ai", async () => (await adapters.verifyGentleAi({ packageRoot, platform, env, home }))?.ok === true],
-		// Main overlays the verified release stack: Gentle AI built from the latest
-		// main commit (registered as the override), then Gentle Shell packed from
-		// it. Setup below then runs from the main package.
+		["verify-shell-bin", () => adapters.fs.isFile(path.join(globalBin.path, platform === "win32" ? "tomidev.cmd" : "tomidev"))],
+		// Main overlays the verified release stack with the fork's packed main commit.
+		// Setup below then runs from that package.
 		...(main ? mainSteps() : []),
 			// The setup commands are the only ones whose stderr tail is requested.
 		["shell-setup", async () => {
-			const result = await adapters.run(adapters.nodePath, [path.join(packageRoot, "bin", "gentle-shell.mjs"), "setup"],
+			const result = await adapters.run(adapters.nodePath, [path.join(packageRoot, "bin", "tomidev.mjs"), "setup"],
 				{ env: setupEnvironment(child, platform), deadlineMs: deadlines.setup, stderrTail: 4096 });
 			if (succeeded(result)) return true;
 			setupDetail = setupErrorDetail(result?.stderrTail, home, platform);
@@ -1041,15 +951,13 @@ export async function runStandardInstall(request, adapters) {
 	];
 	if (update) {
 		// Update an existing Gentle Shell with its owner's package manager (the same
-		// logic as `gentle-shell upgrade`), confirm the result, then set it up.
+		// logic as `tomidev upgrade`), confirm the result, then set it up.
 		const channel = update === "update-shell-main" ? "main" : "release";
 		const setupStep = steps.find(([name]) => name === "shell-setup");
 		steps.splice(0, steps.length,
-			...goSteps,
 			...(ids.includes("install-pi") ? [["install-pi", async () => succeeded(await runPnpm(["add", "-g", `${PI_PACKAGE}@${piVersion}`], deadlines.install))]] : []),
 			...piSteps,
-			["update-shell", withMainDetail(async () => (await adapters.upgradeShell({ channel, packageRoot: installed.root, currentVersion: installed.version,
-				...(pinnedGo ? { goPath: pinnedGo } : {}) })) === true)],
+			["update-shell", withMainDetail(async () => (await adapters.upgradeShell({ channel, packageRoot: installed.root, currentVersion: installed.version })) === true)],
 			["verify-updated-shell", async () => {
 				const after = await adapters.locateShell();
 				const version = String(after?.version ?? "");
@@ -1061,7 +969,6 @@ export async function runStandardInstall(request, adapters) {
 				packageRoot = after.root;
 				return true;
 			}],
-			...(channel === "release" ? [["verify-gentle-ai", async () => (await adapters.verifyGentleAi({ packageRoot, platform, env, home }))?.ok === true]] : []),
 			setupStep);
 	}
 	// A child PATH never proves a fresh terminal; persist it with pnpm's own setup.

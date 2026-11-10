@@ -53,6 +53,8 @@ export interface AgentDefinition {
 	thinking: ThinkingLevel | undefined;
 	mode: AgentMode | undefined;
 	tools: string[];
+	/** Tools dropped from this definition, reported for the human; absent when there are none. */
+	warnings?: string[];
 }
 
 export interface AgentDefinitionError {
@@ -98,6 +100,7 @@ export interface DiscoveryRoots {
 export interface DiscoveryResult {
 	agents: AgentDefinition[];
 	errors: string[];
+	warnings: string[];
 }
 
 export type FrontmatterValue = string | string[];
@@ -155,7 +158,7 @@ export function parseFrontmatter(text: string): Frontmatter {
 export function parseModelRef(value: unknown): ModelRef | undefined {
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
-	if (trimmed.length === 0) return undefined;
+	if (trimmed.length === 0 || trimmed.toLowerCase() === "inherit") return undefined;
 	const slash = trimmed.indexOf("/");
 	if (slash <= 0) return { provider: undefined, id: trimmed };
 	return { provider: trimmed.slice(0, slash), id: trimmed.slice(slash + 1) };
@@ -173,10 +176,45 @@ function parseMode(value: unknown): AgentMode | undefined | string {
 	return AGENT_MODES.includes(normalized) ? (normalized as AgentMode) : `mode "${value}" is not one of ${AGENT_MODES.join(", ")}`;
 }
 
-function parseTools(value: FrontmatterValue | undefined): string[] {
-	if (value === undefined) return [];
+const CLAUDE_TOOL_NAME_MAP: Record<string, string> = {
+	glob: "find",
+	grep: "grep",
+	read: "read",
+	view: "read",
+	edit: "edit",
+	write: "write",
+	create: "write",
+	bash: "bash",
+	webfetch: "fetch_content",
+	websearch: "web_search",
+	ls: "ls",
+	todowrite: "todo",
+};
+
+// Repository agents sit directly in `<root>/.agents/agents/`. Matching that segment pair
+// keeps names such as `my.agents/` or `.agents-backup/` from qualifying.
+function isRepoAgentPath(filePath: string): boolean {
+	const segments = filePath.split(/[\\/]/);
+	return segments.length >= 3 && segments.at(-2) === "agents" && segments.at(-3) === ".agents";
+}
+
+// Repository agents are written for Claude Code. A capitalized Claude name with no Pi
+// equivalent (Task, NotebookEdit) would reach Pi as an invalid tool name, so it is
+// dropped and reported instead; other names pass through unchanged.
+function parseTools(value: FrontmatterValue | undefined, isRepoAgent = false): { tools: string[]; warnings: string[] } {
+	const tools: string[] = [];
+	const warnings: string[] = [];
+	if (value === undefined) return { tools, warnings };
 	const items = Array.isArray(value) ? value : value.split(",");
-	return items.map((item) => item.trim()).filter((item) => item.length > 0);
+	for (const raw of items) {
+		const item = raw.trim();
+		if (item.length === 0) continue;
+		if (!isRepoAgent) tools.push(item);
+		else if (Object.hasOwn(CLAUDE_TOOL_NAME_MAP, item.toLowerCase())) tools.push(CLAUDE_TOOL_NAME_MAP[item.toLowerCase()]);
+		else if (/^[A-Z]/.test(item)) warnings.push(`tool "${item}" is a Claude Code tool with no Pi equivalent; dropped`);
+		else tools.push(item);
+	}
+	return { tools, warnings };
 }
 
 function scalar(value: FrontmatterValue | undefined): string | undefined {
@@ -191,6 +229,7 @@ export function parseAgentDefinition(text: string, filePath: string, scope: Agen
 	if (mode !== undefined && !AGENT_MODES.includes(mode)) return { filePath, error: mode };
 	if (body.length === 0) return { filePath, error: "no instructions after the frontmatter" };
 	const name = scalar(data.name)?.trim() || basename(filePath).replace(/\.md$/i, "");
+	const parsedTools = parseTools(data.tools, isRepoAgentPath(filePath));
 	return {
 		name,
 		description: scalar(data.description)?.trim() ?? "",
@@ -200,7 +239,8 @@ export function parseAgentDefinition(text: string, filePath: string, scope: Agen
 		model: parseModelRef(data.model),
 		thinking: thinking as ThinkingLevel | undefined,
 		mode: mode as AgentMode | undefined,
-		tools: parseTools(data.tools),
+		tools: parsedTools.tools,
+		...(parsedTools.warnings.length > 0 ? { warnings: parsedTools.warnings } : {}),
 	};
 }
 
@@ -218,22 +258,28 @@ export function agentDirectories(roots: DiscoveryRoots): Array<{ dir: string; sc
 		{ dir: join(agentHome, "subagents"), scope: AGENT_SCOPE.GLOBAL },
 		{ dir: join(roots.cwd, ".pi", "agents"), scope: AGENT_SCOPE.PROJECT },
 		{ dir: join(roots.cwd, ".pi", "subagents"), scope: AGENT_SCOPE.PROJECT },
+		{ dir: join(roots.cwd, ".agents", "agents"), scope: AGENT_SCOPE.PROJECT },
 	];
 }
 
 export function discoverAgents(roots: DiscoveryRoots): DiscoveryResult {
 	const agents = new Map<string, AgentDefinition>();
 	const errors: string[] = [];
+	const warnings: string[] = [];
 	for (const { dir, scope } of agentDirectories(roots)) {
 		if (!existsSync(dir)) continue;
 		for (const file of readdirSync(dir).filter((entry) => entry.toLowerCase().endsWith(".md")).sort()) {
 			const filePath = join(dir, file);
 			const parsed = parseAgentDefinition(readFileSync(filePath, "utf8"), filePath, scope);
-			if ("error" in parsed) errors.push(`${filePath}: ${parsed.error}`);
-			else agents.set(parsed.name, parsed);
+			if ("error" in parsed) {
+				errors.push(`${filePath}: ${parsed.error}`);
+				continue;
+			}
+			agents.set(parsed.name, parsed);
+			warnings.push(...(parsed.warnings ?? []).map((warning) => `${filePath}: ${warning}`));
 		}
 	}
-	return { agents: [...agents.values()].sort((a, b) => a.name.localeCompare(b.name)), errors };
+	return { agents: [...agents.values()].sort((a, b) => a.name.localeCompare(b.name)), errors, warnings };
 }
 
 type RawConfig = Record<string, unknown> | undefined;

@@ -16,40 +16,28 @@ let cwd: string;
 let prior: string | undefined;
 before(() => {
   cwd = mkdtempSync(join(tmpdir(), "recovery-delivery-"));
-  prior = process.env.GENTLE_PI_CONFIG_HOME;
-  process.env.GENTLE_PI_CONFIG_HOME = join(cwd, "config");
+  prior = process.env.TOMIDEV_CONFIG_HOME;
+  process.env.TOMIDEV_CONFIG_HOME = join(cwd, "config");
   mkdirSync(join(cwd, "project"));
 });
 after(() => {
-  if (prior === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-  else process.env.GENTLE_PI_CONFIG_HOME = prior;
+  if (prior === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+  else process.env.TOMIDEV_CONFIG_HOME = prior;
   rmSync(cwd, { recursive: true, force: true });
 });
 
-// S2-S5: positive setup/implementation routes and negative authority boundaries
-// must coexist in the delivered parent prompt, in every persona and RDD mode.
-for (const persona of ["gentleman", "neutral"] as const) {
-  for (const mode of ["on", "off", "unknown"]) {
-    test(`S2-S5 delivered recovery is bounded: ${persona}/${mode}`, () => {
-      const p = __testing.buildGentlePrompt(persona, join(cwd, "project"), ["read"], `Receipt-driven development: ${mode}`);
+// Continuity uses the fixed persona and preserves host-specific behavior.
+for (const mode of ["tui", "rpc", "print", "json"]) {
+    test(`S2-S5 delivered continuity is bounded: ${mode}`, () => {
+      const p = __testing.buildGentlePrompt(join(cwd, "project"), ["read"], mode);
       assert.equal(p.split("## Authorized work continuity").length, 2);
-      const setup = paragraph(p, "A failed verifier setup");
-      assert.match(setup, /prerequisite is repaired, the human may explicitly request one new bounded verification attempt/);
-      assert.match(setup, /zero tests run; the checks remain unverified/);
-      assert.match(setup, /unavailable verifier remains unavailable; do not retry or escalate it/);
-      for (const guard of ["consent", "a denial", "one-run", "no-retry", "terminal native outcomes", "exhausted native budgets"]) assert.ok(setup.includes(guard), guard);
-      assert.match(setup, /no child is active or has an uncertain status/);
-      const worker = paragraph(p, "An exhausted worker-local");
-      assert.match(worker, /scope, executor, correction limit and checks/);
-      assert.match(worker, /later explicit human request is separate and remains subject to native authority/);
-      assert.match(worker, /new session does not reset any limit/);
-      assert.match(worker, /specifically authorized.*actual native authority.*in-scope compilation or implementation/);
-      assert.match(worker, /unavailable proof still blocks completion and delivery/);
-      assert.match(worker, /no child is active or has an uncertain status/);
+      const stop = paragraph(p, "Stop only for");
+      assert.match(stop, /missing required proof \(it blocks completion and delivery\)/);
+      assert.match(stop, /the human's explicit stop/);
+      const infer = paragraph(p, "Do not infer permission");
+      assert.match(infer, /publishing \(push, pull request, release\), commits, destructive actions, or unrelated scope/);
       assert.match(p, /7\. \*\*Close\.\*\*[^\n]*never more verification/);
-      assert.doesNotMatch(p, /Stop only for[^\n]*unavailable required proof/);
     });
-  }
 }
 
 test("S3-S5 parsed worker and verifier contracts retain confinement and proof limits", () => {
@@ -76,7 +64,7 @@ test("S3-S5 parsed worker and verifier contracts retain confinement and proof li
 test("S2-S5 user recovery docs retain the independent-proof and native-authority boundaries", () => {
   const docs = read("docs/delegated-verification.md");
   assert.match(docs, /static inspection and parent tests do not replace the missing independent runtime proof/);
-  assert.match(docs, /no instantiated native budget[^\n]*grants no review approval/);
+  assert.match(docs, /read-only inspection grants no review approval or mutation authority/);
   assert.match(docs, /Missing required proof still blocks completion and delivery/);
   assert.match(docs, /active or uncertain child prevents continuation/);
   assert.match(docs, /explicit one-run\/no-retry limit/);

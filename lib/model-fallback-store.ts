@@ -1,3 +1,4 @@
+import { brandId, isBrandId } from "./brand.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isValidProfileName, writeJsonFileAtomicallySync } from "./agent-profiles.ts";
@@ -8,7 +9,7 @@ import { isSafeAgentName, isThinkingLevel, SAFE_MODEL_ID_PATTERN, type ThinkingL
 // apart lets older versions read profiles.json unchanged (they just never
 // fall back). Every model in a chain is one the user picked.
 
-export const FALLBACKS_KIND = "gentle-pi.profile_model_fallbacks";
+export const FALLBACKS_KIND = brandId("profile_model_fallbacks");
 export const FALLBACKS_VERSION = 1;
 /** The chain for every agent of a profile that has none of its own. */
 export const DEFAULT_CHAIN_KEY = "*";
@@ -58,7 +59,7 @@ const validAgentKey = (key: string) => key === DEFAULT_CHAIN_KEY || isSafeAgentN
 
 export function normalizeFallbacksFile(value: unknown): FallbacksFile | undefined {
 	if (!isRecord(value) || !exactKeys(value, ["kind", "version", "profiles"])) return undefined;
-	if (value.kind !== FALLBACKS_KIND || value.version !== FALLBACKS_VERSION || !isRecord(value.profiles)) return undefined;
+	if (!isBrandId(value.kind, "profile_model_fallbacks") || value.version !== FALLBACKS_VERSION || !isRecord(value.profiles)) return undefined;
 	const profiles: FallbacksFile["profiles"] = {};
 	for (const [name, agents] of Object.entries(value.profiles)) {
 		if (!isValidProfileName(name) || !isRecord(agents)) return undefined;

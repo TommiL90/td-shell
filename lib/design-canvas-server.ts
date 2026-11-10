@@ -48,7 +48,7 @@ const LIMITS = Object.freeze({
 	artboardSide: 20000,
 	sseClients: 16,
 });
-/** design/system.html, written by /gentle:design sync, is shown as the first board of every design. */
+/** design/system.html, written by /td:design sync, is shown as the first board of every design. */
 const SYSTEM_FILE = "system.html";
 /** Root files whose changes reach the canvas as `{ slug: null, file }`. */
 const SYSTEM_FILES: ReadonlySet<string> = new Set([SYSTEM_FILE, "system.md"]);
@@ -315,7 +315,7 @@ function normalizeManifest(slug: string, raw: string): DesignManifest {
 	if (record.feature !== undefined) {
 		// The regex refuses `..` segments too: a name may not start with a dot and has no slash.
 		if (typeof record.feature === "string" && DESIGN_FEATURE_PATH.test(record.feature)) manifest.feature = record.feature;
-		else manifest.warnings = ["feature must be a relative odd/tasks/<name>.md path; it was ignored"];
+		else manifest.warnings = ["feature must be a relative .agents/designs/features/<name>/ or odd/tasks/<name>.md path; it was ignored"];
 	}
 	return manifest;
 }

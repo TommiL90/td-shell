@@ -138,9 +138,9 @@ test("S3: no settle reminder for Risk: none, no item, or a rejected verifier att
 	await session.input();
 	assert.equal(await session.settle("Done.\nRisk: none"), undefined);
 	assert.equal(await session.settle("Done."), undefined);
-	const rejected = await session.toolCall("subagent_run", { agent: "gentle-ai-verify", mode: "task", task: "Verify the change." }) as { block?: boolean } | undefined;
-	assert.equal(rejected?.block, true, "the admission still rejects the unrisked launch");
-	assert.equal(await session.settle("Done.\nRisk: item 3"), undefined, "a rejected verifier attempt counts as attempted");
+	const verifierRun = await session.toolCall("subagent_run", { agent: "gentle-ai-verify", mode: "task", task: "Verify the change." }) as { block?: boolean } | undefined;
+	assert.equal(verifierRun?.block, undefined, "unrisked verifier process guard is removed");
+	assert.equal(await session.settle("Done.\nRisk: item 3"), undefined, "a verifier attempt counts as attempted");
 	await session.input("Again.");
 	const admitted = await session.toolCall("subagent_run", { agent: "gentle-ai-verify", mode: "task", task: "Verify it.\nRisk: item 3" }) as { block?: boolean } | undefined;
 	assert.equal(admitted?.block, undefined);
@@ -148,7 +148,7 @@ test("S3: no settle reminder for Risk: none, no item, or a rejected verifier att
 });
 
 test("S1: a child session never gets the settle reminder", async () => {
-	const child = hookedExtension({ GENTLE_PI_AGENTS_CHILD: "1" });
+	const child = hookedExtension({ TOMIDEV_AGENTS_CHILD: "1" });
 	await child.input();
 	assert.equal(await child.settle("Done.\nRisk: item 3"), undefined);
 });
@@ -162,20 +162,13 @@ test("S1: the existing agent_end review preflight stays inert without a native r
 	assert.deepEqual(session.sent, []);
 });
 
-test("S5: the gentle_review input description documents the ASSESS escalate shape", () => {
-	const source = readFileSync(join(import.meta.dirname, "..", "extensions", "gentle-ai.ts"), "utf8");
-	const description = source.split("\n").find(line => line.includes("ASSESS accepts an optional object with baseRef"));
-	assert.ok(description, "the gentle_review input description exists");
-	assert.match(description, /writerEffort, nativeReviewOutcome, and escalate/);
-	assert.match(description, /escalate is \{\\"item\\":N,\\"reason\\":\\"\.\.\.\\"\} with item an integer from 1 to 6 and a non-empty reason of at most 500 characters; any other shape is rejected, and omitting it means no escalation/);
-});
 
 test("S6: the reference docs describe the settle reminder", () => {
 	const docs = readFileSync(join(import.meta.dirname, "..", "docs", "readme-reference.md"), "utf8");
-	const start = docs.indexOf("A third admission check keeps the independent verifier for high-risk changes");
+	const start = docs.indexOf("The admission only sees launches that happen");
 	assert.ok(start >= 0);
-	const paragraph = docs.slice(start, docs.indexOf("\n\n", docs.indexOf("\n\n", start) + 2));
-	assert.match(paragraph, /no supported `Risk: item N` declaration was recognized/);
+	const paragraph = docs.slice(start, docs.indexOf("\n\n", start));
+	assert.match(paragraph, /user's visual or manual approval does not replace technical verification/);
 	assert.match(paragraph, /`agent_before_settle`[^]*one visible reminder[^]*one continuation/);
 	assert.match(paragraph, /once per user prompt/);
 });
@@ -187,7 +180,7 @@ test("a real Pi session appends one settle reminder and continues once after a d
 	const ai = await import("@earendil-works/pi-ai");
 	const root = mkdtempSync(join(tmpdir(), "vsr-"));
 	const profile = join(root, "profile");
-	const bindings: Record<string, string> = { PI_CODING_AGENT_DIR: profile, PI_CODING_AGENT_SESSION_DIR: join(root, "sessions"), GENTLE_PI_AGENT_HOME: profile, GENTLE_PI_CONFIG_HOME: join(root, "config") };
+	const bindings: Record<string, string> = { PI_CODING_AGENT_DIR: profile, PI_CODING_AGENT_SESSION_DIR: join(root, "sessions"), TOMIDEV_AGENT_HOME: profile, TOMIDEV_CONFIG_HOME: join(root, "config") };
 	const previous = Object.fromEntries(Object.keys(bindings).map(key => [key, process.env[key]]));
 	Object.assign(process.env, bindings);
 	const replies = ["Implemented.\nRisk: item 6 (no regression test)"];
@@ -223,7 +216,7 @@ test("a real Pi session appends one settle reminder and continues once after a d
 		const errors: unknown[] = [];
 		await session.bindExtensions({ mode: "json", onError: (error: any) => errors.push(error.error) } as any);
 		await session.prompt("Do the change.", { source: "interactive" } as any);
-		const reminders = manager.getEntries().filter((entry: any) => entry.type === "custom_message" && entry.customType === "gentle-pi.verifier-settle-reminder");
+		const reminders = manager.getEntries().filter((entry: any) => entry.type === "custom_message" && entry.customType === "tomidev.verifier-settle-reminder");
 		await session.abort();
 		session.dispose();
 		assert.deepEqual(errors, []);

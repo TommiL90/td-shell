@@ -1,3 +1,4 @@
+import { brandCommand, ENV_AGENTS_CHILD } from "./brand.ts";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isKeyRelease, matchesKey, type Component, type TUI } from "@earendil-works/pi-tui";
 import { withOverlayRepaint } from "./overlay-repaint.ts";
@@ -9,7 +10,7 @@ import { createVoiceSession, VoiceSessionError, type VoiceSessionErrorCode, type
 import { readVoicePushToTalk, writeVoicePushToTalk } from "./voice-settings.ts";
 import { pushToTalkStatus, VoiceDictationView, VoiceProgressView, type VoiceViewTheme } from "./voice-ui.ts";
 
-// /gentle:voice (S1-S3): the only entry point to optional local dictation. It
+// /td:voice (S1-S3): the only entry point to optional local dictation. It
 // shows status, downloads the pinned runtime and model after an explicit
 // confirmation, and records one dictation whose transcript is pasted into the
 // editor draft, never submitted. Registration does nothing else: the platform
@@ -22,7 +23,7 @@ import { pushToTalkStatus, VoiceDictationView, VoiceProgressView, type VoiceView
 // installed is checked at the first hold, and a missing install disarms it.
 // A hold shares the single-operation lock with the command.
 
-export const VOICE_COMMAND_NAME = "gentle:voice";
+export const VOICE_COMMAND_NAME = brandCommand("voice");
 
 // The part of VoiceSession the command drives.
 export interface VoiceDictation {
@@ -85,7 +86,7 @@ function sessionAction(code: VoiceSessionErrorCode, platform: string, start: Dic
 		case "not-installed":
 		case "runtime-invalid":
 		case "model-invalid":
-			return "Run /gentle:voice and download it again.";
+			return "Run /td:voice and download it again.";
 		case "runtime-load":
 			if (platform === "linux") return "Install the ALSA library (libasound.so.2, for example the libasound2 or alsa-lib package), then try again.";
 			if (platform === "win32") return "Install the Microsoft Visual C++ Redistributable (x64) from Microsoft, then try again.";
@@ -272,7 +273,7 @@ export function registerVoiceCommand(pi: ExtensionAPI, deps: VoiceCommandDeps = 
 	let active: Run | undefined;
 
 	const command = async (ctx: ExtensionCommandContext): Promise<void> => {
-		if (env.GENTLE_PI_AGENTS_CHILD === "1") {
+		if (env[ENV_AGENTS_CHILD] === "1") {
 			if (ctx.hasUI) ctx.ui.notify("Voice dictation is not available in delegated sessions.", "warning");
 			return;
 		}
@@ -381,9 +382,9 @@ export function registerVoiceCommand(pi: ExtensionAPI, deps: VoiceCommandDeps = 
 					arm(ctx);
 				}
 			} catch {
-				/* push-to-talk stays off; /gentle:voice still dictates */
+				/* push-to-talk stays off; /td:voice still dictates */
 			}
-			say(enabled ? "Voice dictation is installed. Hold Space in the editor to dictate, or run /gentle:voice and choose Start dictation." : "Voice dictation is installed. Run /gentle:voice and choose Start dictation.", "info");
+			say(enabled ? "Voice dictation is installed. Hold Space in the editor to dictate, or run /td:voice and choose Start dictation." : "Voice dictation is installed. Run /td:voice and choose Start dictation.", "info");
 		}
 	};
 
@@ -489,7 +490,7 @@ export function registerVoiceCommand(pi: ExtensionAPI, deps: VoiceCommandDeps = 
 		if (installed === "checking") installed = found;
 		if (checkGeneration !== generation || armed !== current || found) return;
 		disarm();
-		current.ctx.ui.notify("Push-to-talk is paused: voice dictation is not installed. Run /gentle:voice to download it.", "warning");
+		current.ctx.ui.notify("Push-to-talk is paused: voice dictation is not installed. Run /td:voice to download it.", "warning");
 	};
 
 	const startHold = (current: Armed): boolean => {
@@ -565,7 +566,7 @@ export function registerVoiceCommand(pi: ExtensionAPI, deps: VoiceCommandDeps = 
 	});
 	pi.on("session_start", (_event, ctx) => {
 		disarm();
-		if (env.GENTLE_PI_AGENTS_CHILD === "1" || !ctx?.hasUI || ctx.mode !== "tui") return;
+		if (env[ENV_AGENTS_CHILD] === "1" || !ctx?.hasUI || ctx.mode !== "tui") return;
 		if (readToggle()) arm(ctx);
 	});
 	pi.on("session_shutdown", () => {

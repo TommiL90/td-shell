@@ -27,7 +27,7 @@ export interface CardTheme {
 	bg?(color: string, text: string): string;
 }
 
-// Conversation cards come in two styles, chosen in /gentle:customize. Pi loads
+// Conversation cards come in two styles, chosen in /td:customize. Pi loads
 // every extension with its own jiti loader (moduleCache:false), so each one
 // gets a copy of this module; the global symbol keeps one style per process.
 export const CARD_STYLE = {
@@ -37,7 +37,7 @@ export const CARD_STYLE = {
 
 export type CardStyle = (typeof CARD_STYLE)[keyof typeof CARD_STYLE];
 
-const CARD_STYLE_SLOT = Symbol.for("gentle-pi.card-style");
+const CARD_STYLE_SLOT = Symbol.for("tomidev.card-style");
 const styleState = globalThis as typeof globalThis & { [CARD_STYLE_SLOT]?: unknown };
 
 export function cardStyle(): CardStyle {
@@ -215,7 +215,7 @@ export function cardBodyRows(
 // by the result component, which closes the frame. The call cannot see the
 // result, so result renderers mark the row state both share, and a call still
 // waiting for its first result closes its own frame.
-const RESULT_MARK = Symbol.for("gentle-pi.card-result");
+const RESULT_MARK = Symbol.for("tomidev.card-result");
 const RUNNING_TEXT = "running…";
 const RUNNING_ROLE = "muted";
 

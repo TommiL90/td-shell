@@ -298,7 +298,7 @@ test("parseUsageSource validates the registration payload and ignores anything m
 	const withNote = parseUsageSource({ schema: USAGE_SOURCE_SCHEMA, provider: "acme-cloud", pendingNote: "warming up", fetch: fetchFn });
 	assert.equal(withNote?.pendingNote, "warming up");
 
-	assert.equal(parseUsageSource({ schema: "gentle-pi.usage-source/v0", provider: "acme-cloud", fetch: fetchFn }), undefined, "wrong schema");
+	assert.equal(parseUsageSource({ schema: "tomidev.usage-source/v0", provider: "acme-cloud", fetch: fetchFn }), undefined, "wrong schema");
 	assert.equal(parseUsageSource({ schema: USAGE_SOURCE_SCHEMA, provider: "", fetch: fetchFn }), undefined, "empty provider");
 	assert.equal(parseUsageSource({ schema: USAGE_SOURCE_SCHEMA, provider: "acme cloud", fetch: fetchFn }), undefined, "unsafe provider id");
 	assert.equal(parseUsageSource({ schema: USAGE_SOURCE_SCHEMA, provider: "acme-cloud", fetch: "nope" }), undefined, "fetch not a function");

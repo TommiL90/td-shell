@@ -1,9 +1,10 @@
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { CHILD_PACKAGE_INJECTION_ENV, encodeChildPackageInjection, type ChildPackageInjection } from "./child-package-injection.ts";
-import { GENTLE_SHELL_CONFIG_HOME_ENV } from "./gentle-shell-bundled.ts";
+import { bundledUpdatePlan, TOMIDEV_SHELL_CONFIG_HOME_ENV } from "./gentle-shell-bundled.ts";
+import { BRAND_NAME, GIT_SOURCE, HOME_DIRNAME, SOURCE_REPOSITORY, ENV_AGENT_HOME, ENV_PREFIX, LOG_PREFIX, BRAND_DISPLAY_NAME } from "./brand.ts";
 
 // The gentle-shell launcher: pure, side-effect-free functions over injected
-// env/fs/exec. `bin/gentle-shell.mjs` (T2) wires these into the real process,
+// env/fs/exec. `bin/tomidev.mjs` (T2) wires these into the real process,
 // filesystem and child process so this module stays fully unit-testable.
 
 export type LauncherCommand = "home" | "setup" | "upgrade" | "self-uninstall" | "memory";
@@ -30,7 +31,7 @@ export interface ParsedLauncherArgs {
 	commandArgs: string[];
 	passthrough: string[];
 	// Set when the first passthrough token is one of PI_SUBCOMMANDS (e.g.
-	// `gentle-shell install npm:x`). It stays part of `passthrough` — this
+	// `tomidev install npm:x`). It stays part of `passthrough` — this
 	// field only tells buildPiInvocation to skip its extension injection, so
 	// pi sees the bare subcommand it expects as argv[0].
 	piSubcommand?: PiSubcommand;
@@ -210,13 +211,13 @@ function linkDir(env: Record<string, string | undefined>, homedir: string): stri
 
 // The isolated home replaces PI_CODING_AGENT_DIR for the whole session, so the
 // user's own Pi home travels in this variable for read-only features such as
-// /gentle:stats and for `--link`. An inherited value wins: a gentle-shell
+// /td:stats and for `--link`. An inherited value wins: a gentle-shell
 // launched from inside a Gentle Shell session sees the outer isolated home as
 // PI_CODING_AGENT_DIR, so `--link` must not re-select it (#2015).
-export const USER_PI_HOME_ENV = "GENTLE_SHELL_USER_PI_HOME";
-// Set by bin/gentle-shell.mjs only when Gentle Shell, not Herdr's Pi bridge,
+export const USER_PI_HOME_ENV = `${ENV_PREFIX}USER_PI_HOME`;
+// Set by bin/tomidev.mjs only when Gentle Shell, not Herdr's Pi bridge,
 // owns the pane's Herdr agent reports (extensions/gentle-herdr-agent.ts).
-export const HERDR_REPORTER_ENV = "GENTLE_SHELL_HERDR_REPORTER";
+export const HERDR_REPORTER_ENV = `${ENV_PREFIX}HERDR_REPORTER`;
 
 export function userPiHome(env: Record<string, string | undefined>, homedir: string): string {
 	return env[USER_PI_HOME_ENV] || linkDir(env, homedir);
@@ -249,24 +250,24 @@ export function dropUndefinedCaseVariants(env: Record<string, string | undefined
 }
 
 export function isolatedDir(env: Record<string, string | undefined>, homedir: string): string {
-	return env.GENTLE_SHELL_HOME || join(homedir, ".gentle-shell", "agent");
+	return env.TOMIDEV_HOME || join(homedir, HOME_DIRNAME, "agent");
 }
 
 // #2201: the isolated home keeps Gentle Shell's config in a gentle-ai folder
-// next to its agent dir (~/.gentle-shell/gentle-ai by default), given to Pi as
-// GENTLE_SHELL_CONFIG_HOME_ENV. `--link` and a custom `--home` keep the shared
+// next to its agent dir (~/.tomidev/gentle-ai by default), given to Pi as
+// TOMIDEV_SHELL_CONFIG_HOME_ENV. `--link` and a custom `--home` keep the shared
 // ~/.pi/gentle-ai: undefined for them.
 export function standaloneConfigHome(home: ResolvedHome): string | undefined {
 	if (home.mode !== "isolated") return undefined;
 	const dir = resolvePath(home.dir);
 	const parent = dirname(dir);
-	// Only inside a .gentle-shell folder is the sibling Gentle Shell's own: next
-	// to a custom GENTLE_SHELL_HOME (~/myagent) it would adopt ~/gentle-ai, which
+	// Only inside a tomidev home folder is the sibling Gentle Shell's own: next
+	// to a custom TOMIDEV_HOME (~/myagent) it would adopt ~/gentle-ai, which
 	// may be anyone's, so such homes keep the shared config home.
-	return basename(dir) === "agent" && basename(parent) === ".gentle-shell" ? join(parent, "gentle-ai") : undefined;
+	return basename(dir) === "agent" && basename(parent) === HOME_DIRNAME ? join(parent, STANDALONE_CONFIG_DIRNAME) : undefined;
 }
 
-// The filesystem behind migrateStandaloneConfig; bin/gentle-shell.mjs wires the real one.
+// The filesystem behind migrateStandaloneConfig; bin/tomidev.mjs wires the real one.
 export interface ConfigMigrationFs {
 	// lstat: a symbolic link is "other", never followed.
 	kind: (path: string) => "missing" | "dir" | "file" | "other";
@@ -279,7 +280,7 @@ export interface ConfigMigrationFs {
 }
 
 // Install-level main-channel state stays in ~/.pi/gentle-ai: the installer and
-// `gentle-shell upgrade` write it outside any session (gentleAiDevBinaryRegistrationPath).
+// `tomidev upgrade` write it outside any session (gentleAiDevBinaryRegistrationPath).
 const UNMIGRATED_CONFIG_FILES = new Set(["dev-binary.json", "channel.json"]);
 
 // #2201: the first isolated launch after the move keeps the user's settings.
@@ -296,14 +297,14 @@ export function migrateStandaloneConfig(input: { source: string; target: string;
 	try {
 		fs.mkdirPrivate(target);
 	} catch (error) {
-		return { lines: [`gentle-shell: could not create ${target} for your Gentle Shell settings (${reason(error)}); continuing`] };
+		return { lines: [`${LOG_PREFIX} could not create ${target} for your ${BRAND_DISPLAY_NAME} settings (${reason(error)}); continuing`] };
 	}
 	if (fs.kind(source) === "missing") return { lines: [] };
 	let names: string[];
 	try {
 		names = fs.list(source).sort();
 	} catch (error) {
-		return { lines: [`gentle-shell: could not copy your settings from ${source} to ${target} (${reason(error)}); continuing`] };
+		return { lines: [`${LOG_PREFIX} could not copy your settings from ${source} to ${target} (${reason(error)}); continuing`] };
 	}
 	const copied: string[] = [];
 	const failed: string[] = [];
@@ -317,10 +318,273 @@ export function migrateStandaloneConfig(input: { source: string; target: string;
 		}
 	}
 	if (failed.length > 0) {
-		return { lines: [`gentle-shell: could not copy ${failed.join("; ")} from ${source} to ${target}; continuing with ${copied.length} copied file(s)`] };
+		return { lines: [`${LOG_PREFIX} could not copy ${failed.join("; ")} from ${source} to ${target}; continuing with ${copied.length} copied file(s)`] };
 	}
 	if (copied.length === 0) return { lines: [] };
-	return { lines: [`gentle-shell: copied ${copied.length} settings file(s) from ${source} to ${target}, Gentle Shell's own config folder from now on (one-time copy; ${source} stays for Pi)`] };
+	return { lines: [`${LOG_PREFIX} copied ${copied.length} settings file(s) from ${source} to ${target}, ${BRAND_DISPLAY_NAME}'s own config folder from now on (one-time copy; ${source} stays for Pi)`] };
+}
+
+// --- one-time copy from the pre-rename home (T6, S6) ------------------------
+
+// The folder this launcher was named after. Only the one-time copy reads it:
+// nothing else ever touches ~/.gentle-shell once ~/.tomidev exists.
+export const LEGACY_HOME_DIRNAME = ".gentle-shell";
+const LEGACY_HOME_MARKER = ".gentle-shell-home";
+const LEGACY_MARKER_PREFIX = ".gentle-shell-";
+// The ownership marker a home gets when this launcher creates or copies it.
+export const HOME_OWNERSHIP_MARKER = ".tomidev-home";
+// Written first into the staging folder and removed right before the rename, so it never reaches ~/.tomidev.
+const STAGING_MARKER = ".tomidev-migrating";
+// Gentle Shell's own settings folder next to the isolated agent dir (standaloneConfigHome).
+export const STANDALONE_CONFIG_DIRNAME = "gentle-ai";
+// Agent files copied as they are; settings.json, sessions/ and the config folder are handled apart.
+const LEGACY_AGENT_FILES: readonly string[] = ["auth.json", "models-store.json", "trust.json", "subagents.json"];
+export const LEGACY_HOME_COPIED_LINE = `tomidev: copied your ${BRAND_DISPLAY_NAME} data from ~/.gentle-shell to ~/.tomidev (the old folder was left untouched).`;
+
+// The filesystem behind migrateLegacyHome; bin/tomidev.mjs wires the real one.
+export interface LegacyHomeFs extends ConfigMigrationFs {
+	// The text of a regular file, or undefined when the path is missing or not a regular file.
+	readText: (path: string) => string | undefined;
+	// An exclusive create (never overwrites), mode 0600.
+	writeNew: (path: string, text: string) => void;
+	// The resolved path; throws when it cannot be resolved (e.g. it does not exist).
+	realpath: (path: string) => string;
+	// The package name declared by dir/package.json, or undefined.
+	readPackageName: (dir: string) => string | undefined;
+	// A new folder named prefix plus random characters, created exclusively (mkdtemp) with mode 0700; returns its path. Throws when it cannot be created.
+	makeStagingDir: (prefix: string) => string;
+	// rename(2): throws rather than replace an existing target.
+	rename: (from: string, to: string) => void;
+	// Removes a file or folder tree this run created, never following a link.
+	remove: (path: string) => void;
+}
+
+// Which launches copy: only a launch that reads or writes the default home. Never a
+// bundled prefix run (its home is the prefix's own), --link, --home, a set
+// TOMIDEV_HOME, --version, a plain `home` print, a `setup --dry-run` or
+// `home ... --dry-run` plan, `upgrade`, `self-uninstall`, `memory`, or a pure Pi
+// self-update (`update` with no arguments for Pi, see bundledUpdatePlan): that one
+// returns before the home is touched. Pi subcommands that do touch the home (install,
+// remove, list, config, auth, mcp, and an `update` forwarded to Pi such as --all or
+// --extensions) copy first: they bootstrap and write the home, so a home created
+// before the copy would make the copy skip for good.
+export function legacyHomeMigrationApplies(input: { args: ParsedLauncherArgs; env: Record<string, string | undefined>; bundled: boolean }): boolean {
+	const { args, env, bundled } = input;
+	if (bundled || args.link || args.home !== undefined || args.version || env.TOMIDEV_HOME) return false;
+	if (args.command === "home") return args.commandArgs.length > 0 && !args.commandArgs.includes("--dry-run");
+	if (args.command === "setup") return !args.commandArgs.includes("--dry-run");
+	if (args.command !== undefined) return false;
+	if (args.piSubcommand === "update") return bundledUpdatePlan(args.passthrough).piArgs !== undefined;
+	return true;
+}
+
+export interface LegacyHomeMigrationInput {
+	homedir: string;
+	// Read only once a copy is certain to happen (the ownership marker records it), so a
+	// launch that copies nothing never touches the package version. A failed read is recorded as "unknown".
+	readVersion: () => string;
+	// The launching process; names its staging folder.
+	pid: number;
+	fs: LegacyHomeFs;
+}
+
+export type LegacyHomeMigration = { status: "skipped" } | { status: "copied"; line: string } | { status: "failed"; message: string };
+
+// The one-time copy. It runs only while ~/.tomidev does not exist and
+// ~/.gentle-shell is a real folder this launcher owned (its agent ownership
+// marker or its config.json). It copies agent/auth.json, models-store.json,
+// trust.json, subagents.json, settings.json (without a gentle-pi package),
+// sessions/, the gentle-ai config folder and config.json (adapted to the new
+// home). It never copies versions/, runtime/, current, agent/npm,
+// agent/gentle-agents, caches or any old-name marker, and never writes, moves
+// or deletes anything under ~/.gentle-shell. Links are never followed or
+// copied, and nothing is overwritten.
+//
+// T6b: everything is written into a staging folder this run creates exclusively
+// next to ~/.tomidev (~/.tomidev.migrating-<pid>-<random>). The ownership marker
+// is written last, the staging marker is removed, and then one rename moves the
+// folder to ~/.tomidev, so the home never exists half-copied. A failure removes
+// only the staging folder and reports one warning; the launch continues. A
+// rename that finds ~/.tomidev already there means another launch won: the
+// staging folder is removed and nothing is reported. Leftover staging folders
+// from an interrupted run are never reused or renamed.
+export function migrateLegacyHome(input: LegacyHomeMigrationInput): LegacyHomeMigration {
+	const { homedir, readVersion, pid, fs } = input;
+	const target = join(homedir, HOME_DIRNAME);
+	const legacy = join(homedir, LEGACY_HOME_DIRNAME);
+	if (fs.kind(target) !== "missing" || fs.kind(legacy) !== "dir") return { status: "skipped" };
+	const legacyAgent = join(legacy, "agent");
+	const legacyConfig = join(legacy, "config.json");
+	const owned = fs.kind(join(legacyAgent, LEGACY_HOME_MARKER)) === "file" || fs.kind(legacyConfig) === "file";
+	if (!owned) return { status: "skipped" };
+	// The marker's version is informational only: a package.json that cannot be read must never stop the copy.
+	let version = "unknown";
+	try {
+		version = readVersion();
+	} catch {
+		// keep "unknown"
+	}
+
+	let staging: string | undefined;
+	try {
+		staging = fs.makeStagingDir(join(homedir, `${HOME_DIRNAME}.migrating-${pid}-`));
+		fs.writeNew(join(staging, STAGING_MARKER), `${JSON.stringify({ createdBy: "tomidev", pid })}\n`);
+		const stagedAgent = join(staging, "agent");
+		fs.mkdirPrivate(stagedAgent);
+		for (const name of LEGACY_AGENT_FILES) {
+			if (fs.kind(join(legacyAgent, name)) === "file") fs.copyNew(join(legacyAgent, name), join(stagedAgent, name));
+		}
+		copyLegacySettings(fs, legacyAgent, stagedAgent);
+		if (fs.kind(join(legacyAgent, "sessions")) === "dir") copyLegacyTree(fs, join(legacyAgent, "sessions"), join(stagedAgent, "sessions"));
+		if (fs.kind(join(legacy, STANDALONE_CONFIG_DIRNAME)) === "dir") copyLegacyTree(fs, join(legacy, STANDALONE_CONFIG_DIRNAME), join(staging, STANDALONE_CONFIG_DIRNAME));
+		// The config names the home as it will be after the rename, not the staging path.
+		copyLegacyConfig(fs, { legacyConfig, legacyAgent, to: join(staging, "config.json"), newAgent: join(target, "agent") });
+		fs.writeNew(join(stagedAgent, HOME_OWNERSHIP_MARKER), `${JSON.stringify({ createdBy: "tomidev", version })}\n`);
+		fs.remove(join(staging, STAGING_MARKER));
+	} catch (error) {
+		return failedCopy(fs, error, staging);
+	}
+	try {
+		fs.rename(staging, target);
+	} catch (error) {
+		if (targetExists(fs, target)) {
+			discardStaging(fs, staging);
+			return { status: "skipped" };
+		}
+		return failedCopy(fs, error, staging);
+	}
+	return { status: "copied", line: LEGACY_HOME_COPIED_LINE };
+}
+
+function targetExists(fs: LegacyHomeFs, path: string): boolean {
+	try {
+		return fs.kind(path) !== "missing";
+	} catch {
+		return false;
+	}
+}
+
+// Removes the staging folder this run created, and nothing else. Returns the failure reason, if any.
+function discardStaging(fs: LegacyHomeFs, staging: string): string | undefined {
+	try {
+		fs.remove(staging);
+		return undefined;
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
+}
+
+function failedCopy(fs: LegacyHomeFs, error: unknown, staging: string | undefined): LegacyHomeMigration {
+	const reason = error instanceof Error ? error.message : String(error);
+	let message = `tomidev: could not copy your ${BRAND_DISPLAY_NAME} data from ~/.gentle-shell to ~/.tomidev (${reason}); continuing with a new home. The old folder was left untouched; remove ~/.tomidev to retry the copy.`;
+	if (staging !== undefined) {
+		const removeReason = discardStaging(fs, staging);
+		if (removeReason !== undefined) message = `tomidev: could not copy your ${BRAND_DISPLAY_NAME} data from ~/.gentle-shell to ~/.tomidev (${reason}), and the partial copy in ${staging} could not be removed (${removeReason}); remove it by hand, it is never used.`;
+	}
+	return { status: "failed", message };
+}
+
+function realpathOr(fs: LegacyHomeFs, path: string): string {
+	try {
+		return fs.realpath(path);
+	} catch {
+		return path;
+	}
+}
+
+function copyLegacySettings(fs: LegacyHomeFs, legacyAgent: string, newAgent: string): void {
+	const from = join(legacyAgent, "settings.json");
+	const text = fs.readText(from);
+	if (text === undefined) return;
+	const cleaned = withoutLegacyGentlePiPackage(text, { agentDir: legacyAgent, readPackageName: fs.readPackageName });
+	const to = join(newAgent, "settings.json");
+	if (cleaned === undefined) fs.copyNew(from, to);
+	else fs.writeNew(to, cleaned);
+}
+
+function copyLegacyConfig(fs: LegacyHomeFs, input: { legacyConfig: string; legacyAgent: string; to: string; newAgent: string }): void {
+	const text = fs.readText(input.legacyConfig);
+	if (text === undefined) return;
+	const adapted = adaptLegacyLauncherConfig(text, { oldAgents: [input.legacyAgent, realpathOr(fs, input.legacyAgent)], newAgent: input.newAgent });
+	if (adapted === undefined) fs.copyNew(input.legacyConfig, input.to);
+	else fs.writeNew(input.to, adapted);
+}
+
+// Regular files and folders only, recursively: a link is never followed or
+// copied, and an old-name marker is skipped wherever it sits.
+function copyLegacyTree(fs: LegacyHomeFs, from: string, to: string): void {
+	fs.mkdirPrivate(to);
+	for (const name of fs.list(from).sort()) {
+		if (name.startsWith(LEGACY_MARKER_PREFIX)) continue;
+		const source = join(from, name);
+		const kind = fs.kind(source);
+		if (kind === "dir") copyLegacyTree(fs, source, join(to, name));
+		else if (kind === "file") fs.copyNew(source, join(to, name));
+	}
+}
+
+// The settings.json text without any gentle-pi package declaration (npm, any
+// version, or a local path whose package.json is named gentle-pi), keeping the
+// original indentation. Undefined when nothing needs to change, so the bytes are
+// copied as they are; also undefined for text that is not a JSON object.
+export function withoutLegacyGentlePiPackage(settingsText: string, input: { agentDir: string; readPackageName: (dir: string) => string | undefined }): string | undefined {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(settingsText);
+	} catch {
+		return undefined;
+	}
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+	const record = parsed as RawLauncherConfig;
+	if (!Array.isArray(record.packages)) return undefined;
+	const kept = record.packages.filter((entry) => !isLegacyGentlePiEntry(entry, input));
+	if (kept.length === record.packages.length) return undefined;
+	const { indent, trailingNewline } = detectJsonFormatting(settingsText);
+	const serialized = JSON.stringify({ ...record, packages: kept }, null, indent);
+	return trailingNewline ? `${serialized}\n` : serialized;
+}
+
+function isLegacyGentlePiEntry(entry: unknown, input: { agentDir: string; readPackageName: (dir: string) => string | undefined }): boolean {
+	const source = entrySource(entry);
+	if (source === undefined) return false;
+	const kind = packageSourceKind(source);
+	if (kind === "npm") return npmPackageName(source) === LEGACY_SETUP_PACKAGE.name;
+	if (kind === "path") return input.readPackageName(resolvePath(input.agentDir, source)) === LEGACY_SETUP_PACKAGE.name;
+	return false;
+}
+
+// The launcher config.json text with the old isolated home rewritten to the new
+// one, and the setup record of the old home dropped: the new home has no
+// packages yet, so it must be set up again. Other homes keep their records.
+// Undefined when nothing needs to change (or the text is not a JSON object).
+export function adaptLegacyLauncherConfig(configText: string, input: { oldAgents: readonly string[]; newAgent: string }): string | undefined {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(configText);
+	} catch {
+		return undefined;
+	}
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+	const record = parsed as RawLauncherConfig;
+	const next: RawLauncherConfig = { ...record };
+	let changed = false;
+	if (typeof record.home === "string" && input.oldAgents.includes(record.home)) {
+		next.home = input.newAgent;
+		changed = true;
+	}
+	const provisioned = record.provisioned;
+	if (typeof provisioned === "object" && provisioned !== null && !Array.isArray(provisioned)) {
+		const map: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(provisioned as Record<string, unknown>)) {
+			if (input.oldAgents.includes(key)) changed = true;
+			else map[key] = value;
+		}
+		next.provisioned = map;
+	}
+	if (!changed) return undefined;
+	const { indent, trailingNewline } = detectJsonFormatting(configText);
+	const serialized = JSON.stringify(next, null, indent);
+	return trailingNewline ? `${serialized}\n` : serialized;
 }
 
 export function resolveHome(input: ResolveHomeInput): ResolvedHome {
@@ -356,14 +620,14 @@ export function homeSelectorFlags(home: ResolvedHome): string[] {
 // The first-run line of a separate home. `home import-pi` is offered only
 // when the user's pi home has sign-ins (auth.json) to copy.
 export function separateHomeHint(home: ResolvedHome, input: { piSignIns: boolean }): string {
-	const base = `gentle-shell: using a separate home at ${home.dir}. Run 'gentle-shell --link' to reuse your pi sign-ins and chats`;
+	const base = `${LOG_PREFIX} using a separate home at ${home.dir}. Run 'tomidev --link' to reuse your pi sign-ins and chats`;
 	if (!input.piSignIns) return `${base}.`;
-	const command = ["gentle-shell", ...homeSelectorFlags(home).map(shellQuote), "home", "import-pi"].join(" ");
+	const command = ["tomidev", ...homeSelectorFlags(home).map(shellQuote), "home", "import-pi"].join(" ");
 	return `${base}, or '${command}' to copy your sign-ins and MCP servers into this home.`;
 }
 
 export function launcherConfigPath(homedir: string): string {
-	return join(homedir, ".gentle-shell", "config.json");
+	return join(homedir, HOME_DIRNAME, "config.json");
 }
 
 // Tolerant on purpose: a malformed or foreign config.json must never crash
@@ -397,7 +661,7 @@ export function parseLauncherConfig(text: string): LauncherConfig | undefined {
 // a future feature adds. Unlike parseLauncherConfig's discriminated
 // LauncherConfig, these helpers operate on (and return) the whole object so
 // a write never drops a field it does not itself understand — notably
-// another home's provisioned marker when `gentle-shell home ...` persists a
+// another home's provisioned marker when `tomidev home ...` persists a
 // mode change.
 export type RawLauncherConfig = Record<string, unknown>;
 
@@ -417,7 +681,9 @@ export function parseRawLauncherConfig(text: string | undefined): RawLauncherCon
 }
 
 export interface ProvisionedEntry {
-	gentleAi: string;
+	setupVersion?: number;
+	// Legacy records still establish home ownership, but need native setup once.
+	gentleAi?: string;
 	// Optional: a marker written before gentle-pi version tracking (S8) has
 	// no `gentlePi` field at all. needsProvisioning below treats that
 	// omission as "needs provisioning" rather than trusting or crashing on it.
@@ -428,7 +694,7 @@ export interface ProvisionedEntry {
 function isProvisionedEntry(value: unknown): value is ProvisionedEntry {
 	if (typeof value !== "object" || value === null) return false;
 	const record = value as Record<string, unknown>;
-	if (typeof record.gentleAi !== "string" || typeof record.at !== "string") return false;
+	if ((typeof record.setupVersion !== "number" && typeof record.gentleAi !== "string") || typeof record.at !== "string") return false;
 	return record.gentlePi === undefined || typeof record.gentlePi === "string";
 }
 
@@ -452,24 +718,18 @@ export function provisionedEntry(config: RawLauncherConfig, homeDir: string): Pr
 	return provisionedMap(config)[homeDir];
 }
 
-// True when `homeDir` has never been provisioned, was provisioned with a
-// gentle-ai pin other than `pin`, or was provisioned against a gentle-pi
-// other than `gentlePiVersion` (the running launcher's own version, from its
-// package.json) — the signal bin/gentle-shell.mjs uses to decide whether a
-// plain launch should run the setup flow automatically before starting pi.
-// A marker written before gentle-pi version tracking existed has no
-// `gentlePi` field, which never strictly-equals a real version string, so it
-// always counts as needing provisioning too — see ProvisionedEntry above.
-export function needsProvisioning(config: RawLauncherConfig, homeDir: string, pin: string, gentlePiVersion: string): boolean {
+// Bump when the launcher-owned setup plan changes. Legacy gentleAi records
+// count as stale, without losing the ownership evidence they carry.
+export const SETUP_VERSION = 1;
+
+export function needsProvisioning(config: RawLauncherConfig, homeDir: string, setupVersion: number, gentlePiVersion: string): boolean {
 	const entry = provisionedEntry(config, homeDir);
-	return entry === undefined || entry.gentleAi !== pin || entry.gentlePi !== gentlePiVersion;
+	return entry === undefined || entry.setupVersion !== setupVersion || entry.gentleAi !== undefined || entry.gentlePi !== gentlePiVersion;
 }
 
-// Returns a new config object recording `homeDir` as provisioned at `pin`
-// and `gentlePiVersion`, preserving every other key — including every other
-// home's provisioned entry — unchanged. Never mutates `config`.
-export function recordProvisioned(config: RawLauncherConfig, homeDir: string, pin: string, gentlePiVersion: string, now: string): RawLauncherConfig {
-	return { ...config, provisioned: { ...provisionedMap(config), [homeDir]: { gentleAi: pin, gentlePi: gentlePiVersion, at: now } } };
+// Preserve other homes and unrelated config keys; never mutate the input.
+export function recordProvisioned(config: RawLauncherConfig, homeDir: string, setupVersion: number, gentlePiVersion: string, now: string): RawLauncherConfig {
+	return { ...config, provisioned: { ...provisionedMap(config), [homeDir]: { setupVersion, gentlePi: gentlePiVersion, at: now } } };
 }
 
 // --- pi runtime resolution ---------------------------------------------------
@@ -495,7 +755,7 @@ export interface PiRuntimeDeps {
 }
 
 export function resolvePiRuntime(deps: PiRuntimeDeps): PiRuntime | undefined {
-	const envOverride = deps.env.GENTLE_SHELL_PI;
+	const envOverride = deps.env.TOMIDEV_PI;
 	if (envOverride !== undefined && envOverride.length > 0) return { kind: "env", command: envOverride, args: [] };
 
 	const bundledCli = deps.resolveBundledCli();
@@ -510,8 +770,8 @@ export function resolvePiRuntime(deps: PiRuntimeDeps): PiRuntime | undefined {
 export function missingPiMessage(): string {
 	return [
 		"No pi runtime could be found. Pick one of:",
-		"  - Set GENTLE_SHELL_PI to the path of a pi executable.",
-		"  - Install @earendil-works/pi-coding-agent next to gentle-pi (it ships as an optional peer dependency).",
+		"  - Set TOMIDEV_PI to the path of a pi executable.",
+		"  - Install @earendil-works/pi-coding-agent next to tomidev (it ships as an optional peer dependency).",
 		"  - Install pi and make sure it is on your PATH.",
 	].join("\n");
 }
@@ -545,25 +805,6 @@ export function checkPiVersion(output: string, minimum: string = MIN_PI_VERSION)
 		return { ok: false, version, message: `pi version ${version} is older than the required minimum ${minimum}.` };
 	}
 	return { ok: true, version };
-}
-
-// --- setup subcommand's gentle-ai pin gate -----------------------------------
-
-// The first gentle-ai release that honors PI_CODING_AGENT_DIR in its own
-// `install --agent pi` provisioning. `gentle-shell setup` spawns the
-// package-local pinned gentle-ai with PI_CODING_AGENT_DIR set to the
-// resolved home; an older pin ignores that variable and silently provisions
-// the caller's real ~/.pi/agent instead, so setup must refuse to run it.
-export const MIN_SETUP_GENTLE_AI_VERSION = "3.6.0";
-
-export function isSetupCapablePin(version: string, minimum: string = MIN_SETUP_GENTLE_AI_VERSION): boolean {
-	const match = VERSION_PATTERN.exec(version);
-	if (!match) return false;
-	const minimumMatch = VERSION_PATTERN.exec(minimum);
-	if (!minimumMatch) throw new Error(`invalid minimum version "${minimum}"`);
-	const found: [number, number, number] = [Number(match[1]), Number(match[2]), Number(match[3])];
-	const wanted: [number, number, number] = [Number(minimumMatch[1]), Number(minimumMatch[2]), Number(minimumMatch[3])];
-	return compareVersions(found, wanted) >= 0;
 }
 
 // --- packaging drift guard -----------------------------------------------------
@@ -625,7 +866,7 @@ export function packageSourceKind(source: string): PackageSourceKind {
 }
 
 function npmSourceDeclaresGentlePi(source: string): boolean {
-	return source === "npm:gentle-pi" || source.startsWith("npm:gentle-pi@");
+	return source === "npm:tomidev" || source.startsWith("npm:tomidev@");
 }
 
 // npm:<name> or npm:<name>@<version>, tolerating a scoped `@scope/name`: only
@@ -668,52 +909,24 @@ export function settingsDeclareGentlePi(settingsText: string | undefined): boole
 	return packages.some(packageEntryDeclaresGentlePi);
 }
 
-// gentle-ai's own managed Pi stack still installs
-// npm:@juicesharp/rpiv-ask-user-question, which conflicts with gentle-pi's
-// first-party ask_user_question tool: Pi tool names are exclusive, so a
-// second provider for the same name fails the whole load (see
-// extensions/ask-user-question.ts). Tracked upstream as gentle-ai #4820 and
-// gentle-shell #1277; the gentle-ai fix lands separately, so `gentle-shell
-// setup` (bin/gentle-shell.mjs) must remove it from the provisioned home
-// itself.
-//
-// gentle-ai's managed Pi stack also always declares npm:gentle-pi itself.
-// That declaration must never survive setup either, for an unrelated reason:
-// this launcher always loads its own gentle-pi (its own package root, or a
-// take-over), never the one gentle-ai's stack installs, so leaving the
-// declaration in place would silently let the home drift onto whatever
-// gentle-pi npm last installed — or, for a developer running from a source
-// checkout, onto the published npm package — instead of the running
-// launcher's own copy. See docs/readme-reference.md's "setup" section.
-//
-// Table of every package `setup` removes after gentle-ai finishes, so a
-// future addition only needs a new row here.
-const POST_INSTALL_REMOVAL_PACKAGES: readonly { readonly name: string; readonly source: string }[] = [
-	{ name: "@juicesharp/rpiv-ask-user-question", source: "npm:@juicesharp/rpiv-ask-user-question" },
-	{ name: "gentle-pi", source: "npm:gentle-pi" },
-];
+// One launcher-owned companion plan. Pi owns all package/settings mutations.
+export const SETUP_COMPANION_SOURCES: readonly string[] = ["npm:gentle-engram", "npm:pi-web-access", "npm:pi-btw"];
 
-// The known removal sources, exposed so a `--dry-run` caller can report what
-// setup would remove *if* gentle-ai's install declares it, without reading
-// settings.json itself: a dry run writes nothing, so settings.json
-// afterwards would only reflect whatever pre-existed the run, not what the
-// (skipped) install would have declared. See runPostInstallCleanup in
-// bin/gentle-shell.mjs.
-export const POST_INSTALL_REMOVAL_SOURCES: readonly string[] = POST_INSTALL_REMOVAL_PACKAGES.map((entry) => entry.source);
-
-// #2143: a Gentle AI with package exclusion (gentle-ai#5503) skips these
-// managed Pi packages instead of installing them only for the post-install
-// removal above to delete them. An older Gentle AI ignores the variable (a flag
-// would be rejected), so the removal stays as the fallback. Only sources Gentle
-// AI manages belong here: it rejects any other value.
-export const GENTLE_AI_PI_EXCLUDE_PACKAGES_ENV = "GENTLE_AI_PI_EXCLUDE_PACKAGES";
-const LAUNCHER_EXCLUDED_PI_PACKAGES: readonly string[] = ["npm:gentle-pi"];
-
-export function withLauncherPackagesExcluded(env: Record<string, string | undefined>): Record<string, string | undefined> {
-	const own = (env[GENTLE_AI_PI_EXCLUDE_PACKAGES_ENV] ?? "").split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-	const merged = [...own, ...LAUNCHER_EXCLUDED_PI_PACKAGES.filter((source) => !own.includes(source))];
-	return { ...env, [GENTLE_AI_PI_EXCLUDE_PACKAGES_ENV]: merged.join(",") };
+export function missingSetupCompanions(settingsText: string | undefined): string[] {
+	const packages = parseSettingsPackages(settingsText) ?? [];
+	return SETUP_COMPANION_SOURCES.filter((candidate) => !packages.some((entry) => {
+		const source = entrySource(entry);
+		return source !== undefined && packageSourceKind(source) === "npm" && npmPackageName(source) === npmPackageName(candidate);
+	}));
 }
+
+// rpiv conflicts with our ask_user_question. gentle-pi is handled separately
+// as a one-time migration from this tool's old package name, not an exclusion
+// contract with another installer.
+const POST_INSTALL_REMOVAL_PACKAGES = [
+	{ name: "@juicesharp/rpiv-ask-user-question", source: "npm:@juicesharp/rpiv-ask-user-question" },
+];
+const LEGACY_SETUP_PACKAGE = { name: "gentle-pi", source: "npm:gentle-pi" };
 
 // Scans a settings.json `packages` list (same string/object-source parsing
 // as settingsDeclareGentlePi/findGentlePiDeclaration above) for any entry
@@ -731,7 +944,7 @@ export function postInstallRemovals(settingsText: string | undefined): string[] 
 		const source = entrySource(entry);
 		if (source === undefined || packageSourceKind(source) !== "npm") continue;
 		const name = npmPackageName(source);
-		const match = POST_INSTALL_REMOVAL_PACKAGES.find((candidate) => candidate.name === name);
+		const match = [...POST_INSTALL_REMOVAL_PACKAGES, LEGACY_SETUP_PACKAGE].find((candidate) => candidate.name === name);
 		if (match !== undefined && !found.includes(match.source)) found.push(match.source);
 	}
 	return found;
@@ -762,7 +975,7 @@ export function findGentlePiDeclaration(settingsText: string | undefined, opts: 
 		if (kind === "npm" && npmSourceDeclaresGentlePi(source)) return { kind: "npm" };
 		if (kind === "path") {
 			const dir = resolvePath(opts.agentDir, source);
-			if (opts.readPackageName(dir) === "gentle-pi") return { kind: "path", dir };
+			if (opts.readPackageName(dir) === "tomidev") return { kind: "path", dir };
 		}
 	}
 	return undefined;
@@ -812,7 +1025,7 @@ export interface OtherPackageInjectionsInput {
 	// a filesystem stub.
 	isDirectory?: (dir: string) => boolean;
 	// Realpath resolver applied to a settings path entry's resolved
-	// directory before comparing it against `skip`. bin/gentle-shell.mjs's
+	// directory before comparing it against `skip`. bin/tomidev.mjs's
 	// --package-root take-over passes `skip.dir` as an already-realpath'd
 	// directory; without also realpath'ing the settings entry here, a
 	// settings path entry reaching that same physical directory through a
@@ -869,7 +1082,7 @@ export function otherPackageInjections(input: OtherPackageInjectionsInput): Othe
 			const dir = resolvePath(input.agentDir, source);
 			// Compared through realpath on BOTH sides (not the raw resolved
 			// strings): skip.dir may already be a realpath itself
-			// (bin/gentle-shell.mjs's --package-root take-over) or may not be
+			// (bin/tomidev.mjs's --package-root take-over) or may not be
 			// (a plain settings.json declaration), so only comparing one side
 			// through realpath would break whichever case does not match that
 			// assumption. Realpath'ing both keeps the exact-match case
@@ -881,7 +1094,7 @@ export function otherPackageInjections(input: OtherPackageInjectionsInput): Othe
 
 		if (kind === "git") {
 			warnings.push(
-				`gentle-shell: skipping git-sourced package "${source}" during takeover (its install directory is not derivable without pi's own package manager).`,
+				`${LOG_PREFIX} skipping git-sourced package "${source}" during takeover (its install directory is not derivable without pi's own package manager).`,
 			);
 			continue;
 		}
@@ -889,13 +1102,13 @@ export function otherPackageInjections(input: OtherPackageInjectionsInput): Othe
 		const filters = entryFilterKeys(entry);
 		if (filters.length > 0) {
 			warnings.push(
-				`gentle-shell: package "${source}" has ${filters.join("/")} filters that this takeover cannot honour for extensions; its skills, prompts, and themes still load through settings discovery.`,
+				`${LOG_PREFIX} package "${source}" has ${filters.join("/")} filters that this takeover cannot honour for extensions; its skills, prompts, and themes still load through settings discovery.`,
 			);
 		}
 
 		const dir = kind === "npm" ? join(input.agentDir, "npm", "node_modules", npmPackageName(source)) : resolvePath(input.agentDir, source);
 		if (!isDirectory(dir)) {
-			warnings.push(`gentle-shell: skipping declared package "${source}": ${dir} is not a directory`);
+			warnings.push(`${LOG_PREFIX} skipping declared package "${source}": ${dir} is not a directory`);
 			continue;
 		}
 		paths.push(dir);
@@ -1027,7 +1240,7 @@ export interface BuildPiInvocationInput {
 	// The OS home behind userPiHome's conventional ~/.pi/agent fallback.
 	homedir: string;
 	// The directory pi is spawned in, which pi resolves a relative -e path
-	// against. bin/gentle-shell.mjs spawns pi without a cwd, so this is the
+	// against. bin/tomidev.mjs spawns pi without a cwd, so this is the
 	// launcher's own process.cwd().
 	cwd: string;
 }
@@ -1044,7 +1257,7 @@ export interface PiInvocation {
 //     config/auth/mcp on argv[0] before it even parses flags, so any injected
 //     -e flag ahead of it stops pi from
 //     recognising its subcommand at all — this is exactly the observed
-//     2026-09-22 bug where `gentle-shell install npm:x` opened an
+//     2026-09-22 bug where `tomidev install npm:x` opened an
 //     interactive pi session instead of running the package manager. No
 //     injection of any kind (including a take-over's --no-extensions and
 //     other-package/loose-extension -e flags) may precede it.
@@ -1052,7 +1265,7 @@ export interface PiInvocation {
 //     --package-root forced a takeover regardless of any declaration. This
 //     must win over the next two cases even when there is no declaration to
 //     report, or the plain branch would silently drop --no-extensions and
-//     the other-package injections while bin/gentle-shell.mjs still prints
+//     the other-package injections while bin/tomidev.mjs still prints
 //     the "taking over" message. `--no-extensions` drops normal
 //     settings-driven extension discovery, so it is replaced by an explicit
 //     `-e <dir>` for every OTHER settings package (skills/prompts/themes
@@ -1120,16 +1333,16 @@ export function buildPiInvocation(input: BuildPiInvocationInput): PiInvocation {
 		...input.baseEnv,
 		...nonInteractiveGitEnv(input.baseEnv, input.platform),
 		PI_CODING_AGENT_DIR: input.home.dir,
-		PI_PROGRAM_STATUS_APP: "gentle-shell",
-		GENTLE_PI_AGENT_HOME: input.home.dir,
+		PI_PROGRAM_STATUS_APP: BRAND_NAME,
+		[ENV_AGENT_HOME]: input.home.dir,
 		[USER_PI_HOME_ENV]: userPiHome(input.baseEnv, input.homedir),
 	};
 	// #2201: only the standalone isolated home gets its own config folder; any
 	// other launch removes an inherited marker, so a nested `--link` launch from
 	// an isolated session reads ~/.pi/gentle-ai again.
 	const configHome = input.bundled === true ? undefined : standaloneConfigHome(input.home);
-	if (configHome === undefined) delete env[GENTLE_SHELL_CONFIG_HOME_ENV];
-	else env[GENTLE_SHELL_CONFIG_HOME_ENV] = configHome;
+	if (configHome === undefined) delete env[TOMIDEV_SHELL_CONFIG_HOME_ENV];
+	else env[TOMIDEV_SHELL_CONFIG_HOME_ENV] = configHome;
 	if (childInjection === undefined) delete env[CHILD_PACKAGE_INJECTION_ENV];
 	else env[CHILD_PACKAGE_INJECTION_ENV] = encodeChildPackageInjection(childInjection);
 	dropUndefinedCaseVariants(env, input.platform);
@@ -1149,7 +1362,7 @@ function absoluteExtensionPath(path: string, cwd: string): string {
 
 // R3-001: `findOnPath` can resolve a PATHEXT candidate such as a .CMD or .BAT
 // shim on win32 (exactly how an npm-installed `pi` lands on PATH), and a
-// GENTLE_SHELL_PI override can point at one too. Current Node releases refuse
+// TOMIDEV_PI override can point at one too. Current Node releases refuse
 // to spawn a batch file directly without `shell: true` (EINVAL), so both the
 // version probe and the real launch route a batch shim through cmd.exe as one
 // quoted command line instead of spawning it directly.
@@ -1173,7 +1386,7 @@ export function quoteForCmdExe(token: string): string {
 const POSIX_SHELL_SPECIAL_CHARS = /[\s"'`\\$&|;<>(){}*?[\]!#~]/;
 
 // POSIX/bash single-quote shell quoting for a copy-pasteable command
-// bin/gentle-shell.mjs prints to stderr (e.g. the setup remediation
+// bin/tomidev.mjs prints to stderr (e.g. the setup remediation
 // command): wraps a token in single quotes when it is empty or contains
 // whitespace or a shell metacharacter, escaping an embedded single quote as
 // `'\''` (close quote, escaped literal quote, reopen quote) — inside single
@@ -1223,11 +1436,11 @@ function jsonValuesEqual(a: unknown, b: unknown): boolean {
 // Pure JSON merge: restores `field` in `currentText` back to whatever it was
 // in `originalText`, keeping every other field exactly as `currentText` left
 // it, and formatting the result to match `originalText`'s indentation and
-// trailing newline. Used by bin/gentle-shell.mjs's setup flow to restore
+// trailing newline. Used by bin/tomidev.mjs's setup flow to restore
 // `managed_asset_digest` in the user's shared `~/.gentle-ai/state.json` after
 // the pinned gentle-ai spawn rewrites it (the same shared-file problem
 // persona.json has — see sharedPersonaPath/snapshotFile/restoreFile in
-// bin/gentle-shell.mjs — but state.json also carries fields the pinned
+// bin/tomidev.mjs — but state.json also carries fields the pinned
 // gentle-ai is supposed to update, like installed_agents, so this restores
 // only the one field instead of the whole file).
 //
@@ -1283,7 +1496,7 @@ export function restoreJsonField(originalText: string, currentText: string, fiel
 // and trailing newline (unlike restoreJsonField above, which matches the
 // *original*'s formatting — here `currentText` is what the other writer just
 // produced, so its own convention is respected instead of imposed on).
-// Used by bin/gentle-shell.mjs's setup flow so a home gentle-shell provisions
+// Used by bin/tomidev.mjs's setup flow so a home gentle-shell provisions
 // ends up with the maintainer's default theme unless the home (or the user)
 // already had an opinion about it, even when gentle-ai's own managed install
 // writes a *different* default theme into settings.json.
@@ -1323,7 +1536,7 @@ export interface DescribeVersionInput {
 
 export function describeVersion(input: DescribeVersionInput): string {
 	return [
-		`gentle-shell ${input.gentlePiVersion}`,
+		`tomidev ${input.gentlePiVersion}`,
 		`pi ${input.piVersion ?? "not found"}`,
 		`home ${input.home.mode} ${input.home.dir}`,
 	].join("\n");
@@ -1331,27 +1544,28 @@ export function describeVersion(input: DescribeVersionInput): string {
 
 export function helpText(): string {
 	return [
-		"Usage: gentle-shell [options] [-- pi-args...]",
-		"       gentle-shell home [link|isolated|<path>]",
-		"       gentle-shell [home selectors] home import-pi [--dry-run]",
-		"       gentle-shell [home selectors] setup [--dry-run]",
-		"       gentle-shell upgrade [--channel release|main]",
-		"       gentle-shell upgrade --rollback",
-		"       gentle-shell memory migrate --confirm-quiescent",
-		"       gentle-shell self-uninstall [--dry-run] [--yes] [--include-shared]",
+		"Usage: tomidev [options] [-- pi-args...]",
+		"       tomidev home [link|isolated|<path>]",
+		"       tomidev [home selectors] home import-pi [--dry-run]",
+		"       tomidev [home selectors] setup [--dry-run]",
+		"       tomidev upgrade [--channel release|main]",
+		"       tomidev upgrade --rollback",
+		"       tomidev memory migrate --confirm-quiescent",
+		"       tomidev self-uninstall [--dry-run] [--yes] [--include-shared]",
 		"",
-		"Opens pi with the Gentle Shell package loaded, without touching your",
+		"Opens pi with the Tomidev Shell package loaded, without touching your",
 		"vanilla pi installation.",
 		"",
 		"Options:",
 		"  --link           Use your existing pi agent home (never edits its settings.json).",
-		"  --isolated       Use the dedicated ~/.gentle-shell/agent home (default), with its own",
-		"                   settings in ~/.gentle-shell/gentle-ai (copied once from ~/.pi/gentle-ai).",
+		"  --isolated       Use the dedicated ~/.tomidev/agent home (default), with its own",
+		"                   settings in ~/.tomidev/gentle-ai (copied once from ~/.pi/gentle-ai).",
+		"                   The first launch on this home copies your ~/.gentle-shell data once (old folder kept).",
 		"  --home <path>    Use a custom agent home directory.",
-		"  --package-root <dir>  Force this directory as the gentle-pi package to load, taking over",
+		"  --package-root <dir>  Force this directory as the tomidev package to load, taking over",
 		"                        from any conflicting package the target settings.json already declares.",
 		"  --help, -h       Show this help text.",
-		"  --version        Show gentle-shell, pi, and home version information.",
+		"  --version        Show tomidev, pi, and home version information.",
 		"",
 		"Commands:",
 		"  home             Print or persist the effective home mode (link, isolated, or a path).",
@@ -1360,60 +1574,66 @@ export function helpText(): string {
 		"                   level when it has none. Never overwrites a file or setting, never copies",
 		"                   packages, extensions or caches, and never changes your pi home.",
 		"                   --dry-run only shows the plan. Refuses --link (nothing to import).",
-		"  setup            Provision the resolved home with the gentle-ai companion packages",
-		"                   (runs the package-local gentle-ai 'install --agent pi --scope global').",
-		"                   Accepts --dry-run, forwarded to gentle-ai. Accepts a home selector",
-		"                   (--link, --isolated, --home <dir>) before it.",
+		"  setup            Install missing gentle-engram, pi-web-access and pi-btw via the resolved Pi.",
+		"                   Skips declared companions at any version; removes conflicting rpiv and",
+		"                   the legacy npm:gentle-pi package. Does not require gentle-ai.",
+		"                   Preserves personas, shared Gentle AI state and background-subagent policy.",
+		"                   Owned homes refresh on setup-version or launcher-version changes.",
+		"                   Automatic failures warn and continue; manual setup returns the failure status.",
+		"                   --dry-run prints the plan without writing or running package commands.",
+		"                   Accepts --link, --isolated or --home <dir> before it. MCP stays enabled.",
 		"                   Warns if configured MCP servers remain disabled; never re-enables them.",
-		"  upgrade          Update Gentle Shell along its channel: the latest release, or the latest",
-		"                   main commits of Gentle Shell and Gentle AI (built locally; needs Go and",
-		"                   pnpm). --channel switches the channel first. A bundled install (the web",
+		"  upgrade          Update Tomidev Shell along its channel: the latest release, or the latest",
+		"                   main commit of tomidev from its fork (packed locally with pnpm; no Go).",
+		"                   --channel switches the channel first. A bundled install (the web",
 		"                   installer's own Node, pnpm and Pi) follows the release channel only:",
 		"                   it installs the new version beside the current one, verifies it, then",
 		"                   switches; --rollback switches back to the previous kept version.",
+		`                   Release discovery: GitHub ${SOURCE_REPOSITORY}/releases/latest,`,
+		`                   stable vX.Y.Z tags only; installs ${GIT_SOURCE}#vX.Y.Z.`,
+		"                   No tomidev npm registry lookup; network failure leaves the install unchanged.",
 		"  memory migrate   Explicit bundled-store recovery using the verified core's migrate-copy.",
 		"                   Requires --confirm-quiescent: stop ALL Engram clients first. Keeps the",
 		"                   original directory as a backup; never runs automatically on upgrade.",
 		"                   Requires a bundled core release supporting migrate-copy; older cores",
 		"                   fail closed without changing the source or its provenance.",
-		"  self-uninstall   Remove Gentle Shell: its own data, the isolated home and the gentle-pi",
-		"                   package, with its settings in ~/.gentle-shell/gentle-ai. Shows the plan",
+		"  self-uninstall   Remove Tomidev Shell: its own data, the isolated home and the tomidev",
+		"                   package, with its settings in ~/.tomidev/gentle-ai. Shows the plan",
 		"                   first and asks before removing (--yes skips the question). The shared",
 		"                   ~/.pi/gentle-ai configuration is kept unless",
 		"                   you accept or pass --include-shared; --dry-run only shows the plan.",
 		"                   Never touches your pi home or custom --home homes.",
 		"",
 		"Managing packages:",
-		"  gentle-shell install npm:<pkg>   Run pi's own 'install' against the resolved home.",
-		"  gentle-shell remove <source>     Run pi's own 'remove' against the resolved home.",
-		"  gentle-shell list                Run pi's own 'list' against the resolved home.",
-		"  gentle-shell update [target]     Update Pi through its supported owner, or packages in the resolved home.",
+		"  tomidev install npm:<pkg>   Run pi's own 'install' against the resolved home.",
+		"  tomidev remove <source>     Run pi's own 'remove' against the resolved home.",
+		"  tomidev list                Run pi's own 'list' against the resolved home.",
+		"  tomidev update [target]     Update Pi through its supported owner, or packages in the resolved home.",
 		"                                   In a bundled install 'update' installs the newest stable Pi",
 		"                                   without the release's verified lockfile; --latest is an alias.",
 		"                                   --all also updates extensions; explicit package pins remain pinned.",
 		"                                   --force is not supported for managed Pi self updates.",
-		"  gentle-shell config              Run pi's own 'config' against the resolved home.",
-		"  gentle-shell auth <command>      Run pi's own 'auth' against the resolved home.",
-		"  gentle-shell mcp <command>       Run pi's own 'mcp' (add, list, login, logout) against the",
-		"                                   resolved home, e.g. gentle-shell mcp add <name> -- <command>.",
-		"  'gentle-shell uninstall <source>' is pi's own alias for 'remove'; to remove Gentle",
-		"  Shell itself, use 'gentle-shell self-uninstall'.",
+		"  tomidev config              Run pi's own 'config' against the resolved home.",
+		"  tomidev auth <command>      Run pi's own 'auth' against the resolved home.",
+		"  tomidev mcp <command>       Run pi's own 'mcp' (add, list, login, logout) against the",
+		"                                   resolved home, e.g. tomidev mcp add <name> -- <command>.",
+		"  'tomidev uninstall <source>' is pi's own alias for 'remove'; to remove Tomidev",
+		"  Shell itself, use 'tomidev self-uninstall'.",
 		"  These run pi's own commands, forwarded verbatim, against the --isolated home",
-		"  (or your own pi home with --link). Running 'gentle-shell install npm:gentle-pi'",
-		"  inside the isolated home is unnecessary: gentle-shell already loads the",
+		"  (or your own pi home with --link). Running 'tomidev install npm:tomidev'",
+		"  inside the isolated home is unnecessary: tomidev already loads the",
 		"  package itself.",
 		"",
-		"Bundled interactive startup:",
-		"  Before opening Pi, checks for a newer release (at most 1.5 seconds).",
-		"  Choose Update now to upgrade and reopen, Not now, or Skip this version.",
-		"  Offline, unavailable checks, commands and noninteractive runs open normally.",
+		"Shell updates:",
+		"  Startup never checks for releases or prompts to update.",
+		"  Run 'tomidev upgrade' explicitly when you want to update Shell.",
 		"",
 		"Environment variables:",
-		"  GENTLE_SHELL_PI       Path to the pi executable to run.",
-		"  GENTLE_SHELL_HOME     Directory for the isolated home (default: ~/.gentle-shell/agent);",
-		"                        inside a .gentle-shell folder, its settings live in the gentle-ai",
+		"  TOMIDEV_PI       Path to the pi executable to run.",
+		"  TOMIDEV_HOME     Directory for the isolated home (default: ~/.tomidev/agent);",
+		"                        inside a .tomidev folder, its settings live in the gentle-ai",
 		"                        folder next to it; elsewhere they stay in ~/.pi/gentle-ai.",
-		"  GENTLE_PI_CONFIG_HOME Gentle Shell settings folder for every home, overriding the above.",
+		"  TOMIDEV_CONFIG_HOME Tomidev Shell settings folder for every home, overriding the above.",
 		"  PI_CODING_AGENT_DIR   Directory for the --link home, shared with pi itself.",
 		"",
 		"Every other argument is forwarded to pi unchanged.",

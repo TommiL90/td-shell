@@ -1,6 +1,6 @@
 // Per-repository agent-model profile pins.
 //
-// `/gentle:profiles` applies a profile globally: it rewrites `models.json`, the
+// `/td:profiles` applies a profile globally: it rewrites `models.json`, the
 // agent frontmatter, `subagents.json`, and the orchestrator in `settings.json`.
 // Two repositories worked in parallel therefore fight over one global routing.
 // A pin re-anchors only the subagent routing of one repository to a named profile
@@ -19,16 +19,17 @@
 // reserved orchestrator key, so a pin never moves the orchestrator model.
 //
 // `evaluateProfilePin` is the single precedence rule. The launch resolver below and
-// the `/gentle:profiles` panel both go through it, so the layer a launch uses and the
+// the `/td:profiles` panel both go through it, so the layer a launch uses and the
 // layer the panel reports can never disagree.
 
+import { brandId, isBrandId } from "./brand.ts";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { isValidProfileName, profileRoleEntries, profilesFilePath, readProfilesFileResult, writeJsonFileAtomicallySync } from "./agent-profiles.ts";
 import type { AgentModelConfig } from "./model-routing-authority.ts";
 import { resolveSessionWorktree, type WorktreeIdentity, type WorktreeResolver } from "./session-worktree-registry.ts";
 
-export const PROFILE_PIN_KIND = "gentle-pi.agent_model_profile_pin";
+export const PROFILE_PIN_KIND = brandId("agent_model_profile_pin");
 export const PROFILE_PIN_VERSION = 1;
 // Ordered root .gitignore rules that expose only the committable declaration.
 // Git cannot re-include a file while an excluded parent directory remains hidden,
@@ -134,7 +135,7 @@ export function serializeProfilePin(profile: string): string {
 export function normalizeProfilePin(value: unknown): string | undefined {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
 	const record = value as Record<string, unknown>;
-	if (record.kind !== PROFILE_PIN_KIND || record.version !== PROFILE_PIN_VERSION) {
+	if (!isBrandId(record.kind, "agent_model_profile_pin") || record.version !== PROFILE_PIN_VERSION) {
 		return undefined;
 	}
 	// Only a store-legal profile name can ever resolve, so an unparseable name is
@@ -181,7 +182,7 @@ export function readProfilePin(path: string): string | undefined {
 let profilePinWorktreeResolver: WorktreeResolver = resolveSessionWorktree;
 
 /**
- * Test seam, mirroring the other injectable seams in `lib/`: the `/gentle:profiles`
+ * Test seam, mirroring the other injectable seams in `lib/`: the `/td:profiles`
  * panel resolves the pin through the ambient resolver, and a test must not depend
  * on where the test runner's working directory happens to sit. The launch path
  * passes its own resolver instead, so it needs no seam.

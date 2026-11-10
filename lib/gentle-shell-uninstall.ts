@@ -3,17 +3,18 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { withoutBundledNpmCommand } from "./gentle-shell-bundled.ts";
-import { isolatedDir, launcherConfigPath, parseRawLauncherConfig, provisionedEntry, userPiHome } from "./gentle-shell-launcher.ts";
+import { HOME_OWNERSHIP_MARKER, isolatedDir, launcherConfigPath, parseRawLauncherConfig, provisionedEntry, userPiHome } from "./gentle-shell-launcher.ts";
+import { ENV_CONFIG_HOME, HOME_DIRNAME, BRAND_DISPLAY_NAME } from "./brand.ts";
 
-// `gentle-shell self-uninstall`: removes what Gentle Shell itself created, then
+// `tomidev self-uninstall`: removes what Gentle Shell itself created, then
 // the gentle-pi package with the package manager that owns it. Everything is
 // planned and printed before anything is removed. Removal follows the
 // installer's safe-deletion model (scripts/installer-downloads.mjs
 // removeOwnedTools): exact paths only, lstat first, symbolic links are never
 // followed or removed, and rmSync never follows links inside a directory.
-// `gentle-shell uninstall <source>` stays pi's own alias for `remove`.
+// `tomidev uninstall <source>` stays pi's own alias for `remove`.
 
-export const SELF_UNINSTALL_USAGE = "usage: gentle-shell self-uninstall [--dry-run] [--yes] [--include-shared]";
+export const SELF_UNINSTALL_USAGE = "usage: tomidev self-uninstall [--dry-run] [--yes] [--include-shared]";
 
 /** Gentle AI configuration in the config home that Pi without Gentle Shell can share. */
 export const SHARED_CONFIG_FILES: readonly string[] = Object.freeze([
@@ -27,12 +28,11 @@ export const SHARED_CONFIG_FILES: readonly string[] = Object.freeze([
 	"persona.json",
 ]);
 
-const HOME_OWNERSHIP_MARKER = ".gentle-shell-home";
 // scripts/installer-downloads.mjs marks each pinned Go version folder with it.
-const GO_MARKER = ".gentle-shell-go";
+const GO_MARKER = ".tomidev-go";
 const GO_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)(\.(0|[1-9]\d*))?$/;
 const COMMIT = /^[0-9a-f]{40}$/;
-const PACKAGE = "gentle-pi";
+const PACKAGE = "tomidev";
 
 export interface SelfUninstallOptions {
 	dryRun: boolean;
@@ -188,7 +188,7 @@ function mainChannelLayout(main: string): boolean {
 		const path = join(main, name);
 		if (inspect(path, "dir") !== "ok") return false;
 		if (name === ".build" || name === ".source") return true;
-		if (name === "packages") return entries(path).every((file) => /^gentle-pi-.+\.tgz$/.test(file) && inspect(join(path, file), "file") === "ok");
+		if (name === "packages") return entries(path).every((file) => /^tomidev-.+\.tgz$/.test(file) && inspect(join(path, file), "file") === "ok");
 		if (name !== "gentle-ai") return false;
 		return entries(path).every((commit) => COMMIT.test(commit) && inspect(join(path, commit), "dir") === "ok"
 			&& entries(join(path, commit)).every((file) => ["gentle-ai", "gentle-ai.exe"].includes(file) && inspect(join(path, commit, file), "file") === "ok"));
@@ -248,9 +248,9 @@ async function planSelfUninstall(input: SelfUninstallInput, configHome: string, 
 	// Every place a removal starts from is checked at its real path, so a symbolic
 	// link (or a symlinked ancestor) never leads it somewhere protected.
 	// Inside a Gentle Shell session PI_CODING_AGENT_DIR is the isolated home itself
-	// and the user's Pi home travels in GENTLE_SHELL_USER_PI_HOME (see userPiHome).
+	// and the user's Pi home travels in TOMIDEV_USER_PI_HOME (see userPiHome).
 	// Only an existing directory other than the isolated home proves that session.
-	const sessionPiHome = env.GENTLE_SHELL_USER_PI_HOME ? canonical(env.GENTLE_SHELL_USER_PI_HOME) : null;
+	const sessionPiHome = env.TOMIDEV_USER_PI_HOME ? canonical(env.TOMIDEV_USER_PI_HOME) : null;
 	const inSession = sessionPiHome !== null && inspect(sessionPiHome, "dir") === "ok"
 		&& comparable(sessionPiHome, platform) !== comparable(isolatedReal, platform);
 	const sessionAgentDir = (name: string, value: string) => name === "PI_CODING_AGENT_DIR" && inSession
@@ -258,7 +258,7 @@ async function planSelfUninstall(input: SelfUninstallInput, configHome: string, 
 	const guards: Guard[] = [
 		{ path: homedir, label: "your home directory", inside: false },
 		{ path: join(homedir, ".pi", "agent"), label: "Pi's default home", inside: true },
-		...["PI_CODING_AGENT_DIR", "GENTLE_SHELL_USER_PI_HOME"].flatMap((name) => {
+		...["PI_CODING_AGENT_DIR", "TOMIDEV_USER_PI_HOME"].flatMap((name) => {
 			const value = env[name];
 			return value && !sessionAgentDir(name, value) ? [{ path: value, label: "your Pi home", inside: true }] : [];
 		}),
@@ -267,21 +267,21 @@ async function planSelfUninstall(input: SelfUninstallInput, configHome: string, 
 	const defaultConfigHome = canonical(join(homedir, ".pi", "gentle-ai"));
 	// #2201: the standalone launcher keeps the isolated home's config in a
 	// gentle-ai folder next to it (standaloneConfigHome). Next to the default
-	// home it lies inside ~/.gentle-shell and is Gentle Shell's by location;
-	// next to a GENTLE_SHELL_HOME it may be anyone's, so it is only listed.
-	// When GENTLE_PI_CONFIG_HOME names it, the config home's rules apply instead.
-	const defaultHome = resolve(isolated) === resolve(join(homedir, ".gentle-shell", "agent"));
+	// home it lies inside ~/.tomidev and is Gentle Shell's by location;
+	// next to a TOMIDEV_HOME it may be anyone's, so it is only listed.
+	// When TOMIDEV_CONFIG_HOME names it, the config home's rules apply instead.
+	const defaultHome = resolve(isolated) === resolve(join(homedir, HOME_DIRNAME, "agent"));
 	const ownConfig = join(dirname(isolated), "gentle-ai");
 	const ownConfigSeparate = comparable(canonical(ownConfig), platform) !== comparable(canonical(configHome), platform);
 	const candidates = [
 		{
-			who: env.GENTLE_SHELL_HOME ? `GENTLE_SHELL_HOME points at ${isolated}` : `The isolated home ${isolated}`,
+			who: env.TOMIDEV_HOME ? `TOMIDEV_HOME points at ${isolated}` : `The isolated home ${isolated}`,
 			path: isolated,
 			guards: [...guards, { path: configHome, label: "the Gentle AI config home", inside: true }],
 			allowedInsidePi: undefined,
 		},
 		{
-			who: env.GENTLE_PI_CONFIG_HOME ? `GENTLE_PI_CONFIG_HOME points at ${configHome}` : `The config home ${configHome}`,
+			who: env[ENV_CONFIG_HOME] ? `TOMIDEV_CONFIG_HOME points at ${configHome}` : `The config home ${configHome}`,
 			path: configHome,
 			guards,
 			// Its default location, ~/.pi/gentle-ai, is the one .pi path it may be.
@@ -289,7 +289,7 @@ async function planSelfUninstall(input: SelfUninstallInput, configHome: string, 
 		},
 		{ who: `The launcher folder ${shellDirectory}`, path: shellDirectory, guards, allowedInsidePi: undefined },
 		...(defaultHome && ownConfigSeparate ? [{
-			who: `Gentle Shell's config folder ${ownConfig}`,
+			who: `${BRAND_DISPLAY_NAME}'s config folder ${ownConfig}`,
 			path: ownConfig,
 			guards: [...guards, { path: configHome, label: "the Gentle AI config home", inside: true }],
 			allowedInsidePi: undefined,
@@ -312,7 +312,7 @@ async function planSelfUninstall(input: SelfUninstallInput, configHome: string, 
 	};
 	consider({
 		path: join(configHome, "main"), label: "main-channel builds", kind: "dir",
-		evidence: { made: mainChannelLayout, otherwise: "not Gentle Shell's main-channel layout" },
+		evidence: { made: mainChannelLayout, otherwise: `not ${BRAND_DISPLAY_NAME}'s main-channel layout` },
 	});
 	consider({ path: join(configHome, "channel.json"), label: "recorded update channel", kind: "file" });
 	const devBinary = join(configHome, "dev-binary.json");
@@ -326,15 +326,15 @@ async function planSelfUninstall(input: SelfUninstallInput, configHome: string, 
 		evidence: { made: pinnedGoOnly, otherwise: `not only the installer's pinned Go (version folders marked ${GO_MARKER})` },
 	});
 
-	// The default isolated home is Gentle Shell's by location; a GENTLE_SHELL_HOME
+	// The default isolated home is Gentle Shell's by location; a TOMIDEV_HOME
 	// directory only with the launcher's ownership marker or setup record.
 	const owned = defaultHome || inspect(join(isolated, HOME_OWNERSHIP_MARKER), "file") === "ok"
 		|| provisionedEntry(launcherConfig, isolatedReal) !== undefined;
 	if (owned || inspect(isolated, "dir") !== "ok") consider({ path: isolated, label: "isolated home: its sign-ins, chats and settings", kind: "dir" });
-	else plan.kept.push(`${isolated}: not created by Gentle Shell (no ${HOME_OWNERSHIP_MARKER} marker or setup record)`);
-	if (defaultHome && ownConfigSeparate) consider({ path: ownConfig, label: "Gentle Shell's own configuration: profiles, banner and other preferences", kind: "dir" });
+	else plan.kept.push(`${isolated}: not created by ${BRAND_DISPLAY_NAME} (no ${HOME_OWNERSHIP_MARKER} marker or setup record)`);
+	if (defaultHome && ownConfigSeparate) consider({ path: ownConfig, label: `${BRAND_DISPLAY_NAME}'s own configuration: profiles, banner and other preferences`, kind: "dir" });
 	else if (ownConfigSeparate && inspect(ownConfig, "dir") !== "missing") {
-		plan.kept.push(`${ownConfig}: next to GENTLE_SHELL_HOME, so it may not be Gentle Shell's; remove it yourself if it holds only Gentle Shell settings`);
+		plan.kept.push(`${ownConfig}: next to TOMIDEV_HOME, so it may not be ${BRAND_DISPLAY_NAME}'s; remove it yourself if it holds only ${BRAND_DISPLAY_NAME} settings`);
 	}
 	consider({ path: configPath, label: "launcher settings", kind: "file" });
 
@@ -396,8 +396,8 @@ function removeArgv(owner: PackageManagerOwner): string[] {
 }
 
 function printPlan(plan: Plan, options: SelfUninstallOptions, interactive: boolean, out: (line: string) => void) {
-	out("Gentle Shell self-uninstall plan");
-	out("Remove Gentle Shell data:");
+	out(`${BRAND_DISPLAY_NAME} self-uninstall plan`);
+	out(`Remove ${BRAND_DISPLAY_NAME} data:`);
 	if (plan.pathRefused) out("  (refused, see below)");
 	else if (plan.own.length === 0) out("  (nothing found)");
 	for (const removal of plan.pathRefused ? [] : plan.own) out(`  ${removal.path}  (${removal.label})`);
@@ -492,18 +492,18 @@ async function confirm(
 	let includeShared = options.includeShared;
 	if (options.yes) return { includeShared };
 	if (!input.interactive) {
-		input.err("gentle-shell self-uninstall: no terminal to confirm in; pass --yes to remove the above, or --dry-run to only show it.");
+		input.err("tomidev self-uninstall: no terminal to confirm in; pass --yes to remove the above, or --dry-run to only show it.");
 		return { code: 2 };
 	}
 	try {
-		if (!isYes(await input.ask("Remove Gentle Shell as listed above? [y/N] "))) {
+		if (!isYes(await input.ask(`Remove ${BRAND_DISPLAY_NAME} as listed above? [y/N] `))) {
 			input.out("Cancelled; nothing was removed.");
 			return { code: 1 };
 		}
 		if (sharedPresent && !includeShared) includeShared = isYes(await input.ask(sharedQuestion));
 	} catch (error) {
 		if (!(error instanceof PromptInterrupted)) throw error;
-		input.err("gentle-shell self-uninstall: Interrupted; nothing was removed.");
+		input.err("tomidev self-uninstall: Interrupted; nothing was removed.");
 		return { code: 1 };
 	}
 	return { includeShared };
@@ -514,28 +514,28 @@ function succeeded(result: RunResult): boolean {
 }
 
 /**
- * Runs `gentle-shell self-uninstall`. Exit codes: 0 done or dry run, 1 refused,
+ * Runs `tomidev self-uninstall`. Exit codes: 0 done or dry run, 1 refused,
  * cancelled or failed, 2 usage (including no terminal without --yes).
  */
 export async function runSelfUninstall(input: SelfUninstallInput): Promise<number> {
 	const { env, homedir, out, err } = input;
 	const options = parseSelfUninstallArgs(input.args);
 	if ("error" in options) {
-		err(`gentle-shell self-uninstall: ${options.error}`);
+		err(`tomidev self-uninstall: ${options.error}`);
 		return 2;
 	}
-	const configHome = settingDirectory(env, "GENTLE_PI_CONFIG_HOME", join(homedir, ".pi", "gentle-ai"));
-	const isolated = settingDirectory(env, "GENTLE_SHELL_HOME", isolatedDir(env, homedir));
+	const configHome = settingDirectory(env, ENV_CONFIG_HOME, join(homedir, ".pi", "gentle-ai"));
+	const isolated = settingDirectory(env, "TOMIDEV_HOME", isolatedDir(env, homedir));
 	if (configHome === undefined || isolated === undefined) {
-		const name = configHome === undefined ? "GENTLE_PI_CONFIG_HOME" : "GENTLE_SHELL_HOME";
-		err(`gentle-shell self-uninstall: ${name}=${env[name]} is not an absolute path; refusing to remove anything.`);
+		const name = configHome === undefined ? ENV_CONFIG_HOME : "TOMIDEV_HOME";
+		err(`tomidev self-uninstall: ${name}=${env[name]} is not an absolute path; refusing to remove anything.`);
 		return 1;
 	}
 
 	const plan = await planSelfUninstall(input, configHome, isolated);
 	printPlan(plan, options, input.interactive, out);
 	if (plan.refusals.length > 0 || plan.owner === undefined) {
-		for (const line of plan.refusals) err(`gentle-shell self-uninstall: ${line}`);
+		for (const line of plan.refusals) err(`tomidev self-uninstall: ${line}`);
 		err("Nothing was removed.");
 		return 1;
 	}
@@ -552,8 +552,8 @@ export async function runSelfUninstall(input: SelfUninstallInput): Promise<numbe
 		try {
 			remove(removal);
 		} catch (error) {
-			err(`gentle-shell self-uninstall: could not remove ${removal.path}: ${error instanceof Error ? error.message : String(error)}`);
-			err(`The ${PACKAGE} package and everything listed after it were kept; fix the cause and run gentle-shell self-uninstall again.`);
+			err(`tomidev self-uninstall: could not remove ${removal.path}: ${error instanceof Error ? error.message : String(error)}`);
+			err(`The ${PACKAGE} package and everything listed after it were kept; fix the cause and run tomidev self-uninstall again.`);
 			return 1;
 		}
 	}
@@ -566,20 +566,20 @@ export async function runSelfUninstall(input: SelfUninstallInput): Promise<numbe
 		removed = false;
 	}
 	if (!removed) {
-		err(`gentle-shell self-uninstall: ${plan.owner.name} could not remove the ${PACKAGE} package. Gentle Shell's data was removed; remove the package yourself with: ${command}`);
+		err(`tomidev self-uninstall: ${plan.owner.name} could not remove the ${PACKAGE} package. ${BRAND_DISPLAY_NAME}'s data was removed; remove the package yourself with: ${command}`);
 		return 1;
 	}
 	try {
 		removeIfEmpty(dirname(launcherConfigPath(homedir)));
 	} catch {
-		// A leftover empty ~/.gentle-shell is harmless.
+		// A leftover empty ~/.tomidev is harmless.
 	}
-	out("Gentle Shell was removed.");
+	out(`${BRAND_DISPLAY_NAME} was removed.`);
 	return 0;
 }
 
 // ---------------------------------------------------------------------------
-// The bundled install (S6, S7): `gentle-shell self-uninstall` from the bundled
+// The bundled install (S6, S7): `tomidev self-uninstall` from the bundled
 // launcher removes what scripts/bundled-install.mjs wrote in its prefix and the
 // one PATH entry its receipt records. The Gentle Shell home (sessions,
 // sign-ins, extensions) is shared data, kept unless asked. The same planning,
@@ -607,21 +607,21 @@ export interface BundledSelfUninstallInput extends Pick<SelfUninstallInput, "arg
 
 // What scripts/bundled-install.mjs writes in the prefix, by name.
 const BUNDLED_OWN: readonly { name: string; label: string; kind: "dir" | "file" | "current" }[] = Object.freeze([
-	{ name: "bin", label: "the gentle-shell launcher", kind: "dir" },
+	{ name: "bin", label: "the tomidev launcher", kind: "dir" },
 	{ name: "current", label: "the active version", kind: "current" },
-	{ name: "versions", label: "the installed Gentle Shell versions", kind: "dir" },
+	{ name: "versions", label: `the installed ${BRAND_DISPLAY_NAME} versions`, kind: "dir" },
 	{ name: "versions.history", label: "the version history", kind: "file" },
 	{ name: "runtime", label: "the bundled Node.js, npm, pnpm, Go and Engram", kind: "dir" },
 	{ name: "pnpm", label: "pnpm's store, cache, state and settings", kind: "dir" },
 	{ name: "npm", label: "npm's cache, prefix and settings", kind: "dir" },
 	{ name: "gentle-ai", label: "Gentle AI's state for this install", kind: "dir" },
-	{ name: "config", label: "Gentle Shell's settings for this install (config/gentle-ai)", kind: "dir" },
+	{ name: "config", label: `${BRAND_DISPLAY_NAME}'s settings for this install (config/gentle-ai)`, kind: "dir" },
 	{ name: "tmp", label: "temporary files", kind: "dir" },
 	{ name: "path-entry.json", label: "the PATH entry receipt", kind: "file" },
 ]);
 // The Windows prefix's claim marker (ensureWindowsPrivateFolder, scripts/bundled-install.mjs).
-const BUNDLED_WINDOWS_MARKER = Object.freeze({ name: ".gentle-shell-bundle", text: "gentle-shell bundled install" });
-const BUNDLED_PROFILE_MARK = "# gentle-shell bundled install";
+const BUNDLED_WINDOWS_MARKER = Object.freeze({ name: ".tomidev-bundle", text: "tomidev bundled install" });
+const BUNDLED_PROFILE_MARK = "# tomidev bundled install";
 
 interface BundledPlan {
 	refusals: string[];
@@ -640,7 +640,7 @@ function planBundledSelfUninstall(input: BundledSelfUninstallInput): BundledPlan
 	const { env, homedir, platform, root } = input;
 	const windows = platform === "win32";
 	const same = (a: string, b: string) => comparable(a, platform) === comparable(b, platform);
-	const shellHome = join(homedir, ".gentle-shell");
+	const shellHome = join(homedir, HOME_DIRNAME);
 	const plan: BundledPlan = { refusals: [], own: [], shared: [], kept: [], removeRoot: false, held: [], notTouched: [], shellHome };
 	const refuse = (reason: string) => plan.refusals.push(`The bundled prefix ${root} ${reason}; refusing to remove anything.`);
 	const piHome = userPiHome(env, homedir);
@@ -708,13 +708,13 @@ function planBundledSelfUninstall(input: BundledSelfUninstallInput): BundledPlan
 
 	plan.notTouched.push({ path: piHome, label: "your Pi home" }, { path: join(homedir, ".pi", "gentle-ai"), label: "Gentle AI's configuration for Pi" },
 		{ path: join(homedir, ".gentle-ai"), label: "Gentle AI's own state" }, { path: join(homedir, ".engram"), label: "Engram's memory" });
-	if (env.GENTLE_SHELL_HOME && !same(canonical(env.GENTLE_SHELL_HOME), canonical(join(shellHome, "agent")))) {
-		plan.notTouched.push({ path: env.GENTLE_SHELL_HOME, label: "the Gentle Shell home GENTLE_SHELL_HOME names" });
+	if (env.TOMIDEV_HOME && !same(canonical(env.TOMIDEV_HOME), canonical(join(shellHome, "agent")))) {
+		plan.notTouched.push({ path: env.TOMIDEV_HOME, label: `the ${BRAND_DISPLAY_NAME} home TOMIDEV_HOME names` });
 	}
 
 	// Windows: the running node.exe, the .cmd launcher and the marker (last) wait for this process to exit.
 	if (windows) {
-		const candidates = [canonical(input.process.execPath), join(root, "bin", "gentle-shell.cmd"), join(root, BUNDLED_WINDOWS_MARKER.name)];
+		const candidates = [canonical(input.process.execPath), join(root, "bin", "tomidev.cmd"), join(root, BUNDLED_WINDOWS_MARKER.name)];
 		plan.held = candidates.filter((path, index) => candidates.indexOf(path) === index && inspect(path, "file") === "ok"
 			&& plan.own.some((removal) => within(removal.path, path, platform)));
 	}
@@ -746,14 +746,14 @@ function heldDirectories(plan: BundledPlan, root: string, platform: string): str
 
 function manualPathEntry(root: string, platform: string): string {
 	return platform === "win32"
-		? `If a new terminal still finds gentle-shell, remove ${join(root, "bin")} from your user Path (HKCU\\Environment).`
-		: `If a new terminal still finds gentle-shell, remove the line ending in "${BUNDLED_PROFILE_MARK}" from your shell's startup file, `
-			+ `or the gentle-shell link in ~/.local/bin to ${join(root, "bin", "gentle-shell")}.`;
+		? `If a new terminal still finds tomidev, remove ${join(root, "bin")} from your user Path (HKCU\\Environment).`
+		: `If a new terminal still finds tomidev, remove the line ending in "${BUNDLED_PROFILE_MARK}" from your shell's startup file, `
+			+ `or the tomidev link in ~/.local/bin to ${join(root, "bin", "tomidev")}.`;
 }
 
 function printBundledPlan(plan: BundledPlan, input: BundledSelfUninstallInput, options: SelfUninstallOptions) {
 	const { out, pathEntry, root } = input;
-	out(`Gentle Shell self-uninstall plan (bundled install in ${root})`);
+	out(`${BRAND_DISPLAY_NAME} self-uninstall plan (bundled install in ${root})`);
 	out("Remove the PATH entry:");
 	out(pathEntry.status === "recorded" ? `  ${pathEntry.description}` : "  (none recorded; see below)");
 	out("Remove the bundled install:");
@@ -764,7 +764,7 @@ function printBundledPlan(plan: BundledPlan, input: BundledSelfUninstallInput, o
 		const disposition = options.includeShared
 			? "removed (--include-shared)"
 			: options.yes || !input.interactive ? "kept; pass --include-shared to remove it" : "kept unless you accept when asked";
-		out(`Your Gentle Shell home, shared with every Gentle Shell install, ${disposition}:`);
+		out(`Your ${BRAND_DISPLAY_NAME} home, shared with every ${BRAND_DISPLAY_NAME} install, ${disposition}:`);
 		for (const removal of plan.shared) out(`  ${removal.path}  (${removal.label})`);
 	}
 	if (plan.kept.length > 0) {
@@ -793,7 +793,7 @@ function writeTextAtomically(path: string, text: string): void {
 }
 
 /**
- * Runs `gentle-shell self-uninstall` for the bundled install at `root`. Exit
+ * Runs `tomidev self-uninstall` for the bundled install at `root`. Exit
  * codes as runSelfUninstall: 0 done or dry run, 1 refused, cancelled or failed,
  * 2 usage. Order: the recorded PATH entry, the prefix's own folders, then the
  * shared home when asked, and the prefix once nothing is left in it. On
@@ -803,13 +803,13 @@ export async function runBundledSelfUninstall(input: BundledSelfUninstallInput):
 	const { out, err, platform, root } = input;
 	const options = parseSelfUninstallArgs(input.args);
 	if ("error" in options) {
-		err(`gentle-shell self-uninstall: ${options.error}`);
+		err(`tomidev self-uninstall: ${options.error}`);
 		return 2;
 	}
 	const plan = planBundledSelfUninstall(input);
 	printBundledPlan(plan, input, options);
 	if (plan.refusals.length > 0) {
-		for (const line of plan.refusals) err(`gentle-shell self-uninstall: ${line}`);
+		for (const line of plan.refusals) err(`tomidev self-uninstall: ${line}`);
 		err("Nothing was removed.");
 		return 1;
 	}
@@ -818,7 +818,7 @@ export async function runBundledSelfUninstall(input: BundledSelfUninstallInput):
 		return 0;
 	}
 	const confirmation = await confirm(input, options, plan.shared.length > 0,
-		"Also remove your Gentle Shell home (sign-ins, chats, settings and extensions) listed above? [y/N] ");
+		`Also remove your ${BRAND_DISPLAY_NAME} home (sign-ins, chats, settings and extensions) listed above? [y/N] `);
 	if ("code" in confirmation) return confirmation.code;
 
 	// A PATH entry the user changed since the install is kept, and said so at the end.
@@ -828,8 +828,8 @@ export async function runBundledSelfUninstall(input: BundledSelfUninstallInput):
 			const result = input.pathEntry.remove();
 			if (result.removed === false) pathKept = result.note ?? input.pathEntry.description;
 		} catch (error) {
-			err(`gentle-shell self-uninstall: could not remove ${input.pathEntry.description}: ${error instanceof Error ? error.message : String(error)}`);
-			err("Nothing else was removed; fix the cause and run gentle-shell self-uninstall again.");
+			err(`tomidev self-uninstall: could not remove ${input.pathEntry.description}: ${error instanceof Error ? error.message : String(error)}`);
+			err("Nothing else was removed; fix the cause and run tomidev self-uninstall again.");
 			return 1;
 		}
 	}
@@ -840,8 +840,8 @@ export async function runBundledSelfUninstall(input: BundledSelfUninstallInput):
 			if (plan.held.some((file) => within(removal.path, file, platform))) removeExcept(removal.path, plan.held, platform);
 			else remove(removal);
 		} catch (error) {
-			err(`gentle-shell self-uninstall: could not remove ${removal.path}: ${error instanceof Error ? error.message : String(error)}`);
-			err("Everything listed after it was kept; fix the cause and run gentle-shell self-uninstall again.");
+			err(`tomidev self-uninstall: could not remove ${removal.path}: ${error instanceof Error ? error.message : String(error)}`);
+			err("Everything listed after it was kept; fix the cause and run tomidev self-uninstall again.");
 			return 1;
 		}
 	}
@@ -864,7 +864,7 @@ export async function runBundledSelfUninstall(input: BundledSelfUninstallInput):
 				writeTextAtomically(settingsPath, removal.text);
 				out(`Removed npmCommand from ${settingsPath}: it named the removed install.`);
 			} catch (error) {
-				err(`gentle-shell self-uninstall: could not remove npmCommand from ${settingsPath}: ${error instanceof Error ? error.message : String(error)}`);
+				err(`tomidev self-uninstall: could not remove npmCommand from ${settingsPath}: ${error instanceof Error ? error.message : String(error)}`);
 				err(`Pi package installs keep failing until the npmCommand naming ${root} is deleted from it.`);
 			}
 		}
@@ -878,12 +878,12 @@ export async function runBundledSelfUninstall(input: BundledSelfUninstallInput):
 			input.deferRemoval({ pid: input.process.pid, files: plan.held.filter((file) => !isMarker(file)), last: plan.held.find(isMarker),
 				directories: heldDirectories(plan, root, platform) });
 		} catch (error) {
-			err(`gentle-shell self-uninstall: ${error instanceof Error ? error.message : String(error)}; once this command exits, delete ${root} yourself.`);
+			err(`tomidev self-uninstall: ${error instanceof Error ? error.message : String(error)}; once this command exits, delete ${root} yourself.`);
 			return 1;
 		}
-		out(`Windows cannot remove the running Gentle Shell: ${plan.held.join(", ")} ${plan.held.length === 1 ? "is" : "are"} removed in the background after this command exits.`);
+		out(`Windows cannot remove the running ${BRAND_DISPLAY_NAME}: ${plan.held.join(", ")} ${plan.held.length === 1 ? "is" : "are"} removed in the background after this command exits.`);
 	}
 	if (pathKept !== undefined) out(`The PATH entry was kept: ${pathKept}. Remove it yourself if nothing else uses it.`);
-	out("Gentle Shell was removed.");
+	out(`${BRAND_DISPLAY_NAME} was removed.`);
 	return 0;
 }

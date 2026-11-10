@@ -1,5 +1,4 @@
-import { gentleAiDevBinaryOverrideConfigured, resolveGentleAiBinary } from "./gentle-ai-binary.ts";
-import { createNodeExecFileAdapter, type ExecFileAdapter } from "./native-review-cli.ts";
+import { createNodeExecFileAdapter, type ExecFileAdapter } from "./process-tree.ts";
 
 export interface RuntimeMetricsPolicyDeps { resolve?: () => string; exec?: ExecFileAdapter }
 
@@ -11,9 +10,7 @@ export function runtimeMetricsEnvAllows(env: NodeJS.ProcessEnv): boolean {
 }
 
 function publishedBinary(): string {
-	// This feature must not select an unpublished development binary or install one.
-	if (gentleAiDevBinaryOverrideConfigured()) throw new Error("Policy binary unavailable");
-	return resolveGentleAiBinary();
+	throw new Error("Policy binary unavailable");
 }
 
 /** Only a validated boolean crosses this boundary; never raw stdout or errors.

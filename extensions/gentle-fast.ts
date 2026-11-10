@@ -5,6 +5,7 @@ import { gentlePiConfigHome } from "../lib/agent-home.ts";
 import { freezeSessionProfileAtStartup, readFrozenDefaultOrchestrator } from "../lib/session-profile-freeze.ts";
 import { isServiceTier } from "../lib/model-routing-authority.ts";
 import { applyOpenAITier, CHILD_TIER_ENV, PROFILE_TIER_EVENT } from "../lib/openai-fast-tier.ts";
+import { ENV_AGENTS_CHILD } from "../lib/brand.ts";
 
 type Selection = "standard" | "fast" | undefined;
 
@@ -19,7 +20,7 @@ export default function (pi: ExtensionAPI) {
 		const authority = typeof ctx.sessionManager?.getBranch === "function" ? readSessionProfileAuthority(ctx.sessionManager) : undefined;
 		const binding = authority ? authority.available ? authority.binding : undefined : readSessionProfileBinding(sessionId);
 		const cwd = ctx.sessionManager?.getCwd?.() ?? ctx.cwd;
-		if (process.env.GENTLE_PI_AGENTS_CHILD !== "1" && sessionId && typeof cwd === "string") {
+		if (process.env[ENV_AGENTS_CHILD] !== "1" && sessionId && typeof cwd === "string") {
 			// Idempotent across extension load order and reload: never re-read a
 			// later default into a session that already froze its startup choice.
 			freezeSessionProfileAtStartup({ sessionId, cwd, configHome: gentlePiConfigHome() });
@@ -28,9 +29,9 @@ export default function (pi: ExtensionAPI) {
 			: authority && !authority.available ? undefined : readFrozenDefaultOrchestrator(sessionId);
 		const matches = entry?.model === `${ctx.model?.provider}/${ctx.model?.id}`;
 		let child: { tier?: unknown; model?: unknown } | undefined;
-		try { if (process.env.GENTLE_PI_AGENTS_CHILD === "1") child = JSON.parse(process.env[CHILD_TIER_ENV] ?? "null") ?? undefined; } catch { /* Invalid child selection is ignored. */ }
+		try { if (process.env[ENV_AGENTS_CHILD] === "1") child = JSON.parse(process.env[CHILD_TIER_ENV] ?? "null") ?? undefined; } catch { /* Invalid child selection is ignored. */ }
 		const childMatches = child?.model === `${ctx.model?.provider}/${ctx.model?.id}`;
-		selection = process.env.GENTLE_PI_AGENTS_CHILD === "1"
+		selection = process.env[ENV_AGENTS_CHILD] === "1"
 			? childMatches && isServiceTier(child?.tier) ? child.tier : undefined
 			: matches ? entry?.tier : undefined;
 		profileModel = selection ? `${ctx.model?.provider}/${ctx.model?.id}` : undefined;

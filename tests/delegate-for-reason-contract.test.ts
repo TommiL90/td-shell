@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { __testing } from "../extensions/gentle-ai.ts";
-import { HIGH_RISK_ITEMS } from "../lib/review-risk-assessment.ts";
 import { readDelegationDetail } from "./support/orchestrator-modules.ts";
 
 // gentle-shell#1731: the delegated writer fires on named reasons (parallelism,
@@ -19,7 +18,6 @@ const core = read("assets/orchestrator.md");
 const delegation = readDelegationDetail();
 const writer = read("assets/orchestrator-writer.md");
 const verification = read("assets/orchestrator-verification.md");
-const skill = read("skills/gentle-ai/SKILL.md");
 
 function lineStarting(text: string, prefix: string): string {
 	const line = text.split("\n").find((entry) => entry.startsWith(prefix));
@@ -61,17 +59,16 @@ test("AC1: the lazy writer trigger names its reasons and keeps the logbook on th
 		"Delegate one bounded writer per unit only for a named reason",
 		"(a) parallelism",
 		"(b) context",
-		"Without a reason, the parent works inline, following the logbook (feature document, mirror, `todo`, work-unit commits)",
+		"Without a reason, the parent works inline, following the logbook (project-owned tracking, or its fallback feature document, mirror and `todo`; no automatic commits)",
 	]) {
 		assert.ok(delegationWriter.includes(clause), `lazy Writer trigger is missing: ${clause}`);
 	}
-	for (const [path, text] of Object.entries({ delegation, writer, skill })) {
+	for (const [path, text] of Object.entries({ delegation, writer })) {
 		assert.ok(!text.includes("a large task delegates one bounded writer per task"), `${path} keeps the size-based writer trigger`);
 		assert.ok(!text.includes("one writer per task"), `${path} keeps one writer per task`);
 		assert.ok(!text.includes("a large task (track and writer)"), `${path} still fires the writer on size`);
 	}
 	assert.ok(writer.includes("never on size alone"), "the writer module must say the Writer rule never fires on size alone");
-	assert.ok(skill.includes("a writer reason (parallel units or context)"), "the skill must name the writer reasons");
 });
 
 // S9 canon change (gentle-ai 87a3b2eb): the lazy trigger mirrors the canon's
@@ -97,7 +94,7 @@ test("T24/L49: a price ratio no longer fires the Writer rule", () => {
 	assert.ok(intro.includes("The Writer rule fires on a named reason (parallel units, the context backstop), never on size alone or a price ratio"), "the writer module must name only the remaining reasons");
 	assert.doesNotMatch(writer, /about 3x|price ratio of|- \*\*Model routing\*\*/, "the writer module keeps the cost reason");
 	// T24 follow-up: no surface names the price ratio as a writer reason.
-	for (const [path, text] of Object.entries({ delegationWriter, skill, readme: read("docs/readme-reference.md") })) {
+	for (const [path, text] of Object.entries({ delegationWriter, readme: read("docs/readme-reference.md") })) {
 		assert.doesNotMatch(text, /model routing —|price ratio of about 3x/, `${path} still names the cost reason`);
 	}
 });
@@ -111,20 +108,18 @@ test("T24/L49: configured per-agent model routing still applies to writers launc
 	);
 });
 
-// Verification by named risk changed the core rule 3 text: only a named
-// high-risk item, passed as assess `escalate`, adds the independent verifier.
-// odd/tasks/verifier-admission.md S6: the rule names the runtime admission of the verifier launch.
+// Verification by named risk: only a named high-risk item adds the independent verifier.
 test("AC4: verification stays risk-gated and the writer reasons never include risk", () => {
 	assert.ok(
 		core.includes(
-			"3. **Verification rule** — only a named high-risk item (assess `escalate` when RDD is on or unknown) → independent `gentle-ai-verify`; else inline; runtime admission, gates/overengineering: `orchestrator-verification.md`.",
+			"3. **Verification rule** — only a named high-risk item (on Full Lean lane or when risk is high) → independent `gentle-ai-verify`; else inline; runtime admission, gates/overengineering: `orchestrator-verification.md`.",
 		),
 		"core Verification rule changed",
 	);
 	assert.ok(
 		delegation.includes(
 			// S9 canon change (gentle-ai 6b9a71ef): only a named high-risk item adds the verifier.
-			"3. **Verification rule** (gentle-pi#661/#662, RDD-aware): only a change whose Risk line names a high-risk item (Task Size, assess `escalate` when RDD is on or unknown) gets an independent `gentle-ai-verify` run after the change's own checks, as rarely as possible; otherwise whoever made the change runs its focused test and suite inline, small tasks included.",
+			"3. **Verification rule** (Risk line): only a change whose Risk line names a high-risk item (Task Size) gets an independent `gentle-ai-verify` run after the change's own checks, as rarely as possible; otherwise whoever made the change runs its focused test and suite inline, small tasks included.",
 		),
 		"lazy Verification rule changed",
 	);
@@ -164,16 +159,12 @@ test("AC5/S5: every worker self-reviews against the spec by reference before ret
 	assert.ok(writer.includes("Parallel review protocol") && writer.includes("`orchestrator-verification.md`"), "the writer module must point at the review protocol");
 });
 
-test("AC5/S6/L4: per-worker independent verify fires only on assess or escalate, never on the summary alone", () => {
+test("AC5/S6/L4: per-worker independent verify fires only on a named high-risk item, never on the summary alone", () => {
 	const item = reviewItem("2. **Independent verify per unit**");
 	for (const clause of [
 		"in parallel when several finish together",
-		"only when that unit is high risk",
-		"`assess` over its actual diff",
-		"the worker's own `escalate`",
+		"only when that unit carries a named item from the high-risk list in Task Size",
 		"never inferred from the worker's summary alone",
-		'its work-unit commit (`{"baseRef":"<previous>","committedOnly":true}`)',
-		"its own isolated worktree",
 	]) {
 		assert.ok(item.includes(clause), `independent verify item is missing: ${clause}`);
 	}
@@ -213,7 +204,7 @@ test("T15/S6: inline code over several deliveries gets one verify at the feature
 	for (const clause of [
 		"Inline code over several deliveries of one feature",
 		"one verify at the feature's end",
-		"only when that unit is high risk",
+		"only when that unit carries a named item from the high-risk list in Task Size",
 	]) {
 		assert.ok(item.includes(clause), `independent verify exception is missing: ${clause}`);
 	}
@@ -248,7 +239,7 @@ test("AC4/S4: the normative verification rule text is unchanged by the review pr
 	// Re-pinned on purpose: the runtime admission now also accepts a `Risk: item N` sentence (verifier-admission.ts).
 	assert.equal(
 		createHash("sha256").update(normative).digest("hex"),
-		"48fb27b1e4af2f133861a2ba909fc5b5ed310fd1ca00e060f39f9208ab2cf022",
+		"34b9228c48a2a0eac0b044340cc712243ac8414a65733015e0cf01b18c0091d8",
 		"the normative Verification rule section changed",
 	);
 	assert.ok(verification.includes("or a delegated writer returns"), "the module must still load when a delegated writer returns");
@@ -316,11 +307,6 @@ test("T10/AC4: item 3 covers changing or removing consumed contracts, not adding
 	}
 });
 
-test("T10: escalate labels name the core high-risk items", () => {
-	for (const [n, label] of Object.entries(HIGH_RISK_ITEMS)) {
-		assert.ok(highRiskItem(Number(n)).startsWith(`(${n}) ${label}`), `escalate label ${n} drifts from the core list: ${label}`);
-	}
-});
 
 test("T9/AC2: the parallelism reason launches every unit together in background and waits for all", () => {
 	const parallel = lineStarting(writer, "- **Parallelism**");
@@ -349,12 +335,12 @@ test("AC6: parallel writers need disjoint Allowed edit surfaces (runtime-enforce
 	// parent prompt; the rendered prompt now carries the rule once, from Safety.
 	assert.ok(!harness.includes(rule), "harness principles restate the core Safety writer rule");
 	for (const persona of ["gentleman", "neutral"] as const) {
-		assert.equal(__testing.buildGentlePrompt(persona).split(rule).length - 1, 1, `[${persona}] the parent prompt must carry the writer rule once`);
+		assert.equal(__testing.buildGentlePrompt().split(rule).length - 1, 1, `[${persona}] the parent prompt must carry the writer rule once`);
 	}
-	for (const [path, text] of Object.entries({ core, delegation, skill, docs })) {
+	for (const [path, text] of Object.entries({ core, delegation, docs })) {
 		assert.ok(text.includes(rule), `${path} is missing the relaxed writer rule`);
 	}
-	for (const [path, text] of Object.entries({ core, delegation, harness, skill, docs })) {
+	for (const [path, text] of Object.entries({ core, delegation, harness, docs })) {
 		for (const retired of ["single-threaded", "Never run parallel writers in one worktree", "do not run parallel writers unless isolated worktrees", "preserves a single writer thread", "one writer per task"]) {
 			assert.ok(!text.includes(retired), `${path} keeps the single-writer wording: ${retired}`);
 		}

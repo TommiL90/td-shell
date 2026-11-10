@@ -23,17 +23,17 @@ let scratch: string;
 let previousConfigHome: string | undefined;
 before(() => {
 	scratch = mkdtempSync(join(tmpdir(), "gentle-bounded-stop-"));
-	previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = join(scratch, "config");
+	previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = join(scratch, "config");
 });
 after(() => {
-	if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-	else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
+	if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+	else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
 	if (scratch) rmSync(scratch, { recursive: true, force: true });
 });
 
 function prompt(persona: (typeof personas)[number]): string {
-	return __testing.buildGentlePrompt(persona, scratch, ["read"]);
+	return __testing.buildGentlePrompt(scratch, ["read"]);
 }
 
 function lineStarting(text: string, prefix: string): string {
@@ -71,7 +71,7 @@ test("T23(b): the close gate accepts one Needs your decision result as a stop, h
 	}
 	containsAll(tracking, [
 		"continue it or quote the exact user sentence that orders the stop. One **Needs your decision** result naming the open blockers or missing proof is also a valid stop.",
-		"Hedged delivery wording (the user may stop you, review commits one at a time, or pick the work up later) asks for resumable notes and separate commits, not a stop",
+		"Hedged delivery wording (the user may stop you, review commits one at a time, or pick the work up later) asks for resumable notes, not automatic commits or a stop",
 	], "tracking Close gate");
 });
 
@@ -96,10 +96,6 @@ test("T23(d)(e): a quick check runs once and an unavailable verifier is reported
 
 test("S4-S5: the unchanged Close stop is scoped to the ended automatic cycle", () => {
 	for (const persona of personas) {
-		containsAll(prompt(persona), [
-			"The Close step's bounded stop ends the current automatic cycle; a later explicit human request is separate and remains subject to native authority.",
-			"Partial worker execution is not by itself exhausted proof or a terminal native review outcome.",
-		], `${persona} delivered continuation`);
 		assert.ok(closeStep(persona).includes("never more verification"), "the mirrored Close rule remains intact");
 	}
 });
@@ -113,7 +109,7 @@ test("S4-S5: the worker returns remaining work and a human-controlled continuati
 		"native authority and all other applicable limits remain binding",
 	], "worker continuation handoff");
 	containsAll(verification, [
-		"Follow **Authorized work continuity** for setup and worker recovery; scratch: `gentle-ai-verify`.",
+		"Follow **Authorized work continuity** for stop and blocker rules; scratch: `gentle-ai-verify`.",
 	], "parent continuation reference");
 });
 

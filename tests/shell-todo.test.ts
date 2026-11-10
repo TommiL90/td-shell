@@ -17,7 +17,7 @@ import {
 import { CARD_STYLE, cardStyle, setCardStyle, type CardStyle } from "../lib/shell-card.ts";
 import { stripAnsi } from "../lib/terminal-theme.ts";
 
-// Gentle Todo: a task list the model rewrites as it works. The reducer is
+// Tomidev Todo: a task list the model rewrites as it works. The reducer is
 // pure, the state replays from the session branch, and staleness is derived
 // from how many turns passed since the last write while tasks stay open.
 

@@ -20,6 +20,7 @@
 import { spawn } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
+import { ENV_AGENTS_CHILD } from "./brand.ts";
 
 export const NATIVE_PULSE_SCHEMA = "gentle.audio.pulse/v1";
 export const NATIVE_PULSE_WORKER_URL = new URL("./notification-pulse-worker.ts", import.meta.url);
@@ -132,7 +133,7 @@ export class NativePulsePlayer {
 		for (const key of ["HOME", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR", "PULSE_SERVER", "PULSE_COOKIE", "LANG", "LC_ALL", "LC_CTYPE"])
 			if (source[key] !== undefined) env[key] = source[key];
 		env.NODE_NO_WARNINGS = "1";
-		env.GENTLE_PI_AGENTS_CHILD = "1";
+		env[ENV_AGENTS_CHILD] = "1";
 		return env;
 	}
 

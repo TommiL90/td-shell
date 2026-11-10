@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, before } from "node:test";
@@ -26,12 +26,12 @@ let scratch: string;
 let previousConfigHome: string | undefined;
 before(() => {
 	scratch = mkdtempSync(join(tmpdir(), "gentle-verify-first-"));
-	previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = join(scratch, "config");
+	previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = join(scratch, "config");
 });
 after(() => {
-	if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-	else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
+	if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+	else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
 	if (scratch) rmSync(scratch, { recursive: true, force: true });
 });
 
@@ -68,7 +68,7 @@ test("S3: setup failures do not trigger repair loops or automatic relaunch", () 
 
 test("S2-S3: setup recovery references the always-on bounded policy", () => {
 	containsAll(verification, [
-		"Follow **Authorized work continuity** for setup and worker recovery; scratch: `gentle-ai-verify`.",
+		"Follow **Authorized work continuity** for stop and blocker rules; scratch: `gentle-ai-verify`.",
 		"Do not automatically relaunch the verifier for the same missing prerequisite",
 	], "parent setup recovery");
 });
@@ -102,10 +102,10 @@ test("S4: successful setup retains independent probes, isolation, consent and fi
 		"one correction batch and one recheck limited to the reported blockers",
 	], "verification safeguards");
 	containsAll(verification, [
-		"one separate `gentle-ai-verify` run",
+		"one independent `gentle-ai-verify` run",
 		"one correction batch that fixes every reported blocker",
 	], "parent safeguards");
-	assert.ok(read("docs/delegated-verification.md").includes("human consent for native review"));
+	assert.ok(read("docs/delegated-verification.md").includes("does not permit automatic retries, override a denial, bypass consent"));
 });
 
 test("T16: read-only means no repository or git-state edits", () => {
@@ -141,7 +141,7 @@ test("T16/W1: the scratch copy method cannot write outside the scratch directory
 // `cp -a --reflink=auto`, which cannot exclude anything. Verifiers then ran
 // `rm -rf "$s/work/.git"` (blocked by child safety) or `cp --exclude` (no such
 // option), so no probe ran. The prompt names one exact guard-compatible form.
-const SCRATCH_COPY = /`(mkdir -p "\$s\/work" && tar --exclude=\.\/\.git [^`]+)`/;
+const SCRATCH_COPY = /`((?:set -o pipefail && )?mkdir -p "\$s\/work" && tar --exclude=\.\/\.git [^`]+)`/;
 
 test("#2818: the scratch copy names one exact command the child guard allows", () => {
 	const command = verify.match(SCRATCH_COPY)?.[1];
@@ -175,6 +175,34 @@ test("#2818: the named scratch copy omits top-level .git and keeps dotfiles, dep
 	assert.equal(readFileSync(join(work, "node_modules", "dep", "index.js"), "utf8"), "module.exports = 1;\n");
 	assert.equal(readlinkSync(join(work, "node_modules", ".bin", "dep")), "../dep/index.js");
 	assert.equal(existsSync(join(workspace, ".git", "HEAD")), true);
+});
+
+test("upstream #3009: scratch archive failures prevent probes even after valid partial output", () => {
+	const command = verify.match(SCRATCH_COPY)?.[1];
+	assert.ok(command);
+	const fixture = mkdtempSync(join(scratch, "archive-source-"));
+	writeFileSync(join(fixture, "input.txt"), "fixture\n");
+	const archive = join(scratch, "workspace.tar");
+	const packed = spawnSync("/usr/bin/tar", ["-cf", archive, "."], { cwd: fixture, encoding: "utf8" });
+	assert.equal(packed.status, 0, packed.stderr);
+	const bin = join(scratch, "tar-boundary");
+	mkdirSync(bin);
+	const fakeTar = join(bin, "tar");
+	writeFileSync(fakeTar, '#!/bin/bash\nif [[ "$1" == --exclude=* ]]; then\n  cat "$ARCHIVE"\n  if [[ "$FAILURE" == producer ]]; then printf "producer failed\\n" >&2; exit 17; fi\nelse\n  if [[ "$FAILURE" == extractor ]]; then cat >/dev/null; printf "extractor failed\\n" >&2; exit 23; fi\n  exec /usr/bin/tar "$@"\nfi\n');
+	chmodSync(fakeTar, 0o755);
+	for (const [failure, status, stderr] of [["producer", 17, "producer failed\n"], ["extractor", 23, "extractor failed\n"], ["none", 0, ""]] as const) {
+		const s = mkdtempSync(join(scratch, "archive-probe-"));
+		const result = spawnSync("bash", ["-c", `${command} && printf 'probe-ran\\n' && printf done > "$s/probe"`], {
+			cwd: fixture,
+			env: { ...process.env, s, ARCHIVE: archive, FAILURE: failure, PATH: `${bin}:${process.env.PATH ?? "/usr/bin:/bin"}` },
+			encoding: "utf8",
+		});
+		assert.equal(result.status, status, `${failure}: ${result.stderr}`);
+		assert.equal(result.stderr, stderr, failure);
+		assert.equal(result.stdout, failure === "none" ? "probe-ran\n" : "", failure);
+		assert.equal(existsSync(join(s, "probe")), failure === "none", failure);
+		if (failure === "none") assert.equal(readFileSync(join(s, "work", "input.txt"), "utf8"), "fixture\n");
+	}
 });
 
 // T21 (L44): in after4, verify reported a behavior already present at the
@@ -254,7 +282,7 @@ test("T17b: inline-write preparation is distinct from discovery", () => {
 
 test("T17: the always-on Explore step delegates exploration only for a map the parent needs", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona, scratch, ["read"]);
+		const prompt = __testing.buildGentlePrompt(scratch, ["read"]);
 		const step = prompt.split("\n").find((line) => line.startsWith("2. **Explore.**"));
 		assert.ok(step, "ODD step 2 Explore is missing");
 		containsAll(step, [

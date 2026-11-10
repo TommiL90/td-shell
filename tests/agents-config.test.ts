@@ -24,7 +24,7 @@ import {
 import type { AgentProfilesFile } from "../lib/agent-profiles.ts";
 import { THINKING_LEVELS } from "../lib/model-routing-authority.ts";
 
-// Gentle Agents configuration: markdown agent definitions (the same files
+// Tomidev Agents configuration: markdown agent definitions (the same files
 // gentle-ai installs) and subagents.json, both parsed without touching pi.
 
 const root = mkdtempSync(join(tmpdir(), "gentle-agents-config-"));
@@ -161,7 +161,7 @@ test("discoverAgents merges the four directories with project over global and su
 	assert.deepEqual(agents.map((agent) => `${agent.name}:${agent.description}:${agent.scope}`), ["gentle-ai-explore:Read-only exploration and mapping.:global", "shared:project agents:project"]);
 	assert.equal(errors.length, 1);
 	assert.match(errors[0], /broken\.md/);
-	assert.deepEqual(discoverAgents({ cwd: join(root, "empty"), home: join(root, "nohome") }), { agents: [], errors: [] });
+	assert.deepEqual(discoverAgents({ cwd: join(root, "empty"), home: join(root, "nohome") }), { agents: [], errors: [], warnings: [] });
 });
 
 test("profile agent roots isolate global definitions and subagents.json while explicit homes keep their fallback", () => {
@@ -348,7 +348,7 @@ test("removeRoutingKeys preserves identity for empty or absent selections", () =
 
 test("removeRoutingKeysFromProfilesFile changes only affected profiles and preserves metadata", () => {
 	const file: AgentProfilesFile = {
-		kind: "gentle-pi.agent_model_profiles", version: 1, active: "primary",
+		kind: "tomidev.agent_model_profiles", version: 1, active: "primary",
 		profiles: {
 			primary: { stale: { model: "old" }, keep: { model: "live" } },
 			secondary: { stale: {}, another: {} },
@@ -372,7 +372,7 @@ test("removeRoutingKeysFromProfilesFile changes only affected profiles and prese
 
 test("removeRoutingKeysFromProfilesFile preserves identity when no profile changes", () => {
 	const file: AgentProfilesFile = {
-		kind: "gentle-pi.agent_model_profiles", version: 1, profiles: { main: { keep: {} } },
+		kind: "tomidev.agent_model_profiles", version: 1, profiles: { main: { keep: {} } },
 	};
 	assert.equal(removeRoutingKeysFromProfilesFile(file, []), file);
 	assert.equal(removeRoutingKeysFromProfilesFile(file, ["missing"]), file);
@@ -403,4 +403,90 @@ test("resolveAgentProfile never resolves through the suggestion mapping", () => 
 	assert.equal(resolved.model?.provider, "openai-codex", "the short key must not route; the agent frontmatter model wins");
 	assert.equal(resolved.source.model, "definition");
 	assert.ok(unmatchedProfileKeys(config.modelProfiles, [worker]).some((entry) => entry.key === "worker" && entry.suggestion === "gentle-ai-worker"), "the same short key is still reported with its suggestion");
+});
+
+test("parseModelRef returns undefined for inherit so profile can win", () => {
+	assert.equal(parseModelRef("inherit"), undefined);
+	assert.equal(parseModelRef("INHERIT"), undefined);
+	assert.equal(parseModelRef("  inherit  "), undefined);
+	assert.deepEqual(parseModelRef("openai/gpt-4o"), { provider: "openai", id: "gpt-4o" });
+});
+
+test("parseAgentDefinition maps Claude tool names to Pi equivalents", () => {
+	const text = `---
+name: claude-reviewer
+model: inherit
+tools:
+  - Glob
+  - Grep
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - View
+  - Create
+---
+Review instructions.`;
+	const parsed = parseAgentDefinition(text, "/repo/.agents/agents/reviewer.md", "project");
+	assert.ok(!("error" in parsed));
+	assert.equal(parsed.model, undefined, "model: inherit should resolve to undefined");
+	assert.deepEqual(parsed.tools, ["find", "grep", "read", "write", "edit", "bash", "read", "write"]);
+});
+
+test("agentDirectories includes .agents/agents in project directory", () => {
+	const dirs = agentDirectories({ cwd: "/my/project", home: "/user/home" });
+	const projectAgentDir = dirs.find((d) => d.dir === "/my/project/.agents/agents");
+	assert.ok(projectAgentDir, ".agents/agents must be included");
+	assert.equal(projectAgentDir.scope, "project");
+});
+
+test("isRepoAgent is a path-segment check on <root>/.agents/agents/, not a substring match", () => {
+	const claude = "---\nname: reviewer\ntools:\n  - Glob\n  - Read\n---\nReview.";
+	for (const path of ["/home/u/my.agents/agents/x.md", "/repo/.agents-backup/agents/x.md", "/repo/.agents/notes/x.md", "/repo/.agents/agents/nested/x.md"]) {
+		const parsed = parseAgentDefinition(claude, path, "project");
+		assert.ok(!("error" in parsed));
+		assert.deepEqual(parsed.tools, ["Glob", "Read"], path);
+	}
+	for (const path of ["/repo/.agents/agents/reviewer.md", "C:\\repo\\.agents\\agents\\reviewer.md"]) {
+		const parsed = parseAgentDefinition(claude, path, "project");
+		assert.ok(!("error" in parsed));
+		assert.deepEqual(parsed.tools, ["find", "read"], path);
+	}
+});
+
+test("repository agents map WebFetch, WebSearch, LS and TodoWrite to their Pi tools", () => {
+	const parsed = parseAgentDefinition("---\nname: researcher\ntools: WebFetch, WebSearch, LS, TodoWrite\n---\nResearch.", "/repo/.agents/agents/researcher.md", "project");
+	assert.ok(!("error" in parsed));
+	assert.deepEqual(parsed.tools, ["fetch_content", "web_search", "ls", "todo"]);
+	assert.equal(parsed.warnings, undefined);
+});
+
+test("repository agents drop Claude-only tools that have no Pi equivalent, with a warning", () => {
+	const parsed = parseAgentDefinition("---\nname: planner\ntools:\n  - Task\n  - NotebookEdit\n  - Read\n  - codegraph\n---\nPlan.", "/repo/.agents/agents/planner.md", "project");
+	assert.ok(!("error" in parsed));
+	assert.deepEqual(parsed.tools, ["read", "codegraph"]);
+	assert.deepEqual(parsed.warnings, [
+		'tool "Task" is a Claude Code tool with no Pi equivalent; dropped',
+		'tool "NotebookEdit" is a Claude Code tool with no Pi equivalent; dropped',
+	]);
+});
+
+test("agents outside the repository keep their tool names untouched and never warn", () => {
+	const parsed = parseAgentDefinition("---\nname: global-planner\ntools: Task, Read\n---\nPlan.", "/home/u/.pi/agent/agents/global-planner.md", "global");
+	assert.ok(!("error" in parsed));
+	assert.deepEqual(parsed.tools, ["Task", "Read"]);
+	assert.equal(parsed.warnings, undefined);
+});
+
+test("discoverAgents reports dropped-tool warnings with the file that declared them", () => {
+	const home = join(root, "warn-home");
+	const cwd = join(root, "warn-project");
+	mkdirSync(join(cwd, ".agents", "agents"), { recursive: true });
+	mkdirSync(home, { recursive: true });
+	const file = join(cwd, ".agents", "agents", "planner.md");
+	writeFileSync(file, "---\nname: planner\ntools:\n  - Task\n  - Read\n---\nPlan.");
+	const result = discoverAgents({ cwd, home });
+	assert.deepEqual(result.errors, []);
+	assert.deepEqual(result.warnings, [`${file}: tool "Task" is a Claude Code tool with no Pi equivalent; dropped`]);
+	assert.deepEqual(result.agents.map((agent) => agent.tools), [["read"]]);
 });

@@ -39,8 +39,8 @@ async function fixture(t: test.TestContext, memory = false, flushed = true, acti
   agentDir = join(root, "agent");
  mkdirSync(config);
  mkdirSync(agentDir);
- const originalConfig = process.env.GENTLE_PI_CONFIG_HOME;
- process.env.GENTLE_PI_CONFIG_HOME = config;
+ const originalConfig = process.env.TOMIDEV_CONFIG_HOME;
+ process.env.TOMIDEV_CONFIG_HOME = config;
  const profilesPath = join(config, "profiles.json");
  const profiles = {
   team: { worker: { model: "openai/gpt-4o" } },
@@ -51,7 +51,7 @@ async function fixture(t: test.TestContext, memory = false, flushed = true, acti
   writeFileSync(
    profilesPath,
    JSON.stringify({
-    kind: "gentle-pi.agent_model_profiles",
+    kind: "tomidev.agent_model_profiles",
     version: 1,
     profiles,
     ...(active === undefined ? {} : { active }),
@@ -150,7 +150,7 @@ async function fixture(t: test.TestContext, memory = false, flushed = true, acti
       createGentleAiExtension({
        nativeReviewCli: null,
        candidateViews: null,
-       processEnv: { GENTLE_PI_AGENTS_CHILD: "1" },
+       processEnv: { TOMIDEV_AGENTS_CHILD: "1" },
        resolveTelemetryTriggerBinary: () => {
         throw Error("disabled fixture telemetry");
        },
@@ -257,8 +257,8 @@ async function fixture(t: test.TestContext, memory = false, flushed = true, acti
  runtime.setRebindSession(bind);
  t.after(async () => {
   await runtime.dispose();
-  if (originalConfig === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-  else process.env.GENTLE_PI_CONFIG_HOME = originalConfig;
+  if (originalConfig === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+  else process.env.TOMIDEV_CONFIG_HOME = originalConfig;
   rmSync(root, { recursive: true, force: true });
   assert.equal(providerCalls, 0);
   assert.deepEqual(errors, []);
@@ -268,13 +268,13 @@ async function fixture(t: test.TestContext, memory = false, flushed = true, acti
   session: AgentSession = runtime.session,
  ) => {
   selection = name;
-  const command = session.extensionRunner.getCommand("gentle:profiles");
+  const command = session.extensionRunner.getCommand("td:profiles");
   assert.ok(command);
   await command.handler("", session.extensionRunner.createCommandContext());
  };
  const clear = () =>
   runtime.session.extensionRunner
-   .getCommand("gentle:profiles")!
+   .getCommand("td:profiles")!
    .handler("clear", runtime.session.extensionRunner.createCommandContext());
  const binding = () =>
   readSessionProfileBinding(runtime.session.sessionManager.getSessionId());
@@ -420,7 +420,7 @@ for (const failure of ["before-append", "EISDIR"] as const)
 
 for (const customType of [
  SESSION_PROFILE_CUSTOM_TYPE,
- "gentle-pi.session-profile/v99",
+ "tomidev.session-profile/v99",
 ])
  test(`U3 terminal invalid/future selection ${customType} blocks until explicit recovery`, async (t) => {
   const f = await fixture(t);

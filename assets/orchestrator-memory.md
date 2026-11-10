@@ -2,9 +2,13 @@
 
 Bind this to the parent Pi session only, on organic progress/recovery. Not always-on; loaded on demand from the always-on core's `## Memory Contract` pointer.
 
-### Organic feature continuity
+### Project continuity first
 
-For large authorized implementation (Task Size in the always-on core), the parent maintains `odd/tasks/<feature-name>.md` and an Engram recovery copy under topic `odd/<feature-name>/tasks`, scoped to the current project. Use a descriptive filename-safe feature name, reuse the same identity, and never overwrite another feature. Keep one feature document, not a separate plan file or topic. It is the specification subagents read by reference, so keep this fixed order, stable content first and the growing log last:
+Project tracking and workflow are the authority. Reuse the existing artifact, identifiers, format, storage and resume procedure. Do not force Engram, a second task list, a new directory or a parallel plan when the project already defines tracking. Fill only undefined aspects with the defaults below; a different filename or schema is not a conflict. Preserve requirements verbatim in the project's own format and record accepted judge findings there. Workers read the supplied artifacts and applicable criteria, not an invented `## Specs`/`## Log` boundary.
+
+### Organic feature continuity (fallback only)
+
+When the project leaves tracking undefined, for large authorized implementation (Task Size in the always-on core) and Checks-only / Full Lean lanes, the parent maintains \`.agents/designs/features/<feature-name>/\` (plan.md, checks.md with C# items, state.json, proofs.md, mutations.md, verification.md, handoff.md) and an Engram recovery copy under topic \`features/<feature-name>/state\`, scoped to the current project. Use a descriptive filename-safe feature name, reuse the same identity, and never overwrite another feature. Keep one feature directory, not a separate plan file or topic. It is the specification subagents read by reference, so keep this fixed order, stable content first and the growing log last:
 
 1. A header of two or three lines: objective, branch, delivery strategy, and test runner.
 2. `## Specs`: numbered `S1`..`Sn` requirements, constraints, and acceptance criteria with their checks. Quote the user's exact strings, error messages, commands, and examples verbatim, in the user's language; you may number and order them, but never summarize or reword those fragments. Do not add requirements the user never asked for; mark assumptions as assumptions.

@@ -2,14 +2,14 @@
 
 Voice dictation is optional. It transcribes speech locally with NVIDIA Parakeet
 through sherpa-onnx, with no API key and no cloud inference. Everything happens
-from `/gentle:voice`; nothing described here runs at startup.
+from `/td:voice`; nothing described here runs at startup.
 
 ## Quick path
 
-1. Run `/gentle:voice` and choose **Download voice dictation**. The
+1. Run `/td:voice` and choose **Download voice dictation**. The
    confirmation lists each component, its size, the destination directory,
    the licenses and the platform limitations. Esc during the download cancels it.
-2. Run `/gentle:voice` again and choose **Start dictation**. Speak, then press
+2. Run `/td:voice` again and choose **Start dictation**. Speak, then press
    Enter to stop. Esc cancels at any point.
 3. The transcript is pasted into the editor draft at the cursor. It is never
    sent automatically. Pi collapses pastes over 1,000 characters or 10 lines into
@@ -27,7 +27,7 @@ from `/gentle:voice`; nothing described here runs at startup.
 | Dictation | A compact overlay shows preparing, recording, transcribing. Enter stops recording; the overlay stays until the transcript is ready. |
 | Recording limit | After 2 minutes recording stops by itself, and the transcript is pasted without a key press. |
 | Insertion | The recognized text goes through Pi's editor paste pipeline, which may collapse long text into a paste marker. A blank result pastes nothing. |
-| One at a time | A second `/gentle:voice` while a download or dictation runs is refused with a notice. A Space hold during either one types spaces as usual. |
+| One at a time | A second `/td:voice` while a download or dictation runs is refused with a notice. A Space hold during either one types spaces as usual. |
 | Cancel and shutdown | Esc, reload or session shutdown aborts the download or cancels the session. A transcript that arrives afterwards is dropped. |
 | Where it runs | Interactive TUI parent sessions only. RPC, print, JSON and delegated child sessions refuse it. No model-callable tool exists. |
 | Errors | Fixed messages with the action to take, such as installing ALSA or the Visual C++ runtime. Gentle AI never runs those installers. |
@@ -44,10 +44,10 @@ transcribing; no overlay opens, so the editor keeps the focus.
 
 | Topic | Behavior |
 |-------|----------|
-| Toggle | Stored as `voice-settings.json` (`gentle-pi.voice-settings/v1`) in the Gentle AI config home. A successful download turns it on; the `/gentle:voice` menu turns it off and on, effective immediately. A missing or malformed file means off. |
+| Toggle | Stored as `voice-settings.json` (`tomidev.voice-settings/v1`) in the Gentle AI config home. A successful download turns it on; the `/td:voice` menu turns it off and on, effective immediately. A missing or malformed file means off. |
 | When it is armed | Only with the toggle on, in an interactive TUI parent session. Delegated child sessions, RPC, print and JSON modes never arm it. Reload or shutdown disarms it and cancels a running dictation. |
 | Startup | Reads the toggle file only. No voice files are checked, nothing is downloaded or loaded, and no worker starts. |
-| First hold | Checks that the runtime and model are installed; the spaces keep typing meanwhile. If voice is not installed, a notice points to `/gentle:voice` and push-to-talk stays off for the session; the saved choice is kept. |
+| First hold | Checks that the runtime and model are installed; the spaces keep typing meanwhile. If voice is not installed, a notice points to `/td:voice` and push-to-talk stays off for the session; the saved choice is kept. |
 | One at a time | A hold while a download or dictation runs types spaces normally. |
 
 ### How a hold is recognized
@@ -237,7 +237,7 @@ built for their architecture (checked from the binary headers, not by loading).
 node-cpal requires Node 22 or newer, and a dictation session refuses to start
 on an older Node. Gentle AI never downloads or installs the Visual C++ runtime;
 a missing runtime is expected to surface as a runtime load failure, which has
-not been observed on hardware. `/gentle:voice` then names the runtime to install.
+not been observed on hardware. `/td:voice` then names the runtime to install.
 
 None of these targets has been verified on real hardware yet: native loading,
 library paths and microphone capture have not been executed. Linux with a glibc

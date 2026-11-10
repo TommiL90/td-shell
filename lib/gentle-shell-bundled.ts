@@ -3,9 +3,11 @@ import { request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
 import { dirname, isAbsolute, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
+import { engramPinVersion } from "../scripts/installer-downloads.mjs";
+import { ENV_AGENTS_PI, ENV_CONFIG_HOME, ENV_PREFIX, LOG_PREFIX, BRAND_DISPLAY_NAME } from "./brand.ts";
 
 // The launcher in a bundled install (S5, S8): pure decisions over an injected
-// filesystem. bin/gentle-shell.mjs wires them to the real one. A bundled install
+// filesystem. bin/tomidev.mjs wires them to the real one. A bundled install
 // is `<prefix>/versions/<id>/` with this gentle-pi in its node_modules, marked by
 // scripts/bundled-install.mjs, and `current` naming it; anything else keeps the
 // launcher's ordinary behavior unchanged.
@@ -26,6 +28,11 @@ export interface BundledInstall {
 }
 
 type Env = Record<string, string | undefined>;
+
+export function bundledEngramPath(prefix: string, platform: string = process.platform): string {
+	const path = pathFor(platform);
+	return path.join(prefix, "runtime", `engram-${engramPinVersion}`, platform === "win32" ? "engram.exe" : "engram");
+}
 
 /**
  * Builds the detached shared server's environment without retaining session scratch.
@@ -69,14 +76,14 @@ export function sharedEngramEnv(base: Env, platform: string = process.platform):
 
 // The same rules scripts/bundled-install.mjs writes versions and markers with.
 const VERSION_ID = /^[0-9A-Za-z][0-9A-Za-z.-]*$/;
-const VERSION_MARKER = ".gentle-shell-version";
+const VERSION_MARKER = ".tomidev-version";
 const PI_PACKAGE = "@earendil-works/pi-coding-agent";
 const PI_BIN = "dist/bundle/cli.js";
 
-// `gentle-shell upgrade` sets this to the version it just installed while it
+// `tomidev upgrade` sets this to the version it just installed while it
 // runs that version's `--version`: the check then runs in bundled mode, with
 // its exact Pi, before `current` names it. Never passed on to children.
-export const BUNDLED_VERIFY_ENV = "GENTLE_SHELL_VERIFY_VERSION";
+export const BUNDLED_VERIFY_ENV = `${ENV_PREFIX}VERIFY_VERSION`;
 
 const pathFor = (platform: string) => (platform === "win32" ? win32 : posix);
 
@@ -110,7 +117,7 @@ export function resolveBundledInstall(input: { packageRoot: string; platform: st
 		const root = path.dirname(path.dirname(dir));
 		if (!VERSION_ID.test(id) || id.includes("..")) return undefined;
 		if (input.fs.readText(path.join(dir, VERSION_MARKER)) !== `${id}\n`) return undefined;
-		if (input.fs.realpath(path.join(dir, "node_modules", "gentle-pi")) !== real) return undefined;
+		if (input.fs.realpath(path.join(dir, "node_modules", "tomidev")) !== real) return undefined;
 		const current = path.join(root, "current");
 		const active = input.platform === "win32" ? input.fs.readText(current) === `${id}\n` : input.fs.readLink(current) === `versions/${id}`;
 		return active || input.verifying === id || input.kept === true ? { root, id, versionDir: dir } : undefined;
@@ -147,7 +154,7 @@ export const nodeBundledFs: BundledFs = {
 
 // The bundled launcher passes its prefix to Pi (bundledChildEnv), and so to
 // every process Pi starts, the agent's shell included.
-export const GENTLE_SHELL_PREFIX_ENV = "GENTLE_SHELL_PREFIX";
+export const TOMIDEV_PREFIX_ENV = `${ENV_PREFIX}PREFIX`;
 
 // This package's root, from lib/ or the generated runtime/ alike.
 const ownPackageRoot = () => dirname(dirname(fileURLToPath(import.meta.url)));
@@ -167,18 +174,18 @@ export function resetRunningBundledPrefixForTesting(): void {
 }
 
 // S9: the prefix of the bundled install this gentle-pi runs from, or
-// undefined. Both must hold: GENTLE_SHELL_PREFIX is absolute and names that
+// undefined. Both must hold: TOMIDEV_PREFIX is absolute and names that
 // install's root, and resolveBundledInstall finds a finished version of the
 // prefix around the package (its version marker). `current` need not name it:
-// a subagent started after `gentle-shell upgrade` moved `current` still runs
+// a subagent started after `tomidev upgrade` moved `current` still runs
 // from the previous, kept version, and stays bundled. A gentle-pi elsewhere
 // (npm, pnpm, nvm), started from the agent's shell that inherits the variable,
 // gets undefined. The answer is remembered per package root and prefix value,
-// so a `gentle-shell upgrade` that moves `current` while Pi runs does not
+// so a `tomidev upgrade` that moves `current` while Pi runs does not
 // change it mid-session; an injected filesystem is never remembered.
 export function runningBundledPrefix(env: Env, options: { packageRoot?: string; platform?: string; fs?: BundledFs } = {}): string | undefined {
 	const platform = options.platform ?? process.platform;
-	const prefix = env[GENTLE_SHELL_PREFIX_ENV];
+	const prefix = env[TOMIDEV_PREFIX_ENV];
 	if (prefix === undefined || prefix.length === 0 || !pathFor(platform).isAbsolute(prefix)) return undefined;
 	const overlay = options.packageRoot === undefined ? installOverlay : undefined;
 	const packageRoot = options.packageRoot ?? ownPackageRoot();
@@ -217,23 +224,23 @@ export function bundledGentlePiConfigHome(env: Env): string | undefined {
 
 // #2201: the standalone launcher gives Pi this variable in its isolated home
 // only, naming the config folder next to the agent dir (standaloneConfigHome:
-// ~/.gentle-shell/gentle-ai by default). It is launcher-owned, never
+// ~/.tomidev/gentle-ai by default). It is launcher-owned, never
 // GENTLE_PI_CONFIG_HOME: Gentle AI 4.0.0 reads that one as the parent of its
 // own gentle-ai folder, and the agent's shell would pass it to any gentle-ai.
-export const GENTLE_SHELL_CONFIG_HOME_ENV = "GENTLE_SHELL_CONFIG_HOME";
+export const TOMIDEV_SHELL_CONFIG_HOME_ENV = `${ENV_PREFIX}SHELL_CONFIG_HOME`;
 
 // gentle-pi's config home, the one rule every reader shares: a bundled
-// prefix's folder, then an explicit GENTLE_PI_CONFIG_HOME, then the launcher's
+// prefix's folder, then an explicit TOMIDEV_CONFIG_HOME, then the launcher's
 // marker (absolute only), then ~/.pi/gentle-ai. Empty values count as unset.
 // `launcherMarker: false` is for install-level state written outside a session
 // (the main channel's channel.json, builds and dev-binary.json): the installer
-// and `gentle-shell upgrade` never see the marker, so their readers ignore it.
+// and `tomidev upgrade` never see the marker, so their readers ignore it.
 export function resolveGentlePiConfigHome(env: Env, home: string, options: { launcherMarker?: boolean; platform?: string } = {}): string {
 	const path = pathFor(options.platform ?? process.platform);
 	const bundled = bundledGentlePiConfigHome(env);
 	if (bundled !== undefined) return bundled;
-	if (env.GENTLE_PI_CONFIG_HOME) return env.GENTLE_PI_CONFIG_HOME;
-	const marker = env[GENTLE_SHELL_CONFIG_HOME_ENV];
+	if (env[ENV_CONFIG_HOME]) return env[ENV_CONFIG_HOME];
+	const marker = env[TOMIDEV_SHELL_CONFIG_HOME_ENV];
 	if (options.launcherMarker !== false && marker && path.isAbsolute(marker)) return marker;
 	return path.join(home, ".pi", "gentle-ai");
 }
@@ -246,8 +253,8 @@ export function bundledPi(install: BundledInstall, input: { platform: string; fs
 	const failure = (found?: string): BundledPi => ({
 		ok: false,
 		message: [
-			`gentle-shell: Gentle Shell ${install.id} needs its bundled Pi ${pinned ?? "(unknown pin)"} in ${install.versionDir}, ${found ? `but found Pi ${found}` : "but it is missing"}.`,
-			"Run 'gentle-shell upgrade' to install the latest release, or run the Gentle Shell installer again to repair this version.",
+			`${LOG_PREFIX} ${BRAND_DISPLAY_NAME} ${install.id} needs its bundled Pi ${pinned ?? "(unknown pin)"} in ${install.versionDir}, ${found ? `but found Pi ${found}` : "but it is missing"}.`,
+			`Run 'tomidev upgrade' to install the latest release, or run the ${BRAND_DISPLAY_NAME} installer again to repair this version.`,
 		].join("\n"),
 	});
 	const dir = input.fs.realpath(path.join(install.versionDir, "node_modules", ...PI_PACKAGE.split("/")));
@@ -265,9 +272,9 @@ export function bundledPi(install: BundledInstall, input: { platform: string; fs
 // NODE_OPTIONS and npm settings stay the user's; Pi itself runs on our node,
 // given explicitly, and its npm through the home's npmCommand setting), plus
 // only no Pi override, subagents on the same node and Pi (the subagent runner
-// splits GENTLE_PI_AGENTS_PI on whitespace, so a spaced path is left to its
+// splits TOMIDEV_AGENTS_PI on whitespace, so a spaced path is left to its
 // default, the running node and cli.js), and no separate Pi update check, since
-// Shell handles Pi updates. S9: the prefix (GENTLE_SHELL_PREFIX, from
+// Shell handles Pi updates. S9: the prefix (TOMIDEV_PREFIX, from
 // which gentle-pi derives its config folder and gives its own gentle-ai runs
 // Gentle AI's variables, never set here because the agent's shell would pass
 // them to a gentle-ai the user runs), and the published Engram as
@@ -279,8 +286,8 @@ export const ENGRAM_COMPANION_SOURCE = "npm:gentle-engram";
 export const ENGRAM_RECOVERY_NOTICE = "Engram memory disabled: Shell could not verify safe server reuse. Matching versions or updating alone do not prove compatibility. Reuse requires a server on 127.0.0.1:7437 with verified /compatibility evidence; Shell never stops or replaces a server already listening there. Back up existing Engram data before manual changes; do not delete it or bypass the safety check. Shell rechecks on every launch and remains usable without memory.";
 export const ENGRAM_START_FAILED_NOTICE = "Engram memory disabled for this launch: Shell could not start the shared Engram server, or it did not report ready in time. Restart Shell to retry; if another program holds 127.0.0.1:7437, stop it first. Shell remains usable without memory.";
 export const ENGRAM_NEWER_SCHEMA_NOTICE = "Engram memory disabled: ~/.engram was migrated by a newer Engram than Shell's bundled core, so Shell will not start a server on it. Start that newer Engram's server yourself (engram serve); Shell reuses a running server with verified /compatibility evidence. Back up the store; do not delete or downgrade it. Shell remains usable without memory.";
-// `gentle-shell setup` publishes the verified core (ensureEngram) on every run.
-export const ENGRAM_CORE_MISSING_NOTICE = "Engram memory disabled: the bundled Engram core is not installed yet. Run 'gentle-shell setup' to install the verified core, then restart Shell. Shell remains usable without memory.";
+// `tomidev setup` publishes the verified core (ensureEngram) on every run.
+export const ENGRAM_CORE_MISSING_NOTICE = "Engram memory disabled: the bundled Engram core is not installed yet. Run 'tomidev setup' to install the verified core, then restart Shell. Shell remains usable without memory.";
 // The first Engram release whose server answers GET /compatibility (PR #1792).
 export const ENGRAM_COMPATIBILITY_MIN_VERSION = "3.4.0";
 export function engramOutdatedServerNotice(version: string): string {
@@ -395,7 +402,7 @@ export async function probeEngramEndpoint(input: { port?: number; timeoutMs?: nu
 }
 
 // Shell's record of a store an earlier Shell provisioned with its bundled core,
-// read only by the explicit `gentle-shell memory migrate` recovery.
+// read only by the explicit `tomidev memory migrate` recovery.
 export type EngramProvenance = { schema: 1; dataDir: string; instanceId: string; coreSha256: string };
 
 export function engramProvenancePath(prefix: string, platform: string = process.platform): string {
@@ -461,11 +468,11 @@ export function supportsEngramStartupPolicy(metadata: string | undefined): boole
 }
 
 export function bundledChildEnv(base: Env, input: { node: string; cli: string; prefix: string; engram?: string; guard?: string; memory?: EngramStartup }): Env {
-	const env: Env = { ...base, PI_SKIP_VERSION_CHECK: "1", [GENTLE_SHELL_PREFIX_ENV]: input.prefix };
-	delete env.GENTLE_SHELL_PI;
+	const env: Env = { ...base, PI_SKIP_VERSION_CHECK: "1", [TOMIDEV_PREFIX_ENV]: input.prefix };
+	delete env.TOMIDEV_PI;
 	delete env[BUNDLED_VERIFY_ENV];
-	if (/\s/.test(`${input.node}${input.cli}`)) delete env.GENTLE_PI_AGENTS_PI;
-	else env.GENTLE_PI_AGENTS_PI = `${input.node} ${input.cli}`;
+	if (/\s/.test(`${input.node}${input.cli}`)) delete env[ENV_AGENTS_PI];
+	else env[ENV_AGENTS_PI] = `${input.node} ${input.cli}`;
 	const memory = input.memory;
 	if (memory === undefined) {
 		if (input.engram !== undefined && !base.ENGRAM_BIN?.trim()) env.ENGRAM_BIN = input.engram;
@@ -486,7 +493,7 @@ export function bundledChildEnv(base: Env, input: { node: string; cli: string; p
 	return env;
 }
 
-// `gentle-shell setup` in a bundled install: the child environment with `dirs`
+// `tomidev setup` in a bundled install: the child environment with `dirs`
 // (our node's folder, then the version's node_modules/.bin) ahead of the user's
 // PATH. Setup runs Gentle AI, which finds `pi` on PATH, and pnpm's `.bin/pi`
 // runs the first `node` on PATH, so both must be ours there.
@@ -566,7 +573,7 @@ export function withoutMissingBundledNpmCommand(settingsText: string | undefined
 }
 
 export interface BundledUpdatePlan {
-	// Pi's own update was asked for: redirect it to `gentle-shell upgrade`.
+	// Pi's own update was asked for: redirect it to `tomidev upgrade`.
 	self: boolean;
 	// `--latest` asked for the newest published Pi in place of the release's
 	// verified one (scripts/bundled-install.mjs upgradePiLatest). Only set then.
@@ -576,7 +583,7 @@ export interface BundledUpdatePlan {
 	piArgs?: string[];
 }
 
-// `gentle-shell update [target]` in a bundled install, read the way Pi's
+// `tomidev update [target]` in a bundled install, read the way Pi's
 // package-manager-cli.js reads it: the target is Pi itself for a bare
 // `update`, `--self`, or a `self`/`pi` positional, and "all" for `--all`,
 // `--self --extensions` or `self`/`pi` with `--extensions`. Only Pi's own part
@@ -618,16 +625,16 @@ export function bundledUpdatePlan(passthrough: string[]): BundledUpdatePlan {
 export function bundledUpdateNext(plan: BundledUpdatePlan, upgradeCode: number | undefined): { exitCode: number } | { piArgs: string[]; note?: string } {
 	if (plan.piArgs === undefined) return { exitCode: upgradeCode ?? 0 };
 	if (plan.self && upgradeCode !== undefined && upgradeCode !== 0) {
-		return { piArgs: plan.piArgs, note: "gentle-shell: the latest Pi update did not complete; updating the extensions anyway." };
+		return { piArgs: plan.piArgs, note: `${LOG_PREFIX} the latest Pi update did not complete; updating the extensions anyway.` };
 	}
 	return { piArgs: plan.piArgs };
 }
 
 export type BundledUpgradeAction = { action: "upgrade" } | { action: "rollback" } | { error: string; usage: boolean };
 
-export const BUNDLED_UPGRADE_USAGE = "usage: gentle-shell upgrade [--channel release] | gentle-shell upgrade --rollback";
+export const BUNDLED_UPGRADE_USAGE = "usage: tomidev upgrade [--channel release] | tomidev upgrade --rollback";
 
-// `gentle-shell upgrade` arguments in a bundled install, which follows the
+// `tomidev upgrade` arguments in a bundled install, which follows the
 // release channel only (the main channel builds from source).
 export function parseBundledUpgradeArgs(args: string[]): BundledUpgradeAction {
 	if (args.length === 0) return { action: "upgrade" };
@@ -636,7 +643,7 @@ export function parseBundledUpgradeArgs(args: string[]): BundledUpgradeAction {
 		: args.length === 2 && args[0] === "--channel" ? args[1] : undefined;
 	if (channel === "release") return { action: "upgrade" };
 	if (channel === "main") {
-		return { error: "this bundled installation follows the release channel only; the main channel needs a pnpm or npm installation of Gentle Shell", usage: false };
+		return { error: `this bundled installation follows the release channel only; the main channel needs a pnpm or npm installation of ${BRAND_DISPLAY_NAME}`, usage: false };
 	}
 	return { error: BUNDLED_UPGRADE_USAGE, usage: true };
 }

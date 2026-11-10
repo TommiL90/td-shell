@@ -5,7 +5,6 @@ import { test } from "node:test";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setGentleAiDevBinaryEnvironmentForTesting } from "../lib/gentle-ai-binary.ts";
 import { setBundledInstallForTesting } from "../lib/gentle-shell-bundled.ts";
 import * as native from "../lib/runtime-metrics-native.ts";
 import { parseAgentClass, type RuntimeMetricBucket } from "../lib/runtime-metrics.ts";
@@ -200,38 +199,6 @@ test("production encoder reaches the fake one-shot child without a test encoding
 	f.close(); assert.equal(await first, "stored");
 });
 
-test("validated dev override reaches the one-shot child through the production resolver", async () => {
-	const file = realpathSync(process.execPath);
-	setGentleAiDevBinaryEnvironmentForTesting({ env: { GENTLE_PI_GENTLE_AI_DEV_BINARY: file }, home: "/unused" });
-	try {
-		const f = fixture();
-		const { resolve: _resolve, encode: _encode, ...deps } = f.deps;
-		const pending = native.sendNativeRuntimeEvent([source()], "/fixture", deps);
-		f.close();
-		assert.equal(await pending, "stored");
-		assert.equal(f.calls.length, 1);
-		assert.equal(f.calls[0][0], file);
-		assert.deepEqual(f.calls[0][1], ["telemetry", "runtime", "send", "--json"]);
-		assert.equal(f.input(), fixturePayloads.batches[0]);
-	} finally {
-		setGentleAiDevBinaryEnvironmentForTesting(undefined);
-	}
-});
-
-test("invalid dev overrides fail closed without spawning or falling back", async () => {
-	for (const file of ["relative-binary", realpathSync(new URL(".", import.meta.url))]) {
-		setGentleAiDevBinaryEnvironmentForTesting({ env: { GENTLE_PI_GENTLE_AI_DEV_BINARY: file }, home: "/unused" });
-		try {
-			const f = fixture();
-			const { resolve: _resolve, ...deps } = f.deps;
-			assert.equal(await native.sendNativeRuntimeEvent([], "/fixture", deps), "discarded");
-			assert.equal(f.calls.length, 0);
-		} finally {
-			setGentleAiDevBinaryEnvironmentForTesting(undefined);
-		}
-	}
-});
-
 test("opt-out and pre-cancel cause zero encoding, resolution or launch", async () => {
 	const f = fixture();
 	f.deps.resolve = () => { throw new Error("must not resolve"); };
@@ -279,7 +246,7 @@ test("spawn failure silently discards", async () => {
 
 // S9: this package running from a bundled install (the testing overlay stands
 // in for its location; the detection itself is tested with real installs in
-// gentle-ai-binary-isolation.test.ts) and the launcher's GENTLE_SHELL_PREFIX.
+// gentle-ai-binary-isolation.test.ts) and the launcher's TOMIDEV_PREFIX.
 function bundledIsolation(t: { after: (fn: () => void) => void }): { prefix: string; env: NodeJS.ProcessEnv } {
 	const prefix = realpathSync(mkdtempSync(join(tmpdir(), "gentle-ai-isolation-site-")));
 	setBundledInstallForTesting({ root: prefix });
@@ -287,7 +254,7 @@ function bundledIsolation(t: { after: (fn: () => void) => void }): { prefix: str
 		setBundledInstallForTesting(undefined);
 		rmSync(prefix, { recursive: true, force: true });
 	});
-	return { prefix, env: { PATH: "/usr/bin", GENTLE_SHELL_PREFIX: prefix } };
+	return { prefix, env: { PATH: "/usr/bin", TOMIDEV_PREFIX: prefix } };
 }
 
 test("the one-shot send runs gentle-ai with Gentle AI's isolation variables only in a bundled install", async (t) => {

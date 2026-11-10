@@ -245,7 +245,7 @@ function cellBackgrounds(line: string): (number | undefined)[] {
 const floatCard = (overrides: Partial<Card> = {}) => card({ title: "read", subtitle: undefined, glyph: "⌖", body: ["alpha", "beta"], tone: CARD_TONE.SUCCESS, ...overrides });
 
 test("card style defaults to the float style and lives in a process-wide slot", () => {
-	const slot = Symbol.for("gentle-pi.card-style");
+	const slot = Symbol.for("tomidev.card-style");
 	const state = globalThis as typeof globalThis & { [slot]?: string };
 	// Own the slot for this test only, whatever earlier tests left behind.
 	const found = state[slot];

@@ -23,7 +23,7 @@ const listening = (compatible: boolean, healthInstanceId?: string, healthVersion
 // Isolated: no inherited policy, notice or explicit Engram selection.
 const clean = (extra: Record<string, string> = {}) => {
 	const env: NodeJS.ProcessEnv = { ...process.env, ...extra };
-	for (const key of ["GENTLE_PI_AGENTS_CHILD", "ENGRAM_STARTUP_POLICY", "ENGRAM_STARTUP_NOTICE", "ENGRAM_BIN", "ENGRAM_URL", "ENGRAM_PORT",
+	for (const key of ["TOMIDEV_AGENTS_CHILD", "ENGRAM_STARTUP_POLICY", "ENGRAM_STARTUP_NOTICE", "ENGRAM_BIN", "ENGRAM_URL", "ENGRAM_PORT",
 		"ENGRAM_DATA_DIR", "ENGRAM_DATABASE_URL", "ENGRAM_HTTP_TOKEN"]) if (!(key in extra)) delete env[key];
 	return env;
 };
@@ -102,7 +102,7 @@ test("shared Engram environment reaches an actual Windows Node child with explic
 test("shared Engram environment retains sanitization and detached spawn wiring", () => {
 	assert.deepEqual(shell.sharedEngramEnv({ ENGRAM_BIN: "chosen", ENGRAM_OTHER: "value", ENGRAM_NO_UPDATE_CHECK: "0", GH_TOKEN: "token", GITHUB_TOKEN: "token", HOME: "home", TEMP: "chosen" }),
 		{ HOME: "home", TEMP: "chosen", ENGRAM_NO_UPDATE_CHECK: "1" });
-	const launcher = readFileSync(join(repository, "bin", "gentle-shell.mjs"), "utf8");
+	const launcher = readFileSync(join(repository, "bin", "tomidev.mjs"), "utf8");
 	assert.match(launcher, /const env = sharedEngramEnv\(process\.env\);/);
 	assert.match(launcher, /spawn\(core, \["serve"\], \{ cwd: homedir\(\), env, detached: true, stdio: "ignore", windowsHide: true \}\)/);
 });
@@ -205,7 +205,7 @@ test("provenance records parse strictly", () => {
 	}
 	assert.equal(shell.parseEngramProvenance("{"), undefined);
 	assert.equal(shell.parseEngramProvenance(undefined), undefined);
-	assert.equal(shell.engramProvenancePath("/home/ana/.gentle-shell", "linux"), "/home/ana/.gentle-shell/config/engram-provenance.json");
+	assert.equal(shell.engramProvenancePath("/home/ana/.tomidev", "linux"), "/home/ana/.tomidev/config/engram-provenance.json");
 });
 
 test("only flag-position version or help tokens count as a Pi version or help request", () => {

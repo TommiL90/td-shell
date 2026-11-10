@@ -27,7 +27,7 @@ test("ordinary startup does not load the retired SDD preflight API", async () =>
 
 test("orchestrator keeps conversation language separate from generated artifact language", async () => {
 	const orchestrator = await readFile(join(ROOT, "assets/orchestrator.md"), "utf8");
-	assert.match(orchestrator, /Reply-language style and the active persona's Spanish variant are defined once in the identity\/harness section above/);
+	assert.match(orchestrator, /Reply-language style and the persona's Spanish variant are defined once in the identity\/harness section above/);
 	assert.match(orchestrator, /Generated technical artifacts[\s\S]*default to English, regardless of the user's conversation language or active persona/);
 	for (const artifactScope of ["code comments", "tests", "fixtures", "delegated outputs"]) {
 		assert.match(orchestrator, new RegExp(artifactScope));

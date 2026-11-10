@@ -1,3 +1,5 @@
+import { brandCommand, brandId, ENV_AGENTS_CHILD, readableBrandIds } from "../lib/brand.ts";
+import { registerContextCommand } from "../lib/context-breakdown.ts";
 import { sharedCooldown, syncUsageCooldown } from "../lib/model-fallback-policy.ts";
 import { CustomEditor, keyHint, type ExtensionAPI, type ExtensionContext, type KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { isHomeOrBroadUserDirectory } from "../lib/bounded-writer-admission.ts";
@@ -19,7 +21,7 @@ import { buildShellHeaderModel, renderShellBar, renderShellBelowInputFloat, rend
 import { CHANGE_STATUS, DIFF_MAX_BYTES, DIFF_MAX_LINES, DIFF_TOO_LARGE, WorktreeChangesTracker, changesDigest, renderChangesWidget, type ChangedFile, type ChangesModel, type FileRevision, type GitRunner, type LineCounter, type WorktreeChanges } from "../lib/shell-changes.ts";
 import { WorktreeChangesView } from "../lib/shell-changes-view.ts";
 import { createNativeFullscreenInteraction } from "../lib/native-fullscreen-interaction.ts";
-import { windowsProcessTreeKiller, type ProcessTreeKiller } from "../lib/native-review-cli.ts";
+import { windowsProcessTreeKiller, type ProcessTreeKiller } from "../lib/process-tree.ts";
 import { SessionWorktreeRegistry, resolveSessionWorktree, worktreeGitEnvironment, type WorktreeResolver, type WorktreeIdentity } from "../lib/session-worktree-registry.ts";
 import { CARD_STYLE, CARD_TONE, cardStyle, panelHeaderRow, renderCard, setCardStyle, type Card, type CardTheme } from "../lib/shell-card.ts";
 import { resolveCardStyle, writeCardStyle } from "../lib/card-style-policy.ts";
@@ -28,17 +30,15 @@ import { CommandPalette, commandsKey, type CommandPaletteResult } from "../lib/c
 import { buildCommandPaletteGroups } from "../lib/command-palette-catalog.ts";
 import { buildKeymapRows } from "../lib/keymaps-customize.ts";
 import { discoverYoloUiAdapter, MODE_STATUS_KEY, YOLO_DISPLAY, YOLO_STATUS_KEY, type YoloDisplay, type YoloUiAdapter } from "../lib/yolo-session-policy.ts";
-import { discoverRddModeControl, type RddModeControl } from "../lib/rdd-mode-control.ts";
-import { NATIVE_REVIEW_MODE_SOURCE } from "../lib/native-review-cli.ts";
 import { VisualCustomizeView, type CustomizeCategory, type CustomizeRow, type ProfileActions } from "../lib/visual-customize-view.ts";
 import { deleteVisualProfile, getVisualProfile, listVisualProfiles, resetVisualProfiles, saveVisualProfile } from "../lib/visual-profiles.ts";
+import { LEGACY_DEFAULT_THEME, TOMIDEV_THEME, migrateDefaultTheme } from "../lib/theme-migration.ts";
 import { gaugePaintFor } from "../lib/gauge-theme.ts";
 import type { GaugePaint } from "../lib/shell-gauge.ts";
 import { sourcePalettePreview } from "../lib/theme-customization.ts";
 import { applyVisualPreset, CHROME_SURFACE, DEFAULT_VISUAL_SETTINGS, DENSITY, HEADER_PLACEMENT, STATUS_PLACEMENT, VISUAL_PRESET, VISUAL_SECTION_KEYS, resolveVisualSettings, visualPresetOf, writeVisualSettings, type VisualPreset } from "../lib/visual-customization-policy.ts";
 import { BANNER_COLORS, DEFAULT_BANNER_CONFIG, readBannerConfig, readBannerConfigForEdit, writeBannerConfig } from "./startup-banner.ts";
 import { commandKeymapId, commandKeymapIds, effectiveKey, keymapCommand, keymapLabel, keymapSavedNotice, loadKeymaps, prepareKeymapChange, writeKeymaps, type KeymapBindings, type PiKeybindings } from "../lib/keymaps.ts";
-import { GentleAiDevBinaryOverrideError, resolveGentleAiDevBinaryOverride } from "../lib/gentle-ai-binary.ts";
 import { DOUBLE_ESC_CANCEL_HINT, floatPromptRow, framePromptLines, panelPromptRow, resolvePromptLayout, IDLE_ESC_CLEAR_HINT, PANEL_BUTTON, PROMPT_HINT, PROMPT_STATE, SHELL_PULSE_WATCHDOG_MS, withPromptHint, type PromptState } from "../lib/shell-prompt.ts";
 import { stripAnsi } from "../lib/terminal-theme.ts";
 import { oddPhaseRegistry } from "../lib/odd-phase.ts";
@@ -138,7 +138,6 @@ import { installPagePaint, type PageTheme } from "../lib/shell-page.ts";
 import { layoutSchematic } from "../lib/visual-layout-preview.ts";
 import { collectSessionStats, type SessionStats } from "../lib/shell-stats.ts";
 import { sessionChangeRoots } from "../lib/session-changes.ts";
-import { REVIEW_SIDEBAR_EVENT, isReviewSidebarSnapshot, type ReviewSidebarSnapshot } from "../lib/review-sidebar-state.ts";
 import { JOBS_SIDEBAR_EVENT, JOBS_STATUS_KEY, isJobsSidebarSnapshot, jobsCollapseKey, type RunningJobDisplay } from "../lib/jobs-sidebar-state.ts";
 import { JOBS_FINISHED_TTL_MS, renderJobsSection } from "../lib/jobs-widget.ts";
 import { todoCollapseKey } from "../lib/shell-todo.ts";
@@ -275,13 +274,7 @@ export function createActiveProfileReader(env: NodeJS.ProcessEnv = process.env):
 }
 
 function ambientDevBinary(): DevBinaryNotice | undefined {
-	try {
-		const override = resolveGentleAiDevBinaryOverride();
-		return override ? { state: "active", path: override.path, sha256: override.sha256 } : undefined;
-	} catch (error) {
-		if (error instanceof GentleAiDevBinaryOverrideError) return { state: "invalid", reason: error.message };
-		return undefined;
-	}
+	return undefined;
 }
 
 const defaultShellDeps: Omit<ShellDeps, "activeProfile"> = { fetch: (input, init) => globalThis.fetch(input, init), now: () => Date.now(), devBinary: ambientDevBinary, resolveWorktree: resolveSessionWorktree, gitRunner: (cwd, maxBuffer) => shellGitRunner(cwd, process.env, execFile, maxBuffer), rootExists: (root) => existsSync(join(root, ".git")) };
@@ -396,7 +389,7 @@ export interface FooterStatusMemoDeps {
 	profile: () => string | undefined;
 	profileTier?: () => ShellBarModel["profileTier"];
 	jobs: () => RunningJobDisplay[] | undefined;
-	review: () => ReviewSidebarSnapshot | undefined;
+	review?: () => unknown;
 	tracker: () => Pick<WorktreeChangesTracker, "model" | "unbornRoots">;
 	visualSettings: () => unknown;
 	cardStyle: () => unknown;
@@ -435,7 +428,7 @@ export function createFooterStatusMemo(deps: FooterStatusMemoDeps): { key(): str
 			[...footerData.getExtensionStatuses()].sort(([a], [b]) => a.localeCompare(b)),
 			deps.usage(),
 			deps.jobs(),
-			deps.review(),
+			deps.review?.(),
 			(() => {
 				const { model: changes, unbornRoots } = deps.tracker();
 				return { fingerprint: changesFingerprint(changes), files: changes.files.length, added: changes.added, deleted: changes.deleted, unbornRoots: unbornRoots.length };
@@ -451,7 +444,6 @@ export function createFooterStatusMemo(deps: FooterStatusMemoDeps): { key(): str
 		const built: ShellBarModel = {
 			...buildShellBarModel(pi, ctx, footerData, { dirty: tracker.model.files.length, usage: deps.usage(), profile: deps.profile(), profileTier: deps.profileTier?.(), jobs: deps.jobs() }),
 			changes: { files: tracker.model.files.length, added: tracker.model.added, deleted: tracker.model.deleted },
-			review: deps.review(),
 		};
 		cache = { key: k, model: built };
 		return built;
@@ -528,7 +520,7 @@ interface PromptEditorDeps {
 	topRows?: (width: number, hovered?: number) => string[];
 	/** A left click on one of the top rows (index into topRows). */
 	onTopRowClick?: (index: number) => void;
-	/** Open the same sheet as /gentle:panel. */
+	/** Open the same sheet as /td:panel. */
 	onPanelClick?: () => void;
 }
 
@@ -744,7 +736,7 @@ export class GentlePromptEditor extends CustomEditor {
 				this.vimRejected = true;
 				if (!this.compatibilityNotified) {
 					this.compatibilityNotified = true;
-					this.deps.notifyCompatibility?.("Gentle Vim unsupported by this Pi editor layout/version; ordinary editing remains active.");
+					this.deps.notifyCompatibility?.("Tomidev Vim unsupported by this Pi editor layout/version; ordinary editing remains active.");
 				}
 				policy = "off";
 			}
@@ -794,7 +786,7 @@ export class GentlePromptEditor extends CustomEditor {
 				try { this.setVimPolicy("off"); this.vimRejected = true; } finally { this.disablingUnsupportedVim = false; }
 				if (!this.compatibilityNotified) {
 					this.compatibilityNotified = true;
-					this.deps.notifyCompatibility?.("Gentle Vim unsupported by this Pi editor layout/version; ordinary editing remains active.");
+					this.deps.notifyCompatibility?.("Tomidev Vim unsupported by this Pi editor layout/version; ordinary editing remains active.");
 				}
 			}
 			throw error;
@@ -1551,7 +1543,7 @@ export function imageAttachmentsWidget(
 }
 
 // Stable across extension module reloads; never infer ownership from a name.
-const PROMPT_OWNER = Symbol.for("gentle-pi.prompt-owner");
+const PROMPT_OWNER = Symbol.for("tomidev.prompt-owner");
 type PromptFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>> & { [PROMPT_OWNER]?: boolean };
 
 function installPrompt(
@@ -1596,14 +1588,14 @@ function installPrompt(
 	return true;
 }
 
-const DOUBLE_ESC_CANCEL_COMMAND_NAME = "gentle:double-esc-cancel";
+const DOUBLE_ESC_CANCEL_COMMAND_NAME = brandCommand("double-esc-cancel");
 
 function describeDoubleEscCancelSource(resolution: DoubleEscCancelResolution): string {
 	switch (resolution.source) {
 		case "global_file":
 			return `global file ${resolution.globalFile}`;
 		case "environment":
-			return "GENTLE_PI_DOUBLE_ESC_CANCEL";
+			return "TOMIDEV_DOUBLE_ESC_CANCEL";
 		default:
 			return "built-in default";
 	}
@@ -1627,21 +1619,21 @@ function renderDoubleEscCancelReport(
 	if (resolution.envValue !== undefined && resolution.source !== "environment") {
 		lines.push(
 			resolution.envValue === "on" || resolution.envValue === "off"
-				? `GENTLE_PI_DOUBLE_ESC_CANCEL=${resolution.envValue} is set, but the global file exists and decides; the env var applies only when no file exists.`
-				: `GENTLE_PI_DOUBLE_ESC_CANCEL="${resolution.envValue}" is not a recognized value ("on" or "off"), so it is ignored.`,
+				? `TOMIDEV_DOUBLE_ESC_CANCEL=${resolution.envValue} is set, but the global file exists and decides; the env var applies only when no file exists.`
+				: `TOMIDEV_DOUBLE_ESC_CANCEL="${resolution.envValue}" is not a recognized value ("on" or "off"), so it is ignored.`,
 		);
 	}
-	lines.push("Resolution order (first hit wins): global file, GENTLE_PI_DOUBLE_ESC_CANCEL, built-in default off.");
+	lines.push("Resolution order (first hit wins): global file, TOMIDEV_DOUBLE_ESC_CANCEL, built-in default off.");
 	return { message: lines.join("\n"), type: resolution.malformed ? "warning" : "info" };
 }
 
 const CHANGES_WIDGET_KEY = "gentle-shell-changes";
 const HEADER_WIDGET_KEY = "gentle-shell-below-input-header";
-const CHANGES_COMMAND_NAME = "gentle:changes";
-const IMAGES_COMMAND_NAME = "gentle:images";
+const CHANGES_COMMAND_NAME = brandCommand("changes");
+const IMAGES_COMMAND_NAME = brandCommand("images");
 const CHANGES_POLL_DEFAULT_MS = 2000;
 const GIT_TIMEOUT_MS = 5000;
-const COMMANDS_COMMAND_NAME = "gentle:commands";
+const COMMANDS_COMMAND_NAME = brandCommand("commands");
 
 // If taskkill cannot run (AppLocker, a broken PATH) the direct child can exit
 // while a descendant still holds the inherited pipes, which keeps execFile from
@@ -1757,14 +1749,14 @@ function positiveMs(value: string | undefined, fallback: number): number {
 }
 
 function changesPollMs(env: NodeJS.ProcessEnv): number {
-	return positiveMs(env.GENTLE_PI_SHELL_CHANGES_POLL_MS, CHANGES_POLL_DEFAULT_MS);
+	return positiveMs(env.TOMIDEV_SHELL_CHANGES_POLL_MS, CHANGES_POLL_DEFAULT_MS);
 }
 
 // One bounded window per provider refresh: a credential lookup or fetch that
 // never answers must not hold the other providers — or the panel opening on
 // them — past it. Tunable (tests, slow networks); invalid values fall back.
 const USAGE_FETCH_TIMEOUT_DEFAULT_MS = 10_000;
-const usageFetchTimeoutMs = (env: NodeJS.ProcessEnv): number => positiveMs(env.GENTLE_PI_SHELL_USAGE_TIMEOUT_MS, USAGE_FETCH_TIMEOUT_DEFAULT_MS);
+const usageFetchTimeoutMs = (env: NodeJS.ProcessEnv): number => positiveMs(env.TOMIDEV_SHELL_USAGE_TIMEOUT_MS, USAGE_FETCH_TIMEOUT_DEFAULT_MS);
 
 // The footer memo reads this every keystroke: tracker models store the
 // digest once per scan (lib/shell-changes.ts), so this is O(1); hand-built
@@ -1860,7 +1852,7 @@ function paletteCommandsForKeymaps(pi: ExtensionAPI): { command: string; label: 
 	}
 }
 
-/** Tab in the palette: assign the captured key to the command, through the same checks as /gentle:customize. */
+/** Tab in the palette: assign the captured key to the command, through the same checks as /td:customize. */
 async function bindFromPalette(ctx: ExtensionContext, env: NodeJS.ProcessEnv, command: string, data: string, keybindings: PiKeybindings | undefined): Promise<void> {
 	const id = commandKeymapId(command);
 	const file = loadKeymaps(env);
@@ -1907,8 +1899,8 @@ function showChanges(ctx: ExtensionContext, model: ChangesModel, visible = true,
 	);
 }
 
-const USAGE_COMMAND_NAME = "gentle:usage";
-const PANEL_COMMAND_NAME = "gentle:panel";
+const USAGE_COMMAND_NAME = brandCommand("usage");
+const PANEL_COMMAND_NAME = brandCommand("panel");
 /** Rows the panel sheet leaves free at the bottom: work row, editor rule, input, closing row, status bar and a spare. */
 const SHEET_RESERVED_ROWS = 6;
 const PRESET_LABEL: Record<VisualPreset, string> = { [VISUAL_PRESET.LIGHT]: "Light", [VISUAL_PRESET.NEUTRAL]: "Neutral", [VISUAL_PRESET.POWER_USER]: "Power user" };
@@ -1917,7 +1909,7 @@ const PRESET_CYCLE: readonly VisualPreset[] = [VISUAL_PRESET.LIGHT, VISUAL_PRESE
 export function nextVisualPreset(current: VisualPreset | undefined): VisualPreset {
 	return current === undefined ? VISUAL_PRESET.NEUTRAL : PRESET_CYCLE[(PRESET_CYCLE.indexOf(current) + 1) % PRESET_CYCLE.length]!;
 }
-const REVIEW_PREFLIGHT_TYPE = "gentle-pi.review-preflight";
+const REVIEW_PREFLIGHT_TYPE = brandId("review-preflight");
 const DEV_BINARY_WIDGET_KEY = "gentle-shell-dev-binary";
 const SHA_PREFIX_LENGTH = 16;
 
@@ -1978,7 +1970,7 @@ export async function fetchCodexUsage(token: string | undefined, fetchFn: typeof
 	if (!accountId) return undefined;
 	try {
 		const response = await fetchFn(CODEX_USAGE_URL, {
-			headers: { Authorization: `Bearer ${token}`, "chatgpt-account-id": accountId, originator: "pi", "User-Agent": "gentle-pi" },
+			headers: { Authorization: `Bearer ${token}`, "chatgpt-account-id": accountId, originator: "pi", "User-Agent": "tomidev" },
 		});
 		if (!response.ok) return undefined;
 		return parseCodexUsage(await response.json(), now);
@@ -1997,7 +1989,7 @@ export async function fetchNanUsage(apiKey: string | undefined, fetchFn: typeof 
 		const response = await fetchFn(NAN_QUOTA_URL, {
 			redirect: "error",
 			cache: "no-store",
-			headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json", "User-Agent": "gentle-pi" },
+			headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json", "User-Agent": "tomidev" },
 		});
 		if (!response.ok) return undefined;
 		const parsed = parseNanQuota(await response.json(), now);
@@ -2038,7 +2030,7 @@ export async function backgroundChangeRefreshesSettled(timeoutMs = 2000): Promis
 
 export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env, overrides: Partial<ShellDeps> = {}): void {
 	installSessionChangeCapture(pi, env, overrides.resolveWorktree ?? resolveSessionWorktree);
-	// Replaced before persistence, so the footer, /gentle:stats and the session file
+	// Replaced before persistence, so the footer, /td:stats and the session file
 	// all carry the API-equivalent cost of claude-bridge turns instead of $0. It runs
 	// in subagent children too: the parent sums their message_end cost over RPC.
 	pi.on("message_end", (event, ctx) => {
@@ -2046,6 +2038,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		return priced ? { message: priced } : undefined;
 	});
 	if (!shellEnabled(env)) return;
+	if (env[ENV_AGENTS_CHILD] !== "1") registerContextCommand(pi);
 	// Pi reads shortcuts once (startup and /reload), so the saved keymaps are read once too.
 	const keymaps = loadKeymaps(env);
 	let keymapsReported = false;
@@ -2251,12 +2244,14 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		renderHost?.invalidateSidebar?.();
 		renderHost?.requestRender();
 	});
-	pi.registerMessageRenderer(REVIEW_PREFLIGHT_TYPE, (message, options, theme) => {
-		const lines = messageText(message.content as string | Array<{ type: string; text?: string }>).split("\n");
-		const body = options.expanded ? lines : lines.filter((line) => line.trim() !== "");
-		const hint = keyHint("app.tools.expand", options.expanded ? "collapse" : "expand");
-		return cardComponent({ title: "Gentle AI", subtitle: "review preflight", body, tone: CARD_TONE.INFO }, theme, { expanded: options.expanded, previewRows: 3, hint });
-	});
+	for (const type of [REVIEW_PREFLIGHT_TYPE, "gentle-pi.review-preflight"]) {
+		pi.registerMessageRenderer(type, (message, options, theme) => {
+			const lines = messageText(message.content as string | Array<{ type: string; text?: string }>).split("\n");
+			const body = options.expanded ? lines : lines.filter((line) => line.trim() !== "");
+			const hint = keyHint("app.tools.expand", options.expanded ? "collapse" : "expand");
+			return cardComponent({ title: "Gentle AI", subtitle: "review preflight", body, tone: CARD_TONE.INFO }, theme, { expanded: options.expanded, previewRows: 3, hint });
+		});
+	}
 	// The attached narrow fullscreen layout owns the mobile editor and work row
 	// for every header placement. Wide split uses the IDE chrome beside the rail;
 	// wide top and below-input keep their existing chrome-bar paths.
@@ -2292,7 +2287,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 	};
 	const workSummaries = (tui: TUI) => workParts(tui).map((work) => work.summary);
 	// A tap on the work row opens the leading section's own view (an agent opens
-	// /gentle:agents); a section without one, such as Todos, opens the panel sheet.
+	// /td:agents); a section without one, such as Todos, opens the panel sheet.
 	const openWorkRow = (tui: TUI, ctx: ExtensionContext) => {
 		const parts = workParts(tui);
 		const lead = parts[workRowLead(parts.map((work) => work.summary))];
@@ -2312,7 +2307,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		const cardHidden = Boolean(state.active && state.ownsHost?.()) || Boolean(state.compactWork?.());
 		return [...(row ? [row] : []), ...(cardHidden ? (state.parts.get("agents")?.alert?.(width) ?? []) : [])];
 	};
-	// The rail's sections as a full-width sheet: /gentle:panel, or a tap on the mobile work row.
+	// The rail's sections as a full-width sheet: /td:panel, or a tap on the mobile work row.
 	// The sheet leaves the editor's [ Panel ] clickable, so an open sheet is reused
 	// instead of stacking another overlay per click.
 	let openSheet: Promise<null | undefined> | undefined;
@@ -2411,9 +2406,9 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 	// Images pasted into the current draft; emptied on every submit.
 	const imageAttachments = new ImageAttachments();
 	// Opt-in disk cache for tools that need a real file path. Off unless the user
-	// asks for it: `GENTLE_PI_IMAGES_DISK_CACHE=session`. The path is never put in
-	// the prompt; it is readable through /gentle:images only.
-	const imagesDiskCachePolicy = (env.GENTLE_PI_IMAGES_DISK_CACHE ?? "off").trim().toLowerCase() === "session" ? "session" : "off";
+	// asks for it: `TOMIDEV_IMAGES_DISK_CACHE=session`. The path is never put in
+	// the prompt; it is readable through /td:images only.
+	const imagesDiskCachePolicy = (env.TOMIDEV_IMAGES_DISK_CACHE ?? "off").trim().toLowerCase() === "session" ? "session" : "off";
 	// Set by abortAndDispatchQueued via dispatchQueuedText when an Esc aborts
 	// a turn with a non-empty queue; sent exactly once, from agent_settled,
 	// once the aborted run has fully settled (issue #1218). Several aborts
@@ -2422,12 +2417,32 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 	// is dropped on session_shutdown.
 	let pendingQueuedText: string | undefined;
 	// Resolved once at startup and cached in memory so the editor never
-	// re-reads the file per keypress. The /gentle:double-esc-cancel command
+	// re-reads the file per keypress. The /td:double-esc-cancel command
 	// below is the only place that touches the file, and every invocation
 	// re-syncs this cache from disk first, so status, the no-argument toggle
 	// direction, and the Esc gate always describe the same effective policy
 	// even when another session or a hand edit changed the file mid-session.
 	const doubleEscCancelConfigHome = gentlePiConfigHome(env);
+	// One-time move from the old Gentleman-Cute default to tomidev (lib/theme-migration.ts).
+	pi.on("session_start", (_event, ctx) => {
+		if (!ctx.hasUI || env[ENV_AGENTS_CHILD] === "1") return;
+		if (typeof ctx.ui.getTheme !== "function" || typeof ctx.ui.setTheme !== "function") return;
+		try {
+			const result = migrateDefaultTheme({
+				configHome: doubleEscCancelConfigHome,
+				ui: {
+					activeTheme: () => ctx.ui.theme?.name,
+					hasTheme: (name) => ctx.ui.getTheme(name) !== undefined,
+					setTheme: (name) => ctx.ui.setTheme(name),
+				},
+			});
+			if (result.status === "migrated" && (result.switchedActive || result.profilesMigrated > 0)) {
+				ctx.ui.notify(`Theme moved from ${LEGACY_DEFAULT_THEME} to ${TOMIDEV_THEME} (one-time); pick any theme in /td:customize.`, "info");
+			}
+		} catch {
+			// A migration that cannot run must never block the session.
+		}
+	});
 	const animationOptions = { gentlePiConfigHome: doubleEscCancelConfigHome };
 	let animationPolicy = resolveAnimationPolicy(animationOptions).policy;
 	let vimPolicy = resolveVimPolicy(animationOptions).policy;
@@ -2467,20 +2482,12 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 	let registry: SessionWorktreeRegistry | undefined;
 	let currentContext: ExtensionContext | undefined;
 	let disposeFooter: (() => void) | undefined;
-	let review: ReviewSidebarSnapshot | undefined;
 	let runningJobs: RunningJobDisplay[] | undefined;
 	let jobsCollapsed = false;
 	const redrawReview = () => {
 		renderHost?.invalidateSidebar?.();
 		renderHost?.requestRender();
 	};
-	const unsubscribeReview = pi.events.on(REVIEW_SIDEBAR_EVENT, (value) => {
-		const event = value as { sessionId?: unknown; snapshot?: unknown } | undefined;
-		if (!currentContext || event?.sessionId !== currentContext.sessionManager.getSessionId()) return;
-		if (!isReviewSidebarSnapshot(event.snapshot)) return;
-		review = { state: event.snapshot.state, scope: event.snapshot.scope };
-		redrawReview();
-	});
 	const unsubscribeJobs = pi.events.on(JOBS_SIDEBAR_EVENT, (value) => {
 		const event = value as { sessionId?: unknown; snapshot?: unknown } | undefined;
 		if (!currentContext || event?.sessionId !== currentContext.sessionManager.getSessionId()) return;
@@ -2489,7 +2496,6 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		redrawReview();
 	});
 	pi.on("session_tree", () => {
-		review = undefined;
 		redrawReview();
 	});
 	let shown = "";
@@ -2520,7 +2526,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		name: "session_worktree_register",
 		renderShell: "self",
 		label: "Register session worktree",
-		description: "Register a worktree in the same Git clone for session coordination. /gentle:changes then also lists that worktree's uncommitted Git changes.",
+		description: "Register a worktree in the same Git clone for session coordination. /td:changes then also lists that worktree's uncommitted Git changes.",
 		parameters: { type: "object", required: ["path"], additionalProperties: false, properties: { path: { type: "string", description: "Worktree path to include in this session." } } } as never,
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			if (!registry || registry.sessionId !== ctx.sessionManager.getSessionId()) throw new Error("No active session worktree registry.");
@@ -2546,10 +2552,6 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		// A restored or default session never emits model_select, so the startup model
 		// announces itself here when it manages its own depth.
 		announceAdaptiveReasoning(ctx, ctx.model);
-		if (review) {
-			review = undefined;
-			redrawReview();
-		}
 		stopProfilePoll();
 		registry?.close();
 		currentContext = ctx;
@@ -2594,7 +2596,6 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 				// The compact bar and header derive ⧗ N jobs from model.jobs.length,
 				// so this input is running-only: the snapshot carries the finished tail.
 				jobs: () => runningJobs?.filter((job) => job.status === undefined),
-				review: () => review,
 				tracker: () => tracker,
 				visualSettings: () => visualSettings,
 				cardStyle: () => cardStyle(),
@@ -2633,7 +2634,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 			// key, and the bars carry the usage key.
 			const railHints = undefined;
 			// Status sections are clickable like the other rail sections: a header
-			// folds its section, the Changes row opens /gentle:changes.
+			// folds its section, the Changes row opens /td:changes.
 			const statusCollapsed = new Set<StatusSection>();
 			let statusHover: StatusSection | "open-changes" | undefined;
 			// Keyed by width: the rail and the full-width panel sheet render the same part.
@@ -2980,13 +2981,8 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		imageAttachments.dispose();
 		imageAttachments.setCache(undefined);
 		closeCustomize?.();
-		if (review) {
-			review = undefined;
-			redrawReview();
-		}
 		// Pi rebuilds the extension runtime after every shutdown (reload, replacement,
 		// fork, quit), so the factory-level subscription never needs to be restored.
-		unsubscribeReview();
 		unsubscribeJobs();
 		runningJobs = undefined;
 		stopProfilePoll();
@@ -3029,10 +3025,10 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 		await showChangesOverlay(ctx, { loadDiff: (root, file) => loadFileDiff(deps.gitRunner(root, DIFF_MAX_BYTES), file), worktrees: () => tracker.worktrees, refresh: () => tracker.refresh(), apply: applyChanges, pollMs: changesPollMs(env) });
 	};
 	pi.registerCommand(IMAGES_COMMAND_NAME, {
-		description: "List the on-disk paths of images pasted in this draft (needs GENTLE_PI_IMAGES_DISK_CACHE=session).",
+		description: "List the on-disk paths of images pasted in this draft (needs TOMIDEV_IMAGES_DISK_CACHE=session).",
 		handler: async (_args, ctx) => {
 			if (imagesDiskCachePolicy !== "session") {
-				ctx.ui.notify("Image disk cache is off. Set GENTLE_PI_IMAGES_DISK_CACHE=session to enable it.", "info");
+				ctx.ui.notify("Image disk cache is off. Set TOMIDEV_IMAGES_DISK_CACHE=session to enable it.", "info");
 				return;
 			}
 			const cached = imageAttachments.cachedPaths(prompt?.getText() ?? "");
@@ -3110,8 +3106,8 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 			},
 		});
 	}
-	pi.registerCommand("gentle:customize", {
-		description: "Configure appearance, task summary publishing, audio notifications, Vim editing, RDD, session permissions and global Auto/YOLO defaults, and prompt history capture.",
+	pi.registerCommand(brandCommand("customize"), {
+		description: "Configure appearance, task summary publishing, audio notifications, Vim editing, session permissions and global Auto/YOLO defaults, and prompt history capture.",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui" || !ctx.hasUI) {
 				if (ctx.hasUI) ctx.ui.notify("Customization requires an interactive terminal.", "warning");
@@ -3119,18 +3115,6 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 			}
 			closeCustomize?.();
 			const generation = ++customizeGeneration;
-			// The owner also checks its lifecycle; this binds this particular card
-			// to its caller before discovery and again before handing off the UI.
-			const currentRddSession = (() => {
-				try {
-					const manager = ctx.sessionManager, id = manager.getSessionId(), cwd = ctx.cwd, ui = ctx.ui;
-					if (env.GENTLE_PI_AGENTS_CHILD === "1" || !id || !cwd || (manager.getCwd?.() ?? cwd) !== cwd) return () => false;
-					return () => {
-						try { return customizeGeneration === generation && ctx.mode === "tui" && ctx.hasUI && ctx.ui === ui && ctx.cwd === cwd && ctx.sessionManager === manager && manager.getSessionId() === id && (manager.getCwd?.() ?? cwd) === cwd; }
-						catch { return false; }
-					};
-				} catch { return () => false; }
-			})();
 			let closed = false;
 			let adapter: YoloUiAdapter | undefined;
 			let unobserve: (() => void) | undefined;
@@ -3165,16 +3149,16 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 					animationPolicy = resolveAnimationPolicy(animationOptions).policy;
 					prompt?.setAnimationPolicy(animationPolicy);
 				},
-				() => ({ title: `${policy} · static animation sample`, sample: policy === "potato" ? "✿  idle → working (no pulse)" : policy === "performance" ? "✿  short pulse → settle (static)" : "✿  gentle wave → settle (static)" }),
+				() => ({ title: `${policy} · static animation sample`, sample: policy === "potato" ? "🐶  idle → working (no pulse)" : policy === "performance" ? "🐶  short pulse → settle (static)" : "🐶  gentle wave → settle (static)" }),
 				{ setting: "Animations", value: policy, current: () => resolveAnimationPolicy(animationOptions).policy === policy, hint: "Prompt and startup motion; potato turns it off" },
 			);
 			category = "Banner";
-			const bannerColors = { pink: [255, 118, 195], cyan: [95, 210, 255], yellow: [255, 210, 95], green: [110, 220, 145] } as const;
+			const bannerColors = { pink: [255, 121, 198], cyan: [120, 209, 225], yellow: [231, 222, 121], green: [103, 228, 128] } as const;
 			const bannerPreview = (next: typeof banner) => {
 				const [r, g, b] = bannerColors[next.color];
-				return { title: `Banner · ${next.color} (static)`, sample: `${next.showRose ? `\x1b[38;2;${r};${g};${b}m🌹\x1b[0m` : "·"}  ${next.showTextLogo ? "GENTLE SHELL" : "(logo hidden)"}` };
+				return { title: `Banner · ${next.color} (static)`, sample: `${next.showRose ? `\x1b[38;2;${r};${g};${b}m🐶\x1b[0m` : "·"}  ${next.showTextLogo ? "TOMIDEV SHELL" : "(logo hidden)"}` };
 			};
-			for (const [setting, key] of [["Banner rose", "showRose"], ["Banner text logo", "showTextLogo"]] as const) {
+			for (const [setting, key] of [["Banner dog", "showRose"], ["Banner text logo", "showTextLogo"]] as const) {
 				for (const enabled of [true, false]) add(
 					() => `${setting}: ${enabled ? "on" : "off"}${banner[key] === enabled ? " (current)" : ""}`,
 					"Banner saved; applies at next startup.",
@@ -3256,40 +3240,6 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 					reportVim(ctx, result);
 				},
 			});
-			let rddControl: RddModeControl | undefined;
-			let rddSnapshot: Awaited<ReturnType<RddModeControl["read"]>>;
-			let rddLoading = true;
-			let rddHandoff: RddModeControl | undefined;
-			// Never block the rest of Customize on an unavailable or slow provider.
-			// Rendering only consumes the snapshot, which is refreshed on each open.
-			const refreshRdd = async () => {
-				let control: RddModeControl | undefined;
-				let snapshot: Awaited<ReturnType<RddModeControl["read"]>>;
-				try {
-					control = currentRddSession() ? await discoverRddModeControl(pi) : undefined;
-					snapshot = !closed && currentRddSession() ? await control?.read() : undefined;
-				} catch { /* An incompatible or failing bridge is unavailable. */ }
-				if (closed) return;
-				rddSnapshot = currentRddSession() && snapshot && (snapshot.effective === "on" || snapshot.effective === "off") && Object.values(NATIVE_REVIEW_MODE_SOURCE).includes(snapshot.source) ? snapshot : undefined;
-				rddControl = rddSnapshot ? control : undefined;
-				rddLoading = false;
-				requestCustomizeRender?.();
-			};
-			rows.push({
-				category,
-				label: () => rddSnapshot ? `RDD: ${rddSnapshot.effective} (decided by ${rddSnapshot.source}) · checked on open` : `RDD: ${rddLoading ? "checking" : "unavailable"}`,
-				preview: () => ({ title: "RDD selector", sample: "Enter for fresh status and repository or explicitly machine-wide choices; review consent unchanged." }),
-				action: () => {
-					if (closed || !currentRddSession()) return;
-					if (!rddControl || !rddSnapshot) {
-						ctx.ui.notify(rddLoading ? "RDD status is still being checked." : "RDD is unavailable in this live primary session.", "warning");
-						return;
-					}
-					// The owner's native selector must not sit underneath our overlay.
-					rddHandoff = rddControl;
-					close();
-				},
-			});
 			let yoloDisplay: YoloDisplay = YOLO_DISPLAY.unavailable;
 			let permissionDisplay = "normal", permissionDefault = "normal";
 			let requestYoloRender = () => {};
@@ -3361,7 +3311,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 			});
 			category = "History";
 			// The prompt-history extension re-reads this preference per prompt, so a
-			// change applies without restart. An explicit GENTLE_PI_HISTORY_CAPTURE
+			// change applies without restart. An explicit TOMIDEV_HISTORY_CAPTURE
 			// value wins; the rows say so instead of silently ignoring the choice.
 			const historyCapture = () => resolveHistoryCapture({ env, gentlePiConfigHome: doubleEscCancelConfigHome });
 			for (const [label, policy] of [["enable", "on"], ["disable", "off"]] as const) rows.push({
@@ -3374,14 +3324,14 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 				preview: () => {
 					const result = historyCapture();
 					const effective = result.enabled ? "on" : "off";
-					return { title: "Prompt history capture · Customize preference", sample: `preference: ${result.preference} · effective: ${effective}${result.malformed ? " · malformed or unreadable file" : ""}${result.envOverride ? " · GENTLE_PI_HISTORY_CAPTURE overrides this preference" : ""}` };
+					return { title: "Prompt history capture · Customize preference", sample: `preference: ${result.preference} · effective: ${effective}${result.malformed ? " · malformed or unreadable file" : ""}${result.envOverride ? " · TOMIDEV_HISTORY_CAPTURE overrides this preference" : ""}` };
 				},
 				action: () => {
 					const current = historyCapture();
 					if (current.malformed) throw new Error(`Cannot update malformed or unreadable history capture preference: ${current.globalFile}`);
 					writeHistoryCapturePolicy(policy, { gentlePiConfigHome: doubleEscCancelConfigHome });
 					const result = historyCapture();
-					if (result.envOverride) ctx.ui.notify(`Prompt history capture preference saved: ${result.preference}. GENTLE_PI_HISTORY_CAPTURE=${result.envOverride} overrides it; capture stays ${result.envOverride}.`, "warning");
+					if (result.envOverride) ctx.ui.notify(`Prompt history capture preference saved: ${result.preference}. TOMIDEV_HISTORY_CAPTURE=${result.envOverride} overrides it; capture stays ${result.envOverride}.`, "warning");
 					else ctx.ui.notify(result.enabled ? "Prompt history capture: on. Applies from the next prompt; stored history is kept." : "Prompt history capture: off. New prompts are not recorded; stored history is kept.", "info");
 				},
 			});
@@ -3566,7 +3516,6 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 					requestCustomizeRender = requestYoloRender;
 					customizeView = new VisualCustomizeView({ rows, profiles, theme, requestRender: requestYoloRender, rowsAvailable: () => Math.max(0, Math.floor(tui.terminal.rows * 0.85) - 2), onError: (error) => { if (!closed) ctx.ui.notify(`${customizeView?.title() ?? "Customization"}: ${error.message}`, "error"); }, onClose: close });
 					const view = customizeView;
-					void refreshRdd();
 					// Own interaction lifetime here, leaving the shared view unchanged.
 					return {
 						render: (width) => closed ? [] : view.render(width),
@@ -3578,21 +3527,20 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 					};
 				}, { overlay: true, overlayOptions: { anchor: "center", width: "70%", minWidth: 60, maxHeight: "85%" } });
 			} finally { close(); }
-			if (rddHandoff && currentRddSession()) await rddHandoff.open();
 			if (reloadRequested) await ctx.reload();
 		},
 	});
-	pi.registerCommand("gentle:vim", {
+	pi.registerCommand(brandCommand("vim"), {
 		description: "Show or set global Vim prompt editing (status|enable|disable); no argument opens a menu.",
 		handler: async (args, ctx) => {
 			let action = args.trim() || "status";
 			if (!args.trim() && ctx.hasUI && typeof ctx.ui.select === "function") {
-				const selected = await ctx.ui.select(`Gentle Vim (current: ${vimPolicy})`, ["enable", "disable", "status"]);
+				const selected = await ctx.ui.select(`Tomidev Vim (current: ${vimPolicy})`, ["enable", "disable", "status"]);
 				if (selected === undefined) return;
 				action = selected;
 			}
 			if (action !== "status" && action !== "enable" && action !== "disable") {
-				ctx.ui.notify("Use /gentle:vim status|enable|disable.", "warning");
+				ctx.ui.notify("Use /td:vim status|enable|disable.", "warning");
 				return;
 			}
 			try {
@@ -3606,7 +3554,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 			}
 		},
 	});
-	pi.registerCommand("gentle:animations", {
+	pi.registerCommand(brandCommand("animations"), {
 		description: "Show or set global animations; no argument opens a selectable menu (quality|performance|potato, plus status).",
 		// No argument opens a selectable menu when an interactive UI is present;
 		// headless callers and fakes without ui.select keep the status fallback.
@@ -3621,7 +3569,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 				action = selected;
 			}
 			if (action !== "status" && action !== "quality" && action !== "performance" && action !== "potato") {
-				ctx.ui.notify("Use /gentle:animations status|quality|performance|potato.", "warning");
+				ctx.ui.notify("Use /td:animations status|quality|performance|potato.", "warning");
 				return;
 			}
 			try {
@@ -3636,7 +3584,7 @@ export default function gentleShell(pi: ExtensionAPI, env: NodeJS.ProcessEnv = p
 			}
 		},
 	});
-	// User-owned, like gentle:background-subagents and gentle:review-mode: the
+	// User-owned, like td:background-subagents and td:review-mode: the
 	// only writer is this handler, reached only by explicit invocation. Unlike
 	// those two, no argument toggles the effective policy instead of merely
 	// reporting it (see odd/tasks/double-esc-cancel.md).

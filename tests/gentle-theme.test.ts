@@ -357,3 +357,42 @@ test("bundled Pi theme maps roles to the subtle OpenCode gentleman theme", () =>
 	assertResolvedThemeColor(theme, "syntaxType", "#8FB8DD");
 	assertResolvedThemeColor(theme, "syntaxPunctuation", "#96A2B0");
 });
+
+test("bundled tomidev Pi theme is available under its exact name and defines all required colors", () => {
+	const theme = readJson<GentleThemeJson>(
+		join(PACKAGE_ROOT, "themes", "tomidev.json"),
+	);
+
+	assert.equal(theme.name, "tomidev");
+	const colors = theme.colors ?? {};
+	assert.deepEqual(
+		REQUIRED_THEME_COLOR_KEYS.filter((key) => !(key in colors)),
+		[],
+	);
+	for (const key of REQUIRED_THEME_COLOR_KEYS) {
+		assert.match(String(resolveThemeColor(theme, key)), /^#[0-9A-Fa-f]{6}$/, `${key} must resolve to a hex color`);
+	}
+});
+
+test("bundled tomidev Pi theme follows the Omni palette (getomni/omni)", () => {
+	const theme = readJson<GentleThemeJson>(
+		join(PACKAGE_ROOT, "themes", "tomidev.json"),
+	);
+	const vars = theme.vars ?? {};
+
+	assert.equal(vars[String(theme.export?.pageBg)], "#191622", "page background is Omni Background");
+	assertResolvedThemeColor(theme, "text", "#E1E1E6");
+	// Use Omni purple for shared UI focus/navigation; keep pink in syntax roles.
+	assertResolvedThemeColor(theme, "accent", "#988BC7");
+	assertResolvedThemeColor(theme, "borderAccent", "#988BC7");
+	assertResolvedThemeColor(theme, "selectedBg", "#41414D");
+	assertResolvedThemeColor(theme, "success", "#67E480");
+	assertResolvedThemeColor(theme, "error", "#E96379");
+	assertResolvedThemeColor(theme, "warning", "#E89E64");
+	assertResolvedThemeColor(theme, "syntaxKeyword", "#FF79C6");
+	assertResolvedThemeColor(theme, "syntaxOperator", "#FF79C6");
+	assertResolvedThemeColor(theme, "syntaxFunction", "#67E480");
+	assertResolvedThemeColor(theme, "syntaxString", "#E7DE79");
+	assertResolvedThemeColor(theme, "syntaxType", "#78D1E1");
+	assertResolvedThemeColor(theme, "syntaxNumber", "#988BC7");
+});

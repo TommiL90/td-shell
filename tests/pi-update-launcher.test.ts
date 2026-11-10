@@ -1,18 +1,26 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { assertNotRealHome, isolatedHome } from './support/isolated-home.ts';
+
+// The one-time copy from ~/.gentle-shell (T6, S6) prints this line on stderr.
+const COPIED_LINE = 'tomidev: copied your Tomidev Shell data from ~/.gentle-shell to ~/.tomidev (the old folder was left untouched).';
 
 const PI = '@earendil-works/pi-coding-agent';
 // A virtual symlink filesystem: listed global links point into a pnpm store.
 // The store's adjacent peer is a sibling, not Shell/node_modules/Pi.
-function launch(args: string[], scenario = 'owned', piVersion = '1.2.0') {
+// Each launch gets its own HOME (and TMPDIR/XDG), so no run can reach the developer's real home (L22). `seed` may
+// prepare that home first; `tomidevCreated` reports whether the launch created ~/.tomidev in it.
+function launch(args: string[], scenario = 'owned', piVersion = '1.2.0', seed?: (home: string) => void) {
  const source = scenario === 'source';
  const adjacent = source || scenario.startsWith('adjacent');
  const npm = source || scenario.startsWith('npm-');
  const nodeModules = '/global/v11/selected/node_modules';
- const shellRoot = '/store/shell-peer/node_modules/gentle-pi';
+ const shellRoot = '/store/shell-peer/node_modules/tomidev';
  const piRoot = adjacent ? '/store/shell-peer/node_modules/' + PI : '/store/pi/node_modules/' + PI;
- const target = adjacent ? 'gentle-pi' : PI;
+ const target = adjacent ? 'tomidev' : PI;
  const dependencies: Record<string, object> = {[target]:{path: `${nodeModules}/${target}`,
   ...(scenario === 'npm-link' ? {link:true} : {}),
   ...(scenario === 'npm-file' || source ? {resolved:'file:/source/pi'} : {})}};
@@ -29,7 +37,7 @@ function launch(args: string[], scenario = 'owned', piVersion = '1.2.0') {
  }
  const roots = [nodeModules, '/global/v11/other/node_modules', shellRoot, piRoot, `${piRoot}/dist/bundle/cli.js`, `${shellRoot}/.git`, `${shellRoot}/package.json`, `${shellRoot}/package-lock.json`];
  const bootstrap = `import { registerHooks } from 'node:module';
- const original = ${JSON.stringify(new URL('../bin/gentle-shell.mjs', import.meta.url).href)};
+ const original = ${JSON.stringify(new URL('../bin/tomidev.mjs', import.meta.url).href)};
  registerHooks({load(url, context, next) {
   if (url === original) {
    let source = next(url, context).source.toString();
@@ -46,7 +54,7 @@ function launch(args: string[], scenario = 'owned', piVersion = '1.2.0') {
  const links = ${JSON.stringify(links)}, roots = ${JSON.stringify(roots)};
  globalThis.fakeAdapters = {
   fs: { realpath: async p => { if (links[p]) return links[p]; if (roots.includes(p)) return p; throw Object.assign(new Error('ENOENT ' + p), {code:'ENOENT'}); },
-   readFile: async p => { if (p === '${shellRoot}/package.json') return JSON.stringify({name:'gentle-pi',version:'4.1.0', ...(${source} ? {packageManager:'npm@11.1.1',devDependencies:{'${PI}':'^1.2.0'}} : {})}); if(p === '${piRoot}/package.json') return JSON.stringify({name:'${PI}',version:'1.2.0',bin:{pi:'dist/bundle/cli.js'}}); if (${source} && p === '${shellRoot}/package-lock.json') return '{}'; throw Object.assign(new Error('ENOENT ' + p), {code:'ENOENT'}); } },
+   readFile: async p => { if (p === '${shellRoot}/package.json') return JSON.stringify({name:'tomidev',version:'4.1.0', ...(${source} ? {packageManager:'npm@11.1.1',devDependencies:{'${PI}':'^1.2.0'}} : {})}); if(p === '${piRoot}/package.json') return JSON.stringify({name:'${PI}',version:'1.2.0',bin:{pi:'dist/bundle/cli.js'}}); if (${source} && p === '${shellRoot}/package-lock.json') return '{}'; throw Object.assign(new Error('ENOENT ' + p), {code:'ENOENT'}); } },
   which: async n => n === '${npm ? 'npm' : 'pnpm'}' ? '/fake/' + n : null,
   run: async (cmd, args, options) => {
    if(args.includes('list') || args.includes('ls')) return {code:0,stdout:${JSON.stringify(listing)}};
@@ -55,13 +63,20 @@ function launch(args: string[], scenario = 'owned', piVersion = '1.2.0') {
   }
  };
  await import(original);`;
- return spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(bootstrap)}`, 'bin/gentle-shell.mjs', ...args], {encoding:'utf8'});
+ const sandbox = isolatedHome(process.env, 'pi-update-launcher-');
+ try {
+  seed?.(sandbox.home);
+  const result = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(bootstrap)}`, 'bin/tomidev.mjs', ...args], {encoding:'utf8', env: assertNotRealHome(sandbox.env)});
+  return Object.assign(result, { tomidevCreated: existsSync(join(sandbox.home, '.tomidev')) });
+ } finally {
+  sandbox.remove();
+ }
 }
 
 for (const scenario of ['owned','adjacent','separate']) test(`public linked-store update succeeds for ${scenario}`, () => {
  const result = launch(['update'], scenario);
  assert.equal(result.status, 0, result.stderr);
- assert.match(result.stdout, scenario === 'adjacent' ? /MUTATION \["add","-g","gentle-pi@4\.1\.0","--allow-build=gentle-pi"\]/ : /MUTATION \["add","-g","@earendil-works\/pi-coding-agent@latest"\]/);
+ assert.match(result.stdout, scenario === 'adjacent' ? /MUTATION \["add","-g","git:github\.com\/TommiL90\/tomidev-shell#v4\.1\.0","--allow-build=tomidev"\]/ : /MUTATION \["add","-g","@earendil-works\/pi-coding-agent@latest"\]/);
  assert.doesNotMatch(result.stdout, /FORWARD/);
  // The fake manager changes nothing, so the readback reports the same version and pnpm's release-age rule.
  assert.match(result.stdout, /the selected Pi is still 1\.2\.0\./);
@@ -73,8 +88,8 @@ for (const all of [false, true]) test(`public source-linked update uses the chec
  const result = launch(all ? ['update', '--all'] : ['update'], 'source');
  assert.equal(result.status, 0, result.stderr);
  assert.equal(result.stderr, '');
- assert.match(result.stdout, /MUTATION \["update","@earendil-works\/pi-coding-agent","--no-save","--ignore-scripts","--global=false","--prefix","\/store\/shell-peer\/node_modules\/gentle-pi","--workspaces=false","--no-audit","--no-fund"\]/);
- assert.match(result.stdout, /CWD \/store\/shell-peer\/node_modules\/gentle-pi/);
+ assert.match(result.stdout, /MUTATION \["update","@earendil-works\/pi-coding-agent","--no-save","--ignore-scripts","--global=false","--prefix","\/store\/shell-peer\/node_modules\/tomidev","--workspaces=false","--no-audit","--no-fund"\]/);
+ assert.match(result.stdout, /CWD \/store\/shell-peer\/node_modules\/tomidev/);
  assert.doesNotMatch(result.stdout, /"-g"|@latest/);
  assert.equal(result.stdout.includes('FORWARD ["update","--extensions"]'), all);
 });
@@ -135,4 +150,29 @@ test('public extensions-only update preserves the forwarded command', () => {
  assert.equal(result.status, 0, result.stderr);
  assert.equal(result.stdout, 'FORWARD ["update","--extensions-only"]\n');
  assert.equal(result.stderr, '');
+});
+
+// An owned legacy home (agent/.gentle-shell-home) is what the one-time copy looks for.
+function seedOwnedLegacyHome(home: string) {
+ mkdirSync(join(home, '.gentle-shell', 'agent'), { recursive: true });
+ writeFileSync(join(home, '.gentle-shell', 'agent', '.gentle-shell-home'), '{"createdBy":"gentle-shell"}\n');
+ writeFileSync(join(home, '.gentle-shell', 'agent', 'auth.json'), '{"fixture":"auth"}\n');
+}
+
+// T7b gate: a plain self update only replaces Pi, so it never copies the old home.
+test('a plain self update never copies the legacy home', () => {
+ const result = launch(['update'], 'owned', '1.2.0', seedOwnedLegacyHome);
+ assert.equal(result.status, 0, result.stderr);
+ assert.match(result.stdout, /MUTATION/);
+ assert.equal(result.stderr, '');
+ assert.equal(result.tomidevCreated, false);
+});
+
+// An update forwarded to Pi writes the home, so the copy runs first.
+test('an update forwarded to Pi copies the legacy home before Pi runs', () => {
+ const result = launch(['update', '--extensions-only'], 'owned', '1.2.0', seedOwnedLegacyHome);
+ assert.equal(result.status, 0, result.stderr);
+ assert.equal(result.stdout, 'FORWARD ["update","--extensions-only"]\n');
+ assert.equal(result.stderr, `${COPIED_LINE}\n`);
+ assert.equal(result.tomidevCreated, true);
 });

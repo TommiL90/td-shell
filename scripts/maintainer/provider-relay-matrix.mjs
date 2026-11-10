@@ -16,6 +16,7 @@ import { delimiter, isAbsolute, resolve } from "node:path";
 import { fauxAssistantMessage, registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { REVIEW_HOST_RELAY_FAILURE, ReviewHostRelayError, classifyReviewHostRelayRefusal, resolveReviewHostRelaySubmission, runReviewHostRelaySlot } from "../../lib/review-host-relay.ts";
 import { GENTLE_PI_REVIEW_RELAY_CONTRACT, GENTLE_PI_REVIEW_RELAY_CONTRACT_ENV } from "../../lib/review-relay-contract.ts";
+import { ENV_PREFIX } from "../../runtime/brand.mjs";
 export const DESCRIPTOR_SCHEMA = "gentle-pi.maintainer.provider-relay-descriptor/v1";
 export const PROVIDER_ROLE_VECTOR_KINDS = Object.freeze(["provider-role-refuter", "provider-role-validator"]);
 export const CASE_KINDS = Object.freeze(["relay-unavailable", "positive-lens", ...PROVIDER_ROLE_VECTOR_KINDS]);
@@ -62,9 +63,9 @@ export class ProviderRoleVectorError extends Error {
 // The positive lens runs only when explicitly armed: the organic journey
 // needs a real capable binary, a real pi, and a real review session. Without
 // the arm the runner blocks the positive leg before materialize.
-export const ARM_POSITIVE_ENV = "GENTLE_PI_MAINTAINER_ARM_POSITIVE";
+export const ARM_POSITIVE_ENV = `${ENV_PREFIX}MAINTAINER_ARM_POSITIVE`;
 export const POSITIVE_JOURNEY_COMMAND =
-	"GENTLE_PI_MAINTAINER_ARM_POSITIVE=1 node --experimental-strip-types scripts/maintainer/provider-relay-matrix.mjs --descriptor <descriptor.json>  # needs a real capable gentle-ai binary + real pi on PATH + real binding tokens from a live review session (gentle-ai review status --next-transition)";
+	"TOMIDEV_MAINTAINER_ARM_POSITIVE=1 node --experimental-strip-types scripts/maintainer/provider-relay-matrix.mjs --descriptor <descriptor.json>  # needs a real capable gentle-ai binary + real pi on PATH + real binding tokens from a live review session (gentle-ai review status --next-transition)";
 export class DescriptorValidationError extends Error {
 	constructor(message) {
 		super(message);
@@ -209,7 +210,7 @@ export function resolveDeclaredExecutable(executable) {
 	}
 	return null;
 }
-const missingReason = (executable, label) => `${label} "${executable}" is not an existing executable; arm the descriptor with a real binary, or set GENTLE_PI_REQUIRE_MAINTAINER=1 to fail instead of block.`;
+const missingReason = (executable, label) => `${label} "${executable}" is not an existing executable; arm the descriptor with a real binary, or set TOMIDEV_REQUIRE_MAINTAINER=1 to fail instead of block.`;
 // A reviewer registry whose `find` always misses. Mirrors the pre-in-process
 // "unlaunchable pi" trick this replaced: the maintainer-declared `kind` is
 // not evidence that the declared gentle-ai binary is actually incapable, so

@@ -14,7 +14,7 @@ function harness(overrides: NodeJS.ProcessEnv = {}) {
 	createHerdrAgentExtension({
 		env: {
 			HERDR_ENV: "1", HERDR_PANE_ID: "pane-1", HERDR_SOCKET_PATH: "/herdr.sock",
-			GENTLE_SHELL_HERDR_REPORTER: "1", ...overrides,
+			TOMIDEV_HERDR_REPORTER: "1", ...overrides,
 		},
 		send: async (request) => { requests.push(request as Request); },
 	})({
@@ -37,16 +37,16 @@ function harness(overrides: NodeJS.ProcessEnv = {}) {
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 const summary = (requests: Request[]) => requests.map(({ method, params }) => [method, params.source, params.agent, params.state, params.message]);
 
-test("Gentle Shell reports its own Herdr agent identity, session and lifecycle states", async () => {
+test("Tomidev Shell reports its own Herdr agent identity, session and lifecycle states", async () => {
 	const h = harness();
 	await h.fire("session_start", { reason: "startup" });
 	await settle();
 	assert.deepEqual(h.requests[0], {
 		id: h.requests[0].id, method: "pane.report_agent_session",
-		params: { pane_id: "pane-1", source: "gentle-shell", agent: "gentle-shell", seq: h.requests[0].params.seq,
+		params: { pane_id: "pane-1", source: "tomidev", agent: "tomidev", seq: h.requests[0].params.seq,
 			session_start_source: "startup", agent_session_path: "/sessions/root.jsonl" },
 	});
-	assert.deepEqual(h.requests[1].params, { pane_id: "pane-1", source: "gentle-shell", agent: "gentle-shell",
+	assert.deepEqual(h.requests[1].params, { pane_id: "pane-1", source: "tomidev", agent: "tomidev",
 		state: "idle", message: undefined, seq: h.requests[1].params.seq, agent_session_path: "/sessions/root.jsonl" });
 	assert.ok((h.requests[1].params.seq as number) > (h.requests[0].params.seq as number));
 	h.setIdle(false);
@@ -61,16 +61,16 @@ test("Gentle Shell reports its own Herdr agent identity, session and lifecycle s
 		["idle", undefined], ["working", undefined], ["blocked", "Waiting for a choice"], ["working", undefined], ["idle", undefined],
 	]);
 	for (const request of h.requests) {
-		assert.equal(request.params.source, "gentle-shell");
-		assert.equal(request.params.agent, "gentle-shell");
+		assert.equal(request.params.source, "tomidev");
+		assert.equal(request.params.agent, "tomidev");
 	}
 	const seqs = h.requests.map((request) => request.params.seq as number);
 	assert.deepEqual([...seqs].sort((a, b) => a - b), seqs);
 });
 
-test("Gentle Shell Herdr reporter stays silent without the launcher handoff, outside Herdr, in children and headless modes", async () => {
-	for (const overrides of [{ GENTLE_SHELL_HERDR_REPORTER: undefined }, { GENTLE_SHELL_HERDR_REPORTER: "0" },
-		{ HERDR_ENV: undefined }, { HERDR_PANE_ID: "" }, { HERDR_SOCKET_PATH: "" }, { GENTLE_PI_AGENTS_CHILD: "1" }]) {
+test("Tomidev Shell Herdr reporter stays silent without the launcher handoff, outside Herdr, in children and headless modes", async () => {
+	for (const overrides of [{ TOMIDEV_HERDR_REPORTER: undefined }, { TOMIDEV_HERDR_REPORTER: "0" },
+		{ HERDR_ENV: undefined }, { HERDR_PANE_ID: "" }, { HERDR_SOCKET_PATH: "" }, { TOMIDEV_AGENTS_CHILD: "1" }]) {
 		const h = harness(overrides);
 		assert.equal(h.handlers.size, 0, JSON.stringify(overrides));
 	}
@@ -84,12 +84,12 @@ test("Gentle Shell Herdr reporter stays silent without the launcher handoff, out
 	}
 });
 
-test("Gentle Shell Herdr reporter keeps only the latest queued state while a report is in flight", async () => {
+test("Tomidev Shell Herdr reporter keeps only the latest queued state while a report is in flight", async () => {
 	const requests: Request[] = [];
 	let release: (() => void) | undefined;
 	const handlers = new Map<string, Handler>();
 	createHerdrAgentExtension({
-		env: { HERDR_ENV: "1", HERDR_PANE_ID: "p", HERDR_SOCKET_PATH: "/s", GENTLE_SHELL_HERDR_REPORTER: "1" },
+		env: { HERDR_ENV: "1", HERDR_PANE_ID: "p", HERDR_SOCKET_PATH: "/s", TOMIDEV_HERDR_REPORTER: "1" },
 		send: (request) => {
 			requests.push(request as Request);
 			return (request as Request).method === "pane.report_agent" && requests.length === 2

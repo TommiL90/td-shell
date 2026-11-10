@@ -50,15 +50,15 @@ test("malformed and unknown-version catalogs fail closed rather than overwrite",
 	assert.equal(parseVisualProfilesFile(JSON.stringify({ schema: VISUAL_PROFILES_SCHEMA, profiles: [{ name: "a", ...values }, { name: "a", ...values }] })), undefined);
 });
 
-test("profiles saved before the rdd section existed load with rdd shown", () => {
+test("profiles saved before contextWarning existed load with contextWarning shown", () => {
 	const home = { gentlePiConfigHome: mkdtempSync(join(tmpdir(), "visual-profiles-test-")) };
-	const { rdd: _rdd, ...legacyVisibility } = { ...DEFAULT_VISUAL_SETTINGS.visibility, agents: false };
+	const { contextWarning: _cw, ...legacyVisibility } = { ...DEFAULT_VISUAL_SETTINGS.visibility, agents: false };
 	const legacy = { name: "old", ...values, visual: { ...values.visual, visibility: legacyVisibility } };
 	writeFileSync(join(home.gentlePiConfigHome, "visual-profiles.json"), JSON.stringify({ schema: VISUAL_PROFILES_SCHEMA, profiles: [legacy] }));
 	const result = readVisualProfiles(home);
 	assert.equal(result.malformed, false);
-	assert.deepEqual(result.profiles[0]!.visual.visibility, { ...DEFAULT_VISUAL_SETTINGS.visibility, agents: false, rdd: true });
-	assert.deepEqual(getVisualProfile("old", home)!.visual.visibility.rdd, true);
+	assert.deepEqual(result.profiles[0]!.visual.visibility, { ...DEFAULT_VISUAL_SETTINGS.visibility, agents: false, contextWarning: true });
+	assert.deepEqual(getVisualProfile("old", home)!.visual.visibility.contextWarning, true);
 	const unknown = { ...legacy, visual: { ...legacy.visual, visibility: { ...legacyVisibility, extra: true } } };
 	assert.equal(parseVisualProfilesFile(JSON.stringify({ schema: VISUAL_PROFILES_SCHEMA, profiles: [unknown] })), undefined);
 });

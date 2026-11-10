@@ -1,3 +1,4 @@
+import { brandSchema } from "./brand.ts";
 import { profilesFilePath, readProfilesFileResult } from "./agent-profiles.ts";
 import { TERMINAL_ERROR_CATEGORY, type TerminalErrorCategory } from "./agents-protocol.ts";
 import { parseModelRef } from "./agents-config.ts";
@@ -7,7 +8,7 @@ import { computeModelPriceRatio, type ModelPriceLookup } from "./model-price-rat
 // What a fallback says and records, shared by the orchestrator and the agents.
 
 /** Session entry appended on every switch. */
-export const MODEL_FALLBACK_ENTRY = "gentle-pi.model-fallback/v1";
+export const MODEL_FALLBACK_ENTRY = brandSchema("model-fallback", 1);
 
 export interface FallbackChange {
 	agent: string;

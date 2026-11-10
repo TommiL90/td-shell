@@ -1,5 +1,6 @@
 import type { ToolResultEvent, ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import type { OrchestratorMode } from "./agent-profiles.ts";
+import { ENV_PREFIX } from "./brand.ts";
 
 // Harness roadmap R1: the parent-context backstop was a fixed "~150k tokens" in
 // prompt text, so the model had to estimate its own context. The runtime now
@@ -11,10 +12,10 @@ export const CONTEXT_BACKSTOP_TOKENS = 150_000;
 // Bench gate (harness roadmap T12): on the wide five-feature task, delegating at ~15% of a 272k window cost about
 // 20-40% less and ran ~30% faster than never reaching the backstop, while small tasks never reached it.
 export const CONTEXT_BACKSTOP_FRACTION = 0.15;
-export const CONTEXT_BACKSTOP_TOKENS_ENV = "GENTLE_PI_CONTEXT_BACKSTOP_TOKENS";
-export const CONTEXT_BACKSTOP_FRACTION_ENV = "GENTLE_PI_CONTEXT_BACKSTOP_FRACTION";
+export const CONTEXT_BACKSTOP_TOKENS_ENV = `${ENV_PREFIX}CONTEXT_BACKSTOP_TOKENS`;
+export const CONTEXT_BACKSTOP_FRACTION_ENV = `${ENV_PREFIX}CONTEXT_BACKSTOP_FRACTION`;
 // Sampling window for the measured context (see createThrottledContextMeasure).
-export const CONTEXT_BACKSTOP_MEASURE_MS_ENV = "GENTLE_PI_CONTEXT_BACKSTOP_MEASURE_MS";
+export const CONTEXT_BACKSTOP_MEASURE_MS_ENV = `${ENV_PREFIX}CONTEXT_BACKSTOP_MEASURE_MS`;
 export const CONTEXT_BACKSTOP_MEASURE_MS_DEFAULT = 5_000;
 
 /** The part of Pi's `ctx.getContextUsage()` the backstop reads; null tokens are unknown (e.g. right after compaction). */

@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isHomeOrBroadUserDirectory } from "../lib/bounded-writer-admission.ts";
 import { resolveSessionWorktree } from "../lib/session-worktree-registry.ts";
+import { ENV_AGENTS_CHILD, ENV_PREFIX } from "../lib/brand.ts";
 
 const REGISTRY_REL_PATH = ".atl/skill-registry.md";
 const CACHE_REL_PATH = ".atl/.skill-registry.cache.json";
@@ -32,7 +33,7 @@ const WATCH_DEBOUNCE_MS = 500;
 const WATCH_FALLBACK_POLL_MS = 2_000;
 const REGISTRY_SCHEMA_VERSION = 9;
 const NO_SKILL_REGISTRY_FLAG = "no-skill-registry";
-const NO_SKILL_REGISTRY_ENV = "GENTLE_PI_NO_SKILL_REGISTRY";
+const NO_SKILL_REGISTRY_ENV = `${ENV_PREFIX}NO_SKILL_REGISTRY`;
 const LEGACY_PROJECT_REGISTRY_REL_PATH = ".pi/extensions/skill-registry.ts";
 const LEGACY_PROJECT_REGISTRY_DISABLED_REL_PATH =
 	".pi/extensions/skill-registry.ts.disabled";
@@ -724,7 +725,7 @@ function shouldSkipSkillRegistryStartup(
 	return (
 		// gentle-shell#1690: delegated children share the parent's cwd; the
 		// parent owns .atl/ writes, the legacy rename and the watcher.
-		env.GENTLE_PI_AGENTS_CHILD === "1" ||
+		env[ENV_AGENTS_CHILD] === "1" ||
 		pi.getFlag(NO_SKILL_REGISTRY_FLAG) === true ||
 		isTruthyEnv(env[NO_SKILL_REGISTRY_ENV]) ||
 		hasCliArg(argv, "--no-skills", "-ns")

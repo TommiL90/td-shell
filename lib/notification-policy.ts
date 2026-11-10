@@ -1,10 +1,11 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, posix, win32 } from "node:path";
 import { gentlePiConfigHome } from "./agent-home.ts";
 import type { TaskStatus } from "./agents-protocol.ts";
 
-export const NOTIFICATION_SCHEMA = "gentle-shell.notifications/v1";
+export const NOTIFICATION_SCHEMA = brandSchema("notifications", 1);
 /** Contract vocabulary, NOT proof of runtime support. Adapters must verify producers before UI exposure. */
 const SUBAGENT_STATUSES = ["queued", "running", "waiting", "completed", "failed", "cancelled", "timed_out"] as const satisfies readonly TaskStatus[];
 export type NotificationEvent = "session.started" | "session.shutdown" | "context.high"
@@ -106,7 +107,7 @@ export function isNotificationSettings(value: unknown, flavor: NotificationPathF
 export function parseNotificationSettingsFile(raw: string, flavor: NotificationPathFlavor = nativeFlavor): NotificationSettings | undefined {
 	try {
 		const value: unknown = JSON.parse(raw);
-		if (!record(value) || value.schema !== NOTIFICATION_SCHEMA) return undefined;
+		if (!record(value) || !isBrandSchema(value.schema, "notifications", 1)) return undefined;
 		const { schema: _schema, ...settings } = value;
 		return isNotificationSettings(settings, flavor) ? settings : undefined;
 	} catch { return undefined; }

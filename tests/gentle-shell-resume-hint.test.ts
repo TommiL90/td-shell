@@ -17,12 +17,12 @@ import {
 } from "../lib/gentle-shell-resume-hint.ts";
 
 const ID = "01a0e0a0-6d7b-7314-89c1-537d47bbf4f3";
-const AGENT_DIR = resolve("/home/u/.gentle-shell/agent");
+const AGENT_DIR = resolve("/home/u/.tomidev/agent");
 const CWD = resolve("/home/u/project");
 const DEFAULT_DIR = join(AGENT_DIR, "sessions", `--${CWD.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`);
 
 test("handoff env name is stable", () => {
-	assert.equal(RESUME_HANDOFF_ENV, "GENTLE_SHELL_RESUME_HANDOFF");
+	assert.equal(RESUME_HANDOFF_ENV, "TOMIDEV_RESUME_HANDOFF");
 });
 
 test("piDefaultSessionDir mirrors pi's encoded per-cwd session dir", () => {
@@ -86,7 +86,7 @@ test("resumeHandoffFromSession carries the session file for a session from anoth
 		fileExists: () => true,
 	});
 	assert.deepEqual(handoff, { sessionId: ID, sessionFile: join(DEFAULT_DIR, "x.jsonl") });
-	assert.equal(gentleShellResumeCommand(handoff!, ["--link"], "linux"), `gentle-shell --link --session ${join(DEFAULT_DIR, "x.jsonl")}`);
+	assert.equal(gentleShellResumeCommand(handoff!, ["--link"], "linux"), `tomidev --link --session ${join(DEFAULT_DIR, "x.jsonl")}`);
 });
 
 test("resumeHandoffFromSession returns undefined when pi would not print a hint", () => {
@@ -140,15 +140,15 @@ test("handoff rejects values that could inject terminal control sequences", () =
 });
 
 test("gentleShellResumeCommand keeps home selectors and a custom session dir", () => {
-	assert.equal(gentleShellResumeCommand({ sessionId: ID }, [], "linux"), `gentle-shell --session ${ID}`);
-	assert.equal(gentleShellResumeCommand({ sessionId: ID }, ["--link"], "linux"), `gentle-shell --link --session ${ID}`);
+	assert.equal(gentleShellResumeCommand({ sessionId: ID }, [], "linux"), `tomidev --session ${ID}`);
+	assert.equal(gentleShellResumeCommand({ sessionId: ID }, ["--link"], "linux"), `tomidev --link --session ${ID}`);
 	assert.equal(
 		gentleShellResumeCommand({ sessionId: ID, sessionDir: "/tmp/my sessions" }, ["--home", "/x y"], "linux"),
-		`gentle-shell --home '/x y' --session-dir '/tmp/my sessions' --session ${ID}`,
+		`tomidev --home '/x y' --session-dir '/tmp/my sessions' --session ${ID}`,
 	);
 });
 
-test("the gentle-shell command matches pi's real exit hint with the binary swapped", async () => {
+test("the tomidev command matches pi's real exit hint with the binary swapped", async () => {
 	// formatResumeCommand is not in pi's exports map; load the module file.
 	const piDist = dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")));
 	const modulePath = join(piDist, "modes", "interactive", "interactive-mode.js");
@@ -179,7 +179,7 @@ test("the gentle-shell command matches pi's real exit hint with the binary swapp
 			const piCommand: string = formatResumeCommand(manager);
 			assert.ok(piCommand.startsWith("pi "), piCommand);
 			// pi quotes the POSIX way on every platform; compare with the same quoting.
-			assert.equal(gentleShellResumeCommand(handoff, [], "linux"), `gentle-shell ${piCommand.slice("pi ".length)}`);
+			assert.equal(gentleShellResumeCommand(handoff, [], "linux"), `tomidev ${piCommand.slice("pi ".length)}`);
 		}
 	} finally {
 		if (previousTTY) Object.defineProperty(process.stdout, "isTTY", previousTTY);
@@ -191,20 +191,20 @@ test("the gentle-shell command matches pi's real exit hint with the binary swapp
 });
 
 test("on win32 the command uses double quotes that cmd.exe and PowerShell honor", () => {
-	assert.equal(gentleShellResumeCommand({ sessionId: ID }, ["--link"], "win32"), `gentle-shell --link --session ${ID}`);
+	assert.equal(gentleShellResumeCommand({ sessionId: ID }, ["--link"], "win32"), `tomidev --link --session ${ID}`);
 	assert.equal(
 		gentleShellResumeCommand({ sessionId: ID, sessionDir: "C:\\Users\\Name With Space\\sessions" }, ["--home", "C:\\Users\\Name With Space\\home"], "win32"),
-		`gentle-shell --home "C:\\Users\\Name With Space\\home" --session-dir "C:\\Users\\Name With Space\\sessions" --session ${ID}`,
+		`tomidev --home "C:\\Users\\Name With Space\\home" --session-dir "C:\\Users\\Name With Space\\sessions" --session ${ID}`,
 	);
 	// Plain paths need no quotes at all.
 	assert.equal(
 		gentleShellResumeCommand({ sessionId: ID, sessionFile: "C:\\s\\x.jsonl" }, [], "win32"),
-		"gentle-shell --session C:\\s\\x.jsonl",
+		"tomidev --session C:\\s\\x.jsonl",
 	);
 	// Spaces alone are safe inside double quotes.
 	assert.equal(
 		gentleShellResumeCommand({ sessionId: ID, sessionFile: "C:\\My Sessions\\x.jsonl" }, [], "win32"),
-		'gentle-shell --session "C:\\My Sessions\\x.jsonl"',
+		'tomidev --session "C:\\My Sessions\\x.jsonl"',
 	);
 });
 
@@ -219,7 +219,7 @@ test("on win32 no command is produced when a value cannot be quoted safely", () 
 		undefined,
 	);
 	// The same characters are harmless inside POSIX single quotes elsewhere.
-	assert.equal(gentleShellResumeCommand({ sessionId: ID }, ["--home", "/tmp/$h"], "linux"), `gentle-shell --home '/tmp/$h' --session ${ID}`);
+	assert.equal(gentleShellResumeCommand({ sessionId: ID }, ["--home", "/tmp/$h"], "linux"), `tomidev --home '/tmp/$h' --session ${ID}`);
 });
 
 test("a cross-project session file reopens the original session in pi", () => {
@@ -254,12 +254,12 @@ test("a cross-project session file reopens the original session in pi", () => {
 
 test("planResumeHint prints the gentle-shell line with pi's dim label style", () => {
 	const hint = planResumeHint({ handoff: { sessionId: ID }, homeFlags: ["--link"], stdoutIsTTY: true, terminalHungUp: false, platform: "linux", color: true });
-	assert.equal(hint, `\u001b[2mTo resume in gentle-shell:\u001b[22m gentle-shell --link --session ${ID}\n`);
+	assert.equal(hint, `\u001b[2mTo resume in tomidev:\u001b[22m tomidev --link --session ${ID}\n`);
 });
 
 test("planResumeHint drops the ANSI style when stdout has no colors", () => {
 	const hint = planResumeHint({ handoff: { sessionId: ID }, homeFlags: [], stdoutIsTTY: true, terminalHungUp: false, platform: "linux", color: false });
-	assert.equal(hint, `To resume in gentle-shell: gentle-shell --session ${ID}\n`);
+	assert.equal(hint, `To resume in tomidev: tomidev --session ${ID}\n`);
 });
 
 test("planResumeHint prints nothing without a handoff, a TTY, or after a hang-up", () => {

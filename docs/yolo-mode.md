@@ -1,57 +1,57 @@
 # YOLO permission
 
-> 🚀 **Full speed, destructive actions still ask.** YOLO lets the agent implement, commit, push and open PRs within the already authorized task without asking each time, which suits long autonomous runs. Destructive operations still require fresh confirmation; the one exception is recursive removal of the session's own temp scratch (see [Temp scratch removal](#temp-scratch-removal)).
+> 🚀 **Full speed, destructive actions still ask.** YOLO lets the agent implement and open PRs within the already authorized task without asking each time, which suits long autonomous runs. Commits and pushes still ask one dialog each, in every mode. Destructive operations still require fresh confirmation; the one exception is recursive removal of the session's own temp scratch (see [Temp scratch removal](#temp-scratch-removal)).
 
-Use `/gentle:yolo` in the interactive primary Pi TUI to choose Normal, Auto, YOLO or Super Yolo for the current session. Select YOLO to stop repeated permission questions for ordinary work **within your already authorized task**. YOLO is **OFF** unless you select it or save YOLO as the user-global default. [Permission modes and global defaults](permission-modes.md) are managed separately from the live-session selection. The active status and a separate editor widget both say **🚀 YOLO ON 🔥 — destructive confirmations remain**, even when Gentle Shell hides its status layout.
+Use `/td:yolo` in the interactive primary Pi TUI to choose Normal, Auto, YOLO or Super Yolo for the current session. Select YOLO to stop repeated permission questions for ordinary work **within your already authorized task**. YOLO is **OFF** unless you select it or save YOLO as the user-global default. [Permission modes and global defaults](permission-modes.md) are managed separately from the live-session selection. The active status and a separate editor widget both say **🚀 YOLO ON 🔥 — destructive confirmations remain**, even when Tomidev Shell hides its status layout.
 
 | Command | Effect |
 | --- | --- |
-| `/gentle:yolo enable` | Select YOLO for this live session and workspace/clone. |
-| `/gentle:yolo disable` | Select Normal immediately and clear the YOLO indicators; saved defaults stay unchanged. |
-| `/gentle:yolo status` | Show YOLO or Super Yolo when active, otherwise **YOLO OFF**, without activating. |
-| `/gentle:yolo` | Choose `normal`, `auto`, `yolo` or `super-yolo` for this session. The menu shows the current mode and a short description of each choice. Cancelling changes nothing; without an interactive primary TUI it reports status instead. |
+| `/td:yolo enable` | Select YOLO for this live session and workspace/clone. |
+| `/td:yolo disable` | Select Normal immediately and clear the YOLO indicators; saved defaults stay unchanged. |
+| `/td:yolo status` | Show YOLO or Super Yolo when active, otherwise **YOLO OFF**, without activating. |
+| `/td:yolo` | Choose `normal`, `auto`, `yolo` or `super-yolo` for this session. The menu shows the current mode and a short description of each choice. Cancelling changes nothing; without an interactive primary TUI it reports status instead. |
 
 Invalid arguments leave state unchanged.
 
-The Session command palette also includes YOLO. Interactive selection requires an eligible primary TUI, live session identity and identifiable workspace. Outside Git, the canonical workspace directory supplies identity. There is no model-callable activation tool. `/gentle:mode default yolo` optionally saves a trusted user-global default for new primary sessions; `/gentle:mode default normal` removes that elevated default. Neither command changes the current mode.
+The Session command palette also includes YOLO. Interactive selection requires an eligible primary TUI, live session identity and identifiable workspace. Outside Git, the canonical workspace directory supplies identity. There is no model-callable activation tool. `/td:mode default yolo` optionally saves a trusted user-global default for new primary sessions; `/td:mode default normal` removes that elevated default. Neither command changes the current mode.
 
 ## Super Yolo
 
-**💥 Super Yolo removes every permission prompt; the only line left is private material.** Select it with `/gentle:yolo` or `/gentle:mode super-yolo`, or save it for new sessions with `/gentle:mode default super-yolo`.
+**💥 Super Yolo removes every permission prompt; the lines left are private material and each commit or push.** Select it with `/td:yolo` or `/td:mode super-yolo`, or save it for new sessions with `/td:mode default super-yolo`.
 
 While it is active:
 
-- Every shell-guard confirmation is waived, data loss included: recursive `rm`, SQL drops, ordinary pushes, rebases, forced branch deletion, `npm publish` and configured guardrail `confirm`/`block` rules all run without dialogs. Code-level hard denies stay blocked (`git reset --hard`, forced clean, force push); see below.
+- Every shell-guard confirmation is waived, data loss included: recursive `rm`, SQL drops, rebases, forced branch deletion, `npm publish` and configured guardrail `confirm`/`block` rules all run without dialogs. Commits and pushes still ask the commit/push dialog. Code-level hard denies stay blocked (`git reset --hard`, forced clean, force push); see below.
 - The Auto classifier does not run.
 - The **sensitive-path guard stays hard-blocked**: `read`, `write` and `edit` of `.env` files, `.ssh`, keychains, `*.pem/*.key/*.p12/*.pfx`, `secrets/` directories and cloud credential files are refused in every mode, Super Yolo included.
-- Code-level catastrophic denies remain: `rm -rf /`, `rm -rf ~`, `--no-preserve-root`, `git reset --hard`, forced clean and force push are blocked without a dialog.
+- Code-level catastrophic denies remain: `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`, `rm -rf /*`, `--no-preserve-root`, `git reset --hard`, forced clean, force push (`--force`, `--force-with-lease`, `-f`, a `+` refspec), `DROP DATABASE`, `mkfs` and `dd of=/dev/…` are blocked without a dialog.
 - `ask_user` tools, provider consent, maintenance/recovery authorization and opaque-token decisions are never automatically answered.
-- `/gentle:yolo status` identifies Super Yolo while it is active, and `/gentle:yolo disable` returns to Normal. Children never inherit Super Yolo; their bounded delegation and child guards are unchanged.
+- `/td:yolo status` identifies Super Yolo while it is active, and `/td:yolo disable` returns to Normal. Children never inherit Super Yolo; their bounded delegation and child guards are unchanged.
 
 Super Yolo is deliberate maximum autonomy for a workspace you accept the consequences of. The shell recognition remains lexical, not a sandbox: unrecognized script forms, custom tools and prompt injection can still reach destructive effects, and OS-level isolation remains your real containment boundary.
 
 ## Configuration menu path
 
-1. Open `/gentle:customize` → **Editor**.
+1. Open `/td:customize` → **Editor**.
 2. Select **YOLO: OFF · session only**, immediately after the Vim enable/disable rows.
-3. Press **Enter** or **Space** to toggle the same permission as `/gentle:yolo`. The row updates to **YOLO: ON · session only**; slash changes and revocation also update an open menu.
+3. Press **Enter** or **Space** to toggle the same permission as `/td:yolo`. The row updates to **YOLO: ON · session only**; slash changes and revocation also update an open menu.
 
-Navigation, the read-only preview and Escape never grant permission. The preview reminds you that ordinary scoped commits/push/PR are covered, destructive confirmations remain, review consent is unchanged and reload resets the live grant. **UNAVAILABLE** means the live primary owner or eligible session/workspace cannot be used; selecting it cannot activate YOLO.
+Navigation, the read-only preview and Escape never grant permission. The preview reminds you that each commit or push still asks its own dialog, destructive confirmations remain, review consent is unchanged and reload resets the live grant. **UNAVAILABLE** means the live primary owner or eligible session/workspace cannot be used; selecting it cannot activate YOLO.
 
 The live YOLO toggle does not save preferences. The separate **Default permissions** rows can save Normal, Auto, YOLO or Super Yolo in the dedicated user-global permission store, never a repository preference or visual profile. **Session permissions** selects the current mode without changing that default. Closing the menu removes its observers and cancels unfinished menu activation; it does not revoke an already completed activation. Reload or session replacement invalidates old menu callbacks and resets the live permission.
 
 ## What activation authorizes
 
-YOLO supplies standing human permission for ordinary already-scoped implementation, checks, commits, non-force pushes and PR creation. Its active-only system instruction qualifies the default commit/push/PR confirmation clauses; it also tells the primary agent to make ordinary reversible implementation choices without needless interviews.
+YOLO supplies standing human permission for ordinary already-scoped implementation, checks and PR creation. Commits and pushes are not part of that standing permission: each asks the commit/push dialog, which names the exact command and repository, in every mode. Its active-only system instruction qualifies the default commit/push/PR confirmation clauses; it also tells the primary agent to make ordinary reversible implementation choices without needless interviews.
 
-The shell guard's routine default confirmation is skipped for reversible delivery only. Every guarded segment of the command is judged on its own, so `git commit -m "..." && git push -u origin feature`, `git push && gh pr create --fill`, `git -C <dir> push origin main` and `git fetch && git rebase origin/main && git push` run without a prompt, while the other segments keep their ordinary guard (`git push && rm -rf data` still asks for the `rm`). A push segment is eligible with plain remote/ref arguments, `src:dst` refspecs with both sides present, and the options `-u`/`--set-upstream`, `-q`/`--quiet`, `-v`/`--verbose`, `--tags`, `--follow-tags`, `--no-verify` and `--porcelain`. A rebase segment is eligible with plain refs, `--onto`, `--continue`, `--abort`, `--skip` and `--autostash`; it is recoverable from the reflog. Either segment may also carry output redirections that write nothing (`2>&1`, `>&2`, `>/dev/null`, `2>/dev/null`, `&>/dev/null`) and may be piped into the read-only filters `tail`, `head`, `cat`, `grep` and `wc` with plain or literally quoted arguments, so `git push -u origin feature 2>&1 | tail -5` runs without a prompt. Redirection to a file, a pipe into any other command (`| sh`, `| tee file`, `| xargs`) and a trailing background `&` still ask: Git output carries text the remote controls. Anything that deletes or rewrites a remote ref, publishes, or runs arbitrary commands never qualifies: `--delete`/`-d`, `:branch` and `+branch` refspecs, `--mirror`, `--prune`, `--all`, every force spelling (hard-blocked), `--receive-pack`/`--exec`, `--repo`, `-o`, `sudo`, shell wrappers such as `sh -c`, interactive or `--exec` rebases, `git branch -D`, `pi remove` and `npm publish`. Full command evaluation, including the recognized data-loss guards, runs first. Explicit push or rebase confirmations or blocks in either configuration layer remain restrictions, including when legacy persistent autonomy or its environment override would ignore them. YOLO never changes persistent `autonomousMode`.
+The shell guard's routine default confirmation is skipped for reversible delivery only. Every guarded segment of the command is judged on its own, so `git commit -m "..." && git push -u origin feature`, `git push && gh pr create --fill`, `git -C <dir> push origin main` and `git fetch && git rebase origin/main && git push` run with one commit/push dialog and no second prompt, while the other segments keep their ordinary guard (`git push && rm -rf data` still asks for the `rm`). A push needs only its commit/push dialog, whatever its arguments, deleting and mirror pushes included; every force spelling stays hard-blocked. A rebase segment is eligible with plain refs, `--onto`, `--continue`, `--abort`, `--skip` and `--autostash`; it is recoverable from the reflog. Either segment may also carry output redirections that write nothing (`2>&1`, `>&2`, `>/dev/null`, `2>/dev/null`, `&>/dev/null`) and may be piped into the read-only filters `tail`, `head`, `cat`, `grep` and `wc` with plain or literally quoted arguments, so `git push -u origin feature 2>&1 | tail -5` needs only its commit/push dialog. Redirection to a file, a pipe into any other command (`| sh`, `| tee file`, `| xargs`) and a trailing background `&` need no second prompt, but the commit/push dialog shows them in full before you approve, because Git output carries text the remote controls. A rebase never qualifies for the waiver when it is interactive or uses `--exec`; `git branch -D`, `pi remove` and `npm publish` are never waived either. Full command evaluation, including the recognized data-loss guards, runs first. Explicit push or rebase confirmations or blocks in either configuration layer remain restrictions, including when legacy persistent autonomy or its environment override would ignore them. YOLO never changes persistent `autonomousMode`.
 
 ## What still requires a decision
 
 - Destructive operations retain fresh confirmations or hard denial: recognized SQL DROP/TRUNCATE and broad deletion, recursive removal, destructive Git and other guarded operations are not waived. The only exception is [temp scratch removal](#temp-scratch-removal). Explicit configured confirmations/blocks and sensitive-path protection remain.
 - Current explicit human restrictions, repository policy, project trust and authorized scope still apply. Scope expansion, privacy-sensitive disclosure and genuinely unresolved consequential product choices require a human decision.
 - Ambiguous destinations or credentials remain unresolved. YOLO does not invent a remote, deployment destination, account or credential, nor authorize discovery or reuse of ambient credentials.
-- `ask_user` tools, provider consent, maintenance/recovery authorization and opaque-token choices are never automatically answered. Native review, RDD and review standing permission remain separate and unchanged.
+- `ask_user` tools, provider consent, maintenance/recovery authorization and opaque-token choices are never automatically answered. Code review and independent verification remain required by lane and risk.
 
 Children retain only their bounded delegated scope. They cannot activate or inherit YOLO, and receive no independent delivery permission.
 
@@ -71,7 +71,7 @@ Anything else keeps asking, including another user's directory, a directory not 
 
 Live permission is held in the extension instance, bound to the exact live SessionManager, session ID and canonical Git common-directory identity, or canonical workspace directory outside Git. Sibling worktrees in one clone may retain it; an unrelated workspace or session identity cannot. Scope loss revokes rather than hiding permission until you return.
 
-Shutdown, **reload** and session replacement revoke live grants and callbacks. New primary session instances may apply a saved global YOLO default; they never restore a grant from transcript entries. An explicit Normal selection wins over that default in the current session. To keep both this session and future sessions in Normal, use `/gentle:yolo disable` and `/gentle:mode default normal`.
+Shutdown, **reload** and session replacement revoke live grants and callbacks. New primary session instances may apply a saved global YOLO default; they never restore a grant from transcript entries. An explicit Normal selection wins over that default in the current session. To keep both this session and future sessions in Normal, use `/td:yolo disable` and `/td:mode default normal`.
 
 This is permission guidance and shell-guard defense in depth, **not a sandbox or an all-tools safety guarantee**. Detection only covers recognized command forms; scripts, custom tools and prompt injection can bypass semantic guidance. Tools and extensions retain the operating-system permissions of the process. Trusted SDK callers can invoke command handlers and supply interactive contexts; the human command path is not an OS security boundary against those callers. Use OS/container isolation and narrowly scoped credentials when you need an actual containment boundary.
 
@@ -102,7 +102,7 @@ Ordinary builds, tests, read-only SQL, predicate-bounded literal deletes, Git st
 3. Recognized database/filesystem data loss always requires fresh confirmation, even when autonomous mode or a matched delivery action is configured to allow. The only exception is [temp scratch removal](#temp-scratch-removal) under active YOLO in the primary session.
 4. No UI, cancellation, a non-true answer or a dialog error cannot authorize execution. Approval is not cached; permission and Herdr blocker lifecycle events remain balanced.
 
-Children receive the lightweight `child-safety.ts` entry alongside `child-context.ts`; they do not need the full primary extension. The safety entry registers nothing outside `GENTLE_PI_AGENTS_CHILD=1`, preventing duplicate primary prompts during package auto-discovery. If the full primary extension is explicitly loaded in a child, its destructive-command path also blocks instead of prompting.
+Children receive the lightweight `child-safety.ts` entry alongside `child-context.ts`; they do not need the full primary extension. The safety entry registers nothing outside `TOMIDEV_AGENTS_CHILD=1`, preventing duplicate primary prompts during package auto-discovery. If the full primary extension is explicitly loaded in a child, its destructive-command path also blocks instead of prompting.
 
 ### Detection limitations
 
@@ -112,4 +112,4 @@ Children receive the lightweight `child-safety.ts` entry alongside `child-contex
 - Only `bash` tool calls reach this data-loss boundary, including nested calls dispatched through Pi's tool-event pipeline. Direct process execution, user shell commands, MCP tools and other tools are not covered by these hooks.
 - The older primary regex safeguards remain authoritative and may be more conservative about text than the shared recognizer. Missing or explicitly overridden child extension paths remove the lightweight boundary; a valid package installation must include the safety entry.
 
-Keep task authorization, explicit user restrictions, sensitive-path protection and safer execution plans in force. The destructive guard itself does not grant delivery or remote-operation authority, activate YOLO, change RDD, or auto-answer any modal.
+Keep task authorization, explicit user restrictions, sensitive-path protection and safer execution plans in force. The destructive guard itself does not grant delivery or remote-operation authority, activate YOLO, waive verification, or auto-answer any modal.

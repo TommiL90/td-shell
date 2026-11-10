@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { gentleAiBinaryPath } from "../runtime/gentle-ai-binary.mjs";
+const gentleAiBinaryPath = (root: string, _platform: string) => `${root}/bin/gentle-ai`;
 import { collectInventory, planPreflight, requirements } from "../scripts/installer-preflight.mjs";
 import { bootstrapRoots, createProbes, hostAdapters, userEnvironment } from "../scripts/installer-probes.mjs";
 import { PI_INSTALL_VERSION } from "../scripts/installer-runner.mjs";
@@ -12,13 +12,13 @@ import { verifyWindowsStorageMany } from "../scripts/installer-windows.mjs";
 const HOME = "/home/u";
 const PNPM_HOME = "/home/u/.local/share/pnpm";
 const BIN = `${PNPM_HOME}/bin`;
-const TOOLS = "/home/u/.gentle-shell-bootstrap-tools.Ab12Cd34";
+const TOOLS = "/home/u/.tomidev-bootstrap-tools.Ab12Cd34";
 const TOOLS_NODE = `${TOOLS}/node/bin/node`;
 const TOOLS_PNPM = `${TOOLS}/pnpm/bin/pnpm`;
 const USER_NODE = "/usr/bin/node";
 const USER_NPM_CLI = "/usr/lib/node_modules/npm/bin/npm-cli.js";
 const TOOLS_NPM_CLI = `${TOOLS}/node/lib/node_modules/npm/bin/npm-cli.js`;
-const SHELL_ROOT = `${PNPM_HOME}/global/v11/def/node_modules/gentle-pi`;
+const SHELL_ROOT = `${PNPM_HOME}/global/v11/def/node_modules/tomidev`;
 // pnpm 11 links gentle-pi's peer Pi beside it in its global group: the Pi the launcher runs.
 const BESIDE_PI = `${PNPM_HOME}/global/v11/def/node_modules/@earendil-works/pi-coding-agent/package.json`;
 const besidePi = (version: string) => ({ [BESIDE_PI]: JSON.stringify({ name: "@earendil-works/pi-coding-agent", version }) });
@@ -112,12 +112,12 @@ const npmPlan = async (h: ReturnType<typeof probes>) => {
 	return plan.actions.map((action: { id: string }) => action.id);
 };
 
-test("bootstrap tool roots come from GENTLE_BOOTSTRAP_TOOLS and PATH segments, and are removed from the user PATH", () => {
+test("bootstrap tool roots come from TOMIDEV_BOOTSTRAP_TOOLS and PATH segments, and are removed from the user PATH", () => {
 	assert.deepEqual(bootstrapRoots({ platform: "linux", env: bootstrapEnv }), [TOOLS]);
 	assert.deepEqual(userEnvironment({ platform: "linux", env: bootstrapEnv }), { HOME, PATH: "/usr/bin:/bin" });
-	const tools = "C:\\Users\\u\\AppData\\Local\\.gentle-shell-bootstrap-tools.1.2.3";
-	const env = { GENTLE_BOOTSTRAP_TOOLS: tools, Path: `${tools}\\pnpm;C:\\Users\\U\\APPDATA\\Local\\.GENTLE-SHELL-BOOTSTRAP-TOOLS.9\\node;C:\\Windows` };
-	assert.deepEqual(bootstrapRoots({ platform: "win32", env }), [tools, "C:\\Users\\U\\APPDATA\\Local\\.GENTLE-SHELL-BOOTSTRAP-TOOLS.9"]);
+	const tools = "C:\\Users\\u\\AppData\\Local\\.tomidev-bootstrap-tools.1.2.3";
+	const env = { TOMIDEV_BOOTSTRAP_TOOLS: tools, Path: `${tools}\\pnpm;C:\\Users\\U\\APPDATA\\Local\\.TOMIDEV-BOOTSTRAP-TOOLS.9\\node;C:\\Windows` };
+	assert.deepEqual(bootstrapRoots({ platform: "win32", env }), [tools, "C:\\Users\\U\\APPDATA\\Local\\.TOMIDEV-BOOTSTRAP-TOOLS.9"]);
 	assert.equal(userEnvironment({ platform: "win32", env }).Path, "C:\\Windows");
 	assert.deepEqual(bootstrapRoots({ platform: "linux", env: { PATH: "/usr/bin" } }), []);
 	assert.equal(userEnvironment({ platform: "linux", env: { PATH: `${TOOLS}/:/usr/bin` } }).PATH, "/usr/bin");
@@ -225,7 +225,7 @@ test("node absent, unparseable, failing, timed out or truncated", async () => {
 	const instance = createProbes({ platform: "linux", env: { HOME, PATH: "/usr/bin" }, run: async () => { throw new Error("private /home/u/secret"); },
 		fs: { isFile: async () => true, isDirectory: async () => false, exists: async () => true, realpath: async (p: string) => p,
 			readText: async () => "", writable: async () => false } });
-	for (const name of ["node", "pnpm", "pi", "shell", "gentleAi", "go", "setup"] as const) {
+	for (const name of ["node", "pnpm", "pi", "shell", "setup"] as const) {
 		assert.deepEqual(await instance[name](), { available: null }, name);
 	}
 });
@@ -268,11 +268,11 @@ test("the bootstrap's pnpm next to an incompatible pnpm on the user's PATH is bo
 	}
 	// The Windows handoff from the bootstrap tools is bootstrap-only even with a pnpm.cmd on the user's Path.
 	const local = "C:\\Users\\u\\AppData\\Local";
-	const tools = `${local}\\.gentle-shell-bootstrap-tools.1`;
+	const tools = `${local}\\.tomidev-bootstrap-tools.1`;
 	const node = `${tools}\\node\\node.exe`;
 	const entry = `${tools}\\pnpm\\package\\bin\\pnpm.mjs`;
-	const env = { LOCALAPPDATA: local, USERPROFILE: "C:\\Users\\u", Path: "C:\\Tools", GENTLE_BOOTSTRAP_TOOLS: tools,
-		GENTLE_INSTALL_PNPM_NODE: node, GENTLE_INSTALL_PNPM_ENTRY: entry };
+	const env = { LOCALAPPDATA: local, USERPROFILE: "C:\\Users\\u", Path: "C:\\Tools", TOMIDEV_BOOTSTRAP_TOOLS: tools,
+		TOMIDEV_INSTALL_PNPM_NODE: node, TOMIDEV_INSTALL_PNPM_ENTRY: entry };
 	const windows = probes({ platform: "win32", env, files: ["C:\\Tools\\pnpm.cmd"], results: { [`${node} ${entry} --version`]: { code: 0, stdout: "11.1.1\r\n" } } });
 	assert.deepEqual(await windows.probes.pnpm(), { available: true, version: "11.1.1", usable: true, compatible: true, persistent: false });
 });
@@ -316,11 +316,11 @@ test("a user's pnpm in $PNPM_HOME/bin is reported as it is next to the bootstrap
 	assert.deepEqual(await outside.probes.pnpm(), { available: true, version: "11.1.1", usable: true, compatible: true, persistent: false, found: "11.0.5" });
 	// A pnpm.cmd in $PNPM_HOME\bin whose shim is not recognized is never run, and left as it is.
 	const local = "C:\\Users\\u\\AppData\\Local";
-	const tools = `${local}\\.gentle-shell-bootstrap-tools.1`;
+	const tools = `${local}\\.tomidev-bootstrap-tools.1`;
 	const node = `${tools}\\node\\node.exe`;
 	const entry = `${tools}\\pnpm\\package\\bin\\pnpm.mjs`;
-	const windowsEnv = { LOCALAPPDATA: local, USERPROFILE: "C:\\Users\\u", Path: `${local}\\pnpm\\bin`, GENTLE_BOOTSTRAP_TOOLS: tools,
-		GENTLE_INSTALL_PNPM_NODE: node, GENTLE_INSTALL_PNPM_ENTRY: entry };
+	const windowsEnv = { LOCALAPPDATA: local, USERPROFILE: "C:\\Users\\u", Path: `${local}\\pnpm\\bin`, TOMIDEV_BOOTSTRAP_TOOLS: tools,
+		TOMIDEV_INSTALL_PNPM_NODE: node, TOMIDEV_INSTALL_PNPM_ENTRY: entry };
 	const windows = probes({ platform: "win32", env: windowsEnv, files: [`${local}\\pnpm\\bin\\pnpm.cmd`],
 		results: { [`${node} ${entry} --version`]: { code: 0, stdout: "11.1.1\r\n" } } });
 	assert.deepEqual(await windows.probes.pnpm(), unchecked);
@@ -329,9 +329,9 @@ test("a user's pnpm in $PNPM_HOME/bin is reported as it is next to the bootstrap
 
 test("Windows pnpm uses the direct bootstrap handoff; a .cmd shim alone is unknown", async () => {
 	const local = "C:\\Users\\u\\AppData\\Local";
-	const node = `${local}\\.gentle-shell-bootstrap-tools.1\\node\\node.exe`;
-	const entry = `${local}\\.gentle-shell-bootstrap-tools.1\\pnpm\\package\\bin\\pnpm.mjs`;
-	const env = { LOCALAPPDATA: local, USERPROFILE: "C:\\Users\\u", Path: "C:\\Windows", GENTLE_INSTALL_PNPM_NODE: node, GENTLE_INSTALL_PNPM_ENTRY: entry };
+	const node = `${local}\\.tomidev-bootstrap-tools.1\\node\\node.exe`;
+	const entry = `${local}\\.tomidev-bootstrap-tools.1\\pnpm\\package\\bin\\pnpm.mjs`;
+	const env = { LOCALAPPDATA: local, USERPROFILE: "C:\\Users\\u", Path: "C:\\Windows", TOMIDEV_INSTALL_PNPM_NODE: node, TOMIDEV_INSTALL_PNPM_ENTRY: entry };
 	const h = probes({ platform: "win32", env, results: { [`${node} ${entry} --version`]: { code: 0, stdout: "11.1.1\r\n" } } });
 	assert.deepEqual(await h.probes.pnpm(), { available: true, version: "11.1.1", usable: true, compatible: true, persistent: false });
 	assert.equal(h.calls[0].env.Path.split(";")[0], `${local}\\pnpm\\bin`);
@@ -342,7 +342,7 @@ test("Windows pnpm uses the direct bootstrap handoff; a .cmd shim alone is unkno
 
 // Windows layouts, verbatim shim text (see installer-windows-bootstrap.test.ts for sources).
 const W_LOCAL = "C:\\Users\\u\\AppData\\Local";
-const W_TOOLS = `${W_LOCAL}\\.gentle-shell-bootstrap-tools.1`;
+const W_TOOLS = `${W_LOCAL}\\.tomidev-bootstrap-tools.1`;
 const W_TOOLS_NODE = `${W_TOOLS}\\node\\node.exe`;
 const W_TOOLS_ENTRY = `${W_TOOLS}\\pnpm\\package\\bin\\pnpm.mjs`;
 const W_APPDATA_NPM = "C:\\Users\\u\\AppData\\Roaming\\npm";
@@ -359,7 +359,7 @@ const W_PI_ENTRY = `${W_PI}\\dist\\bundle\\cli.js`;
 const windowsPi = (version: string, { shim = cmdShim("node_modules\\@earendil-works\\pi-coding-agent\\dist\\bundle\\cli.js"), root = W_NPM_ROOT } = {}) => probes({
 	platform: "win32",
 	env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: `${W_TOOLS}\\node;${W_APPDATA_NPM};${W_NODE_DIR}`, PATHEXT: ".COM;.EXE;.BAT;.CMD",
-		GENTLE_BOOTSTRAP_TOOLS: W_TOOLS, GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+		TOMIDEV_BOOTSTRAP_TOOLS: W_TOOLS, TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 	files: [`${W_APPDATA_NPM}\\pi.cmd`, `${W_APPDATA_NPM}\\pi`, W_PI_ENTRY, W_NODE, `${W_NODE_DIR}\\npm.cmd`, W_NPM_CLI],
 	dirs: [W_NPM_ROOT, root],
 	texts: { [`${W_APPDATA_NPM}\\pi.cmd`]: shim, [`${W_NODE_DIR}\\npm.cmd`]: nodeNpmCmd,
@@ -386,16 +386,16 @@ test("Windows: an older Pi installed by npm is run through its shim and attribut
 test("Windows: a user's pnpm in $PNPM_HOME\\bin is run through its shim for the version it reports, never replaced", async () => {
 	const bin = `${W_LOCAL}\\pnpm\\bin`;
 	const exe = `${W_LOCAL}\\pnpm\\global\\v11\\5f1a\\node_modules\\@pnpm\\exe\\pnpm.exe`;
-	const h = probes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: bin, GENTLE_BOOTSTRAP_TOOLS: W_TOOLS,
-		GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+	const h = probes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: bin, TOMIDEV_BOOTSTRAP_TOOLS: W_TOOLS,
+		TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 	files: [`${bin}\\pnpm.cmd`, `${bin}\\pnpm`, exe],
 	texts: { [`${bin}\\pnpm.cmd`]: "@SETLOCAL\r\n@\"%~dp0\\..\\global\\v11\\5f1a\\node_modules\\@pnpm\\exe\\pnpm.exe\"   %*\r\n" },
 	results: { [`${W_TOOLS_NODE} ${W_TOOLS_ENTRY} --version`]: { code: 0, stdout: "11.1.1\r\n" }, [`${exe} --version`]: { code: 0, stdout: "11.0.5\r\n" } } });
 	assert.deepEqual(await h.probes.pnpm(), { available: true, version: "11.0.5", usable: true, compatible: false, persistent: true, inGlobalBin: true });
 	assert.deepEqual(h.calls.find((call) => call.command === exe)?.cwd, "C:\\");
 	// One whose version cannot be read is left as it is: the bootstrap's pnpm is reported in its place.
-	const unread = probes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: bin, GENTLE_BOOTSTRAP_TOOLS: W_TOOLS,
-		GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+	const unread = probes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: bin, TOMIDEV_BOOTSTRAP_TOOLS: W_TOOLS,
+		TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 	files: [`${bin}\\pnpm.cmd`, `${bin}\\pnpm`, exe],
 	texts: { [`${bin}\\pnpm.cmd`]: "@SETLOCAL\r\n@\"%~dp0\\..\\global\\v11\\5f1a\\node_modules\\@pnpm\\exe\\pnpm.exe\"   %*\r\n" },
 	results: { [`${W_TOOLS_NODE} ${W_TOOLS_ENTRY} --version`]: { code: 0, stdout: "11.1.1\r\n" }, [`${exe} --version`]: { code: null, timedOut: true } } });
@@ -403,18 +403,18 @@ test("Windows: a user's pnpm in $PNPM_HOME\\bin is run through its shim for the 
 	assert.equal(unread.calls.filter((call) => call.command === exe).length, 1);
 });
 
-// S8: an npm-owned Gentle Shell on Windows is found through what its shim runs, so the
+// S8: an npm-owned Tomidev Shell on Windows is found through what its shim runs, so the
 // wizard can update it with npm (run through npm.cmd's own invocation, never the .cmd).
-test("Windows: a Gentle Shell installed by npm is followed through its shim and attributed to npm", async () => {
-	const shellCmd = `${W_APPDATA_NPM}\\gentle-shell.cmd`;
-	const shellRoot = `${W_NPM_ROOT}\\gentle-pi`;
-	const shellEntry = `${shellRoot}\\bin\\gentle-shell.mjs`;
+test("Windows: a Tomidev Shell installed by npm is followed through its shim and attributed to npm", async () => {
+	const shellCmd = `${W_APPDATA_NPM}\\tomidev.cmd`;
+	const shellRoot = `${W_NPM_ROOT}\\tomidev`;
+	const shellEntry = `${shellRoot}\\bin\\tomidev.mjs`;
 	const layout = (root = W_NPM_ROOT) => probes({ platform: "win32",
 		env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: `${W_TOOLS}\\node;${W_APPDATA_NPM};${W_NODE_DIR}`, PATHEXT: ".COM;.EXE;.BAT;.CMD",
-			GENTLE_BOOTSTRAP_TOOLS: W_TOOLS, GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+			TOMIDEV_BOOTSTRAP_TOOLS: W_TOOLS, TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 		files: [shellCmd, shellEntry, W_NODE, `${W_NODE_DIR}\\npm.cmd`, W_NPM_CLI], dirs: [W_NPM_ROOT, root],
-		texts: { [shellCmd]: cmdShim("node_modules\\gentle-pi\\bin\\gentle-shell.mjs"), [`${W_NODE_DIR}\\npm.cmd`]: nodeNpmCmd,
-			[`${shellRoot}\\package.json`]: JSON.stringify({ name: "gentle-pi", version: "0.9.0" }) },
+		texts: { [shellCmd]: cmdShim("node_modules\\tomidev\\bin\\tomidev.mjs"), [`${W_NODE_DIR}\\npm.cmd`]: nodeNpmCmd,
+			[`${shellRoot}\\package.json`]: JSON.stringify({ name: "tomidev", version: "0.9.0" }) },
 		results: { [`${W_TOOLS_NODE} ${W_TOOLS_ENTRY} ${LIST}`]: { code: 0, stdout: "[]" }, [`${W_NODE} ${W_NPM_CLI} root -g`]: { code: 0, stdout: `${root}\r\n` } } });
 	const npm = layout();
 	assert.deepEqual(await npm.probes.shell(), { available: true, version: "0.9.0", usable: true, global: true, owner: "npm" });
@@ -435,8 +435,8 @@ test("Windows: a user's pnpm in $PNPM_HOME\\bin that fails the walk is not run, 
 	const h = probes({ platform: "win32", storage: (file) => {
 		walked.push(file);
 		if (file === exe) throw Object.assign(new Error("Windows ACL evidence rejected"), { check: "target-reparse" });
-	}, env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: `${bin};${W_NODE_DIR}`, GENTLE_BOOTSTRAP_TOOLS: W_TOOLS,
-		GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+	}, env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: `${bin};${W_NODE_DIR}`, TOMIDEV_BOOTSTRAP_TOOLS: W_TOOLS,
+		TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 	files: [`${bin}\\pnpm.cmd`, exe],
 	texts: { [`${bin}\\pnpm.cmd`]: "@SETLOCAL\r\n@\"%~dp0\\..\\global\\v11\\5f1a\\node_modules\\@pnpm\\exe\\pnpm.exe\"   %*\r\n" },
 	results: { [`${W_TOOLS_NODE} ${W_TOOLS_ENTRY} --version`]: { code: 0, stdout: "11.1.1\r\n" }, [`${exe} --version`]: { code: 0, stdout: "11.0.5\r\n" } } });
@@ -452,8 +452,8 @@ test("Windows: a user's pnpm in $PNPM_HOME\\bin that fails the walk is not run, 
 	assert.equal(plan.tools.pnpm.status, "reusable");
 	assert.equal(plan.actions.some((action: { id: string }) => action.id.startsWith("persist-")), false);
 	// A shim no structure resolves there is never run either: the bootstrap's pnpm is reported in its place.
-	const unresolved = probes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, Path: bin, GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY,
-		GENTLE_BOOTSTRAP_TOOLS: W_TOOLS }, files: [`${bin}\\pnpm.cmd`], texts: { [`${bin}\\pnpm.cmd`]: "@echo off\r\nvolta run %~n0 %*\r\n" },
+	const unresolved = probes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, Path: bin, TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY,
+		TOMIDEV_BOOTSTRAP_TOOLS: W_TOOLS }, files: [`${bin}\\pnpm.cmd`], texts: { [`${bin}\\pnpm.cmd`]: "@echo off\r\nvolta run %~n0 %*\r\n" },
 	results: { [`${W_TOOLS_NODE} ${W_TOOLS_ENTRY} --version`]: { code: 0, stdout: "11.1.1\r\n" } } });
 	assert.deepEqual(await unresolved.probes.pnpm(), { available: true, version: "11.1.1", usable: true, compatible: true, persistent: true, inGlobalBin: true, unchecked: true });
 	assert.equal(unresolved.calls.some((call) => call.command !== W_TOOLS_NODE), false, "the user's pnpm never runs");
@@ -462,18 +462,18 @@ test("Windows: a user's pnpm in $PNPM_HOME\\bin that fails the walk is not run, 
 // S6 notice: every reused tool's command, and what it runs, walked in one launch.
 test("Windows: the folders probe walks every tool found on the user's PATH in one launch and reports only what fails", async () => {
 	const goExe = "C:\\Program Files\\Go\\bin\\go.exe";
-	const shellCmd = `${W_APPDATA_NPM}\\gentle-shell.cmd`;
-	const shellEntry = `${W_NPM_ROOT}\\gentle-pi\\bin\\gentle-shell.mjs`;
+	const shellCmd = `${W_APPDATA_NPM}\\tomidev.cmd`;
+	const shellEntry = `${W_NPM_ROOT}\\tomidev\\bin\\tomidev.mjs`;
 	const launches: string[][] = [];
 	const weak = { check: "parent-acl-mask", at: W_APPDATA_NPM, sid: "S-1-5-21-1-2-3-1002", account: "PC\\other", rights: "0x001301BF" };
 	const layout = (storageMany: (paths: string[]) => unknown) => createProbes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: `${W_TOOLS}\\node;${W_APPDATA_NPM};${W_NODE_DIR};C:\\Program Files\\Go\\bin`,
-			PATHEXT: ".COM;.EXE;.BAT;.CMD", GENTLE_BOOTSTRAP_TOOLS: W_TOOLS, GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+			PATHEXT: ".COM;.EXE;.BAT;.CMD", TOMIDEV_BOOTSTRAP_TOOLS: W_TOOLS, TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 		run: async () => ({ code: 1, signal: null, timedOut: false, stdout: "" }), storage: () => {}, storageMany,
 		fs: { isFile: async (path: string) => [`${W_APPDATA_NPM}\\pi.cmd`, W_PI_ENTRY, W_NODE, `${W_NODE_DIR}\\npm.cmd`, W_NPM_CLI, goExe, shellCmd, shellEntry].includes(path),
 			isDirectory: async () => false, exists: async () => false, realpath: async (path: string) => path, writable: async () => false,
 			readText: async (path: string) => ({ [`${W_APPDATA_NPM}\\pi.cmd`]: cmdShim("node_modules\\@earendil-works\\pi-coding-agent\\dist\\bundle\\cli.js"),
-				[`${W_NODE_DIR}\\npm.cmd`]: nodeNpmCmd, [shellCmd]: cmdShim("node_modules\\gentle-pi\\bin\\gentle-shell.mjs") } as Record<string, string>)[path] ?? Promise.reject(new Error("ENOENT")) } });
-	const paths = [W_NODE, `${W_NODE_DIR}\\npm.cmd`, W_NPM_CLI, goExe, `${W_APPDATA_NPM}\\pi.cmd`, W_PI_ENTRY, shellCmd, shellEntry];
+				[`${W_NODE_DIR}\\npm.cmd`]: nodeNpmCmd, [shellCmd]: cmdShim("node_modules\\tomidev\\bin\\tomidev.mjs") } as Record<string, string>)[path] ?? Promise.reject(new Error("ENOENT")) } });
+	const paths = [W_NODE, `${W_NODE_DIR}\\npm.cmd`, W_NPM_CLI, `${W_APPDATA_NPM}\\pi.cmd`, W_PI_ENTRY, shellCmd, shellEntry];
 	const probesWith = layout((list) => { launches.push(list); return list.map((path) => (path.startsWith(W_APPDATA_NPM) ? weak : null)); });
 	assert.deepEqual(await probesWith.folders(), { pi: weak, shell: weak });
 	assert.deepEqual(launches, [paths], "one launch, each path once, never a bootstrap tool");
@@ -551,8 +551,8 @@ test("Windows: pnpm's own global and runtime links are walked where they lead, s
 test("Windows: an 8.3 short-name alias is not a link, so no extra folder is walked", async () => {
 	const short = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\fixture";
 	const long = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\fixture";
-	const goExe = `${short}\\linked-go\\go.exe`;
-	const realGo = `${long}\\store\\go\\go.exe`;
+	const goExe = `${short}\\linked-go\\node.exe`;
+	const realGo = `${long}\\store\\go\\node.exe`;
 	const launches: string[][] = [];
 	const lower = (path: string) => path.toLowerCase();
 	const layout = (links: string[]) => createProbes({ platform: "win32", env: { Path: `${short}\\linked-go`, PATHEXT: ".EXE" }, run: async () => ({ code: 1 }), storage: () => {},
@@ -582,7 +582,7 @@ test("Windows: a tool whose real location is a network share is unchecked, and o
 	const launches: string[][] = [];
 	// The production parser, with PowerShell answering per path: the weak %APPDATA%\npm fails.
 	const processAdapter = (_command: string, _args: string[], childEnv: Record<string, string>) => {
-		const paths = childEnv.GENTLE_WINDOWS_CHECKS.split("|");
+		const paths = childEnv.TOMIDEV_WINDOWS_CHECKS.split("|");
 		launches.push(paths);
 		return paths.map((path) => (path.startsWith(W_APPDATA_NPM) ? "unsafe:parent-acl-mask" : "safe")).join("\r\n");
 	};
@@ -602,7 +602,7 @@ test("Windows: a tool whose real location is a network share is unchecked, and o
 // A1: a path the walk could not check (an owner denying READ_CONTROL, for example)
 // is a notice of its own; a concrete finding for the same tool comes first.
 test("Windows: a tool path the walk could not check is reported as such, after any concrete finding", async () => {
-	const exe = "C:\\Go\\bin\\go.exe";
+	const exe = "C:\\Go\\bin\\node.exe";
 	const cmd = `${W_APPDATA_NPM}\\pi.cmd`;
 	const layout = (results: Record<string, Finding>) => createProbes({ platform: "win32", env: { Path: `C:\\Go\\bin;${W_APPDATA_NPM};${W_NODE_DIR}`, PATHEXT: ".EXE;.CMD" },
 		run: async () => ({ code: 1 }), storage: () => {}, storageMany: (list: string[]) => list.map((path) => results[path] ?? null),
@@ -611,7 +611,7 @@ test("Windows: a tool path the walk could not check is reported as such, after a
 			readText: async (path: string) => (path === cmd ? cmdShim("node_modules\\@earendil-works\\pi-coding-agent\\dist\\bundle\\cli.js") : Promise.reject(new Error("ENOENT"))) } });
 	const weak = { check: "parent-acl-mask", at: W_NPM_ROOT };
 	assert.deepEqual(await layout({ [exe]: { check: "unchecked", at: exe }, [cmd]: { check: "unchecked", at: cmd }, [W_PI_ENTRY]: weak }).folders(),
-		{ go: { check: "unchecked", at: exe }, pi: weak });
+		{ node: { check: "unchecked", at: exe }, pi: weak });
 });
 
 test("Windows npm counts by behavior whatever installed it: Node.js, nvm-windows, fnm or a Volta npm.exe", async () => {
@@ -626,7 +626,7 @@ test("Windows npm counts by behavior whatever installed it: Node.js, nvm-windows
 		const command = npm === "npm.exe" ? `${dir}\\npm.exe` : node;
 		const prefix = npm === "npm.exe" ? [] : [cli];
 		const h = probes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD",
-			GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+			TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 		files: [node, `${dir}\\${npm}`, cli], texts: { [`${dir}\\npm.cmd`]: nodeNpmCmd },
 		results: { [`${node} --version`]: { code: 0, stdout: "v24.18.0\r\n" }, [[command, ...prefix, "--version"].join(" ")]: { code: 0, stdout: "11.6.2\r\n" },
 			[[command, ...prefix, "config", "get", "prefix"].join(" ")]: { code: 0, stdout: `${W_APPDATA_NPM}\r\n` } } });
@@ -635,7 +635,7 @@ test("Windows npm counts by behavior whatever installed it: Node.js, nvm-windows
 	// mise's file shim cannot be run without cmd.exe: no usable npm, so the plan persists one.
 	const mise = `${W_LOCAL}\\mise\\shims`;
 	const h = probes({ platform: "win32", env: { LOCALAPPDATA: W_LOCAL, Path: `${mise};${W_NODE_DIR}`, PATHEXT: ".COM;.EXE;.BAT;.CMD",
-		GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+		TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 	files: [`${mise}\\npm.cmd`, W_NODE], texts: { [`${mise}\\npm.cmd`]: "@echo off\r\nsetlocal\r\nmise x -- %*\r\n" },
 	results: { [`${W_NODE} --version`]: { code: 0, stdout: "v24.18.0\r\n" } } });
 	assert.deepEqual(await h.probes.node(), { available: true, version: "24.18.0", usable: true, persistent: true, npm: false });
@@ -646,25 +646,26 @@ function listing(dependencies: object) {
 }
 const pnpmVersion = { [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout: "[]" } };
 
-test("clean global list: Pi, Shell and Gentle AI absent and setup needed, from one list call", async () => {
+test("clean global list: Pi and Shell absent and setup needed, from one list call", async () => {
 	const h = probes({ files: [TOOLS_PNPM], results: pnpmVersion });
 	assert.deepEqual(await h.probes.pi(), { available: false });
 	assert.deepEqual(await h.probes.shell(), { available: false });
-	assert.deepEqual(await h.probes.gentleAi(), { available: false });
+	assert.equal("gentleAi" in h.probes, false);
+	assert.equal("go" in h.probes, false);
 	assert.equal(await h.probes.setup(), false);
 	assert.equal(h.calls.length, 1);
 	assert.equal(h.calls[0].env.PATH.split(":")[0], BIN);
 });
 
-test("pnpm-global Pi and Shell report versions; verified package-native Gentle AI is compatible", async () => {
+test("pnpm-global Pi and Shell report versions without verifying native binaries", async () => {
 	const stdout = listing({ "@earendil-works/pi-coding-agent": { version: PI_INSTALL_VERSION, path: `${PNPM_HOME}/global/v11/def/node_modules/pi` },
-		"gentle-pi": { version: requirements.shell, path: SHELL_ROOT } });
-	const files = [TOOLS_PNPM, `${BIN}/gentle-shell`, gentleAiBinaryPath(SHELL_ROOT, "linux")];
+		"tomidev": { version: requirements.shell, path: SHELL_ROOT } });
+	const files = [TOOLS_PNPM, `${BIN}/tomidev`, gentleAiBinaryPath(SHELL_ROOT, "linux")];
 	const h = probes({ files, dirs: [HOME, PNPM_HOME, SHELL_ROOT], texts: besidePi(PI_INSTALL_VERSION), results: { [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout } } });
 	assert.deepEqual(await h.probes.pi(), { available: true, version: PI_INSTALL_VERSION, usable: true });
 	assert.deepEqual(await h.probes.shell(), { available: true, version: requirements.shell, usable: true, global: true, owner: "pnpm" });
-	assert.deepEqual(await h.probes.gentleAi(), { available: true, version: requirements.gentleAi, usable: true, compatible: true });
-	assert.deepEqual(h.integrityCalls, [{ packageRoot: SHELL_ROOT, platform: "linux", env: bootstrapEnv, home: HOME }]);
+	assert.equal("gentleAi" in h.probes, false);
+	assert.deepEqual(h.integrityCalls, []);
 	// The pinned stack in one pnpm project under PNPM_HOME: only its setup may be rerun.
 	assert.deepEqual(await h.probes.setup(), { available: true, recoverable: true });
 	const missingBin = probes({ files: [TOOLS_PNPM], results: { [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout } } });
@@ -676,53 +677,42 @@ test("setup is recoverable only for the pinned Pi and Shell owned by one pnpm pr
 	const pi = { version: PI_INSTALL_VERSION, path: `${PNPM_HOME}/global/v11/def/node_modules/pi` };
 	const shell = { version: requirements.shell, path: SHELL_ROOT };
 	const setup = (stdout: string, extra: { realpaths?: Record<string, string>; texts?: Record<string, string> } = {}) => probes({ files: [TOOLS_PNPM],
-		dirs: [HOME, PNPM_HOME, SHELL_ROOT, "/elsewhere/gentle-pi"], texts: besidePi(PI_INSTALL_VERSION),
+		dirs: [HOME, PNPM_HOME, SHELL_ROOT, "/elsewhere/tomidev"], texts: besidePi(PI_INSTALL_VERSION),
 		results: { [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout } }, ...extra }).probes.setup();
 	const recoverable = { available: true, recoverable: true };
-	assert.deepEqual(await setup(listing({ [PI]: pi, "gentle-pi": shell })), recoverable);
+	assert.deepEqual(await setup(listing({ [PI]: pi, "tomidev": shell })), recoverable);
 	// The npm and pnpm persisted by an earlier run live in their own project and do not matter.
 	const persisted = { dependencies: { npm: { version: "11.19.0" }, pnpm: { version: "11.1.1" } } };
-	assert.deepEqual(await setup(JSON.stringify([persisted, { dependencies: { [PI]: pi, "gentle-pi": shell } }])), recoverable);
+	assert.deepEqual(await setup(JSON.stringify([persisted, { dependencies: { [PI]: pi, "tomidev": shell } }])), recoverable);
 	const foreign = [
-		listing({ [PI]: { ...pi, version: "1.2.1" }, "gentle-pi": shell }),
-		listing({ [PI]: pi, "gentle-pi": { ...shell, version: "3.0.0" } }),
-		listing({ "gentle-pi": shell }),
-		JSON.stringify([{ dependencies: { [PI]: pi, "gentle-pi": shell } }, { dependencies: { [PI]: pi } }]),
-		JSON.stringify([{ dependencies: { "gentle-pi": shell } }, { dependencies: { [PI]: pi } }]),
-		JSON.stringify([{ dependencies: { [PI]: pi, "gentle-pi": shell } }, { devDependencies: { "gentle-pi": shell } }]),
-		listing({ [PI]: pi, "gentle-pi": { ...shell, path: "/elsewhere/gentle-pi" } }),
-		listing({ [PI]: pi, "gentle-pi": { version: requirements.shell } }),
+		listing({ [PI]: { ...pi, version: "1.2.1" }, "tomidev": shell }),
+		listing({ [PI]: pi, "tomidev": { ...shell, version: "3.0.0" } }),
+		listing({ "tomidev": shell }),
+		JSON.stringify([{ dependencies: { [PI]: pi, "tomidev": shell } }, { dependencies: { [PI]: pi } }]),
+		JSON.stringify([{ dependencies: { "tomidev": shell } }, { dependencies: { [PI]: pi } }]),
+		JSON.stringify([{ dependencies: { [PI]: pi, "tomidev": shell } }, { devDependencies: { "tomidev": shell } }]),
+		listing({ [PI]: pi, "tomidev": { ...shell, path: "/elsewhere/tomidev" } }),
+		listing({ [PI]: pi, "tomidev": { version: requirements.shell } }),
 	];
 	for (const stdout of foreign) assert.deepEqual(await setup(stdout), { available: null }, stdout);
 	// A root that resolves outside PNPM_HOME through a symlink is not this pnpm's install.
-	assert.deepEqual(await setup(listing({ [PI]: pi, "gentle-pi": shell }), { realpaths: { [SHELL_ROOT]: "/elsewhere/gentle-pi" } }),
+	assert.deepEqual(await setup(listing({ [PI]: pi, "tomidev": shell }), { realpaths: { [SHELL_ROOT]: "/elsewhere/tomidev" } }),
 		{ available: null });
 	// The Pi beside gentle-pi, which the launcher runs, may be pnpm's newer peer, but never below the minimum, unreadable or missing.
-	assert.deepEqual(await setup(listing({ [PI]: pi, "gentle-pi": shell }), { texts: besidePi("1.2.1") }), recoverable);
+	assert.deepEqual(await setup(listing({ [PI]: pi, "tomidev": shell }), { texts: besidePi("1.2.1") }), recoverable);
 	for (const texts of [besidePi("0.99.0"), { [BESIDE_PI]: "not json" }, { [`${PNPM_HOME}/elsewhere`]: "" }]) {
-		assert.deepEqual(await setup(listing({ [PI]: pi, "gentle-pi": shell }), { texts }), { available: null }, JSON.stringify(texts));
+		assert.deepEqual(await setup(listing({ [PI]: pi, "tomidev": shell }), { texts }), { available: null }, JSON.stringify(texts));
 	}
 });
 
-test("Gentle AI is absent without its binary, unknown when unverified, unconfined or another Shell version", async () => {
-	const shell = (version: string, path = SHELL_ROOT) => ({ [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout: listing({ "gentle-pi": { version, path } }) } });
-	const binary = gentleAiBinaryPath(SHELL_ROOT, "linux");
-	const dirs = [HOME, PNPM_HOME, SHELL_ROOT];
-	assert.deepEqual(await probes({ files: [TOOLS_PNPM], dirs, results: shell(requirements.shell) }).probes.gentleAi(), { available: false });
-	const unverified = probes({ files: [TOOLS_PNPM, binary], dirs, results: shell(requirements.shell), integrity: { ok: false } });
-	assert.deepEqual(await unverified.probes.gentleAi(), { available: null });
-	assert.deepEqual(await probes({ files: [TOOLS_PNPM, binary], dirs, results: shell("3.0.0") }).probes.gentleAi(), { available: null });
-	const outside = probes({ files: [TOOLS_PNPM, "/elsewhere/gentle-pi"], dirs: [...dirs, "/elsewhere/gentle-pi"],
-		results: shell(requirements.shell, "/elsewhere/gentle-pi") });
-	assert.deepEqual(await outside.probes.gentleAi(), { available: null });
-});
 
-test("a failed, unparseable or ambiguous global list makes Pi, Shell, Gentle AI and setup unknown", async () => {
-	const duplicated = JSON.stringify([{ dependencies: { "gentle-pi": { version: "4.0.0" } } }, { dependencies: { "gentle-pi": { version: "4.0.0" } } }]);
+
+test("a failed, unparseable or ambiguous global list makes Pi, Shell and setup unknown", async () => {
+	const duplicated = JSON.stringify([{ dependencies: { "tomidev": { version: "4.0.0" } } }, { dependencies: { "tomidev": { version: "4.0.0" } } }]);
 	for (const result of [{ code: 1, stdout: "[]" }, { code: 0, stdout: "" }, { code: 0, stdout: "{}" }, { code: 0, stdout: "not json" },
 		{ code: 0, timedOut: true, stdout: "[]" }, { code: 0, truncated: true, stdout: "[]" }]) {
 		const h = probes({ files: [TOOLS_PNPM], results: { [`${TOOLS_PNPM} ${LIST}`]: result } });
-		for (const name of ["pi", "shell", "gentleAi", "setup"] as const) assert.deepEqual(await h.probes[name](), { available: null }, name);
+		for (const name of ["pi", "shell", "setup"] as const) assert.deepEqual(await h.probes[name](), { available: null }, name);
 	}
 	const h = probes({ files: [TOOLS_PNPM], results: { [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout: duplicated } } });
 	assert.deepEqual(await h.probes.shell(), { available: null });
@@ -733,20 +723,20 @@ test("a pnpm-global Shell from the main channel is present with its main version
 	const cases: Array<[string, object]> = [[main, { available: true, version: main, usable: true, global: true, owner: "pnpm" }],
 		[`${requirements.shell}-rc.1`, { available: null }], [`${requirements.shell}-main.6E7E3A18F794`, { available: null }]];
 	for (const [version, expected] of cases) {
-		const stdout = listing({ "gentle-pi": { version, path: SHELL_ROOT } });
-		const h = probes({ files: [TOOLS_PNPM, `${BIN}/gentle-shell`], results: { [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout } } });
+		const stdout = listing({ "tomidev": { version, path: SHELL_ROOT } });
+		const h = probes({ files: [TOOLS_PNPM, `${BIN}/tomidev`], results: { [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout } } });
 		assert.deepEqual(await h.probes.shell(), expected, version);
 	}
 });
 
 const NPM_ROOT = "/usr/local/lib/node_modules";
-const NPM_SHELL = `${NPM_ROOT}/gentle-pi`;
+const NPM_SHELL = `${NPM_ROOT}/tomidev`;
 const outside = (shellVersion: string, { linked = false, piOutput = "1.2.4\n" } = {}) => probes({
 	env: { HOME, PATH: `${TOOLS}/pnpm/bin:/usr/local/bin:/usr/bin` },
-	files: [TOOLS_PNPM, "/usr/local/bin/pi", "/usr/local/bin/gentle-shell", "/usr/local/bin/npm"],
-	dirs: [HOME, NPM_ROOT, "/home/u/work/gentle-pi"],
-	realpaths: { "/usr/local/bin/gentle-shell": `${linked ? "/home/u/work/gentle-pi" : NPM_SHELL}/bin/gentle-shell.mjs` },
-	texts: { [`${linked ? "/home/u/work/gentle-pi" : NPM_SHELL}/package.json`]: JSON.stringify({ name: "gentle-pi", version: shellVersion }) },
+	files: [TOOLS_PNPM, "/usr/local/bin/pi", "/usr/local/bin/tomidev", "/usr/local/bin/npm"],
+	dirs: [HOME, NPM_ROOT, "/home/u/work/tomidev"],
+	realpaths: { "/usr/local/bin/tomidev": `${linked ? "/home/u/work/tomidev" : NPM_SHELL}/bin/tomidev.mjs` },
+	texts: { [`${linked ? "/home/u/work/tomidev" : NPM_SHELL}/package.json`]: JSON.stringify({ name: "tomidev", version: shellVersion }) },
 	results: { ...pnpmVersion, "/usr/local/bin/npm root -g": { code: 0, stdout: `${NPM_ROOT}\n` },
 		"/usr/local/bin/pi --version": { code: 0, stdout: piOutput } },
 });
@@ -824,45 +814,38 @@ test("after the installer's Pi is added next to another one, the next probe reus
 	assert.equal(planPreflight({ platform: "linux", arch: "x64", pi: await h.probes.pi() }).tools.pi.status, "reusable");
 });
 
-test("a Gentle Shell installed by npm reports its version and npm as its owner", async () => {
+test("a Tomidev Shell installed by npm reports its version and npm as its owner", async () => {
 	for (const version of ["3.9.0", `${requirements.shell}-main.6e7e3a18f794`]) {
 		assert.deepEqual(await outside(version).probes.shell(), { available: true, version, usable: true, global: true, owner: "npm" }, version);
 	}
 });
 
-test("a Gentle Shell that npm links from a source checkout stays unknown and is never claimed by npm", async () => {
+test("a Tomidev Shell that npm links from a source checkout stays unknown and is never claimed by npm", async () => {
 	assert.deepEqual(await outside("3.9.0", { linked: true }).probes.shell(), { available: null, outsidePnpm: true });
 });
 
-test("locateShell finds the installed Gentle Shell with its real root, version and owner", async () => {
-	const stdout = listing({ "gentle-pi": { version: "3.9.0", path: SHELL_ROOT } });
+test("locateShell finds the installed Tomidev Shell with its real root, version and owner", async () => {
+	const stdout = listing({ "tomidev": { version: "3.9.0", path: SHELL_ROOT } });
 	const pnpm = probes({ files: [TOOLS_PNPM], dirs: [HOME, SHELL_ROOT], results: { [`${TOOLS_PNPM} ${LIST}`]: { code: 0, stdout } } });
 	assert.deepEqual(await pnpm.probes.locateShell(), { root: SHELL_ROOT, version: "3.9.0", owner: "pnpm" });
 	assert.deepEqual(await outside("3.9.0").probes.locateShell(), { root: NPM_SHELL, version: "3.9.0", owner: "npm" });
-	assert.deepEqual(await outside("3.9.0", { linked: true }).probes.locateShell(), { root: "/home/u/work/gentle-pi", version: "3.9.0", owner: null });
+	assert.deepEqual(await outside("3.9.0", { linked: true }).probes.locateShell(), { root: "/home/u/work/tomidev", version: "3.9.0", owner: null });
 	assert.equal(await probes({ files: [TOOLS_PNPM], results: pnpmVersion }).probes.locateShell(), null);
 });
 
 test("Pi or Shell on the user's PATH but not pnpm-global is unknown, never absent, and says so", async () => {
-	const h = probes({ files: [TOOLS_PNPM, "/usr/local/bin/pi", "/usr/local/bin/gentle-shell"],
+	const h = probes({ files: [TOOLS_PNPM, "/usr/local/bin/pi", "/usr/local/bin/tomidev"],
 		env: { HOME, PATH: `${TOOLS}/pnpm/bin:/usr/local/bin` }, results: pnpmVersion });
 	assert.deepEqual(await h.probes.pi(), { available: null, outsidePnpm: true });
 	assert.deepEqual(await h.probes.shell(), { available: null, outsidePnpm: true });
 	assert.deepEqual(await h.probes.setup(), { available: null });
 });
 
-test("go version parsing, absence, devel builds and timeouts", async () => {
-	const env = { HOME, PATH: "/usr/local/go/bin:/usr/bin" };
-	for (const [stdout, version] of [["go version go1.26.0 linux/amd64\n", "1.26.0"], ["go version go1.22 linux/arm64", "1.22.0"]]) {
-		const h = probes({ env, files: ["/usr/local/go/bin/go"], results: { "/usr/local/go/bin/go version": { code: 0, stdout } } });
-		assert.deepEqual(await h.probes.go(), { available: true, version, usable: true });
-	}
-	for (const result of [{ code: 0, stdout: "go version devel go1.27-abc linux/amd64" }, { code: 0, stdout: "go version go1.26rc1 linux/amd64" },
-		{ code: 0, timedOut: true, stdout: "go version go1.26.0 linux/amd64" }]) {
-		const h = probes({ env, files: ["/usr/local/go/bin/go"], results: { "/usr/local/go/bin/go version": result } });
-		assert.deepEqual(await h.probes.go(), { available: null });
-	}
-	assert.deepEqual(await probes({ env }).probes.go(), { available: false });
+test("inventory never probes Go even when it is on PATH", async () => {
+	const h = probes({ env: { HOME, PATH: "/usr/local/go/bin:/usr/bin" }, files: ["/usr/local/go/bin/go"] });
+	await collectInventory({ platform: "linux", arch: "x64", probes: h.probes });
+	assert.equal("go" in h.probes, false);
+	assert.equal(h.calls.some((call) => call.command.endsWith("/go")), false);
 });
 
 test("Windows PowerShell's PATHEXT with .CPL keeps resolving, and a .cpl found first is never run", async () => {
@@ -870,11 +853,8 @@ test("Windows PowerShell's PATHEXT with .CPL keeps resolving, and a .cpl found f
 	// extends with .CPL. lookPath keeps PATH-then-PATHEXT order; spawnable refuses it.
 	const env = { USERPROFILE: "C:\\Users\\u", LOCALAPPDATA: "C:\\Users\\u\\AppData\\Local", Path: "C:\\Early;C:\\Go\\bin",
 		PATHEXT: ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL" };
-	const go = "C:\\Go\\bin\\go.exe";
-	const found = probes({ platform: "win32", env, files: [go], results: { [`${go} version`]: { code: 0, stdout: "go version go1.26.0 windows/amd64\r\n" } } });
-	assert.deepEqual(await found.probes.go(), { available: true, version: "1.26.0", usable: true });
-	for (const name of ["go", "node"] as const) {
-		const shadowed = probes({ platform: "win32", env, files: [go, `C:\\Early\\${name}.cpl`, "C:\\Go\\bin\\node.exe"] });
+	for (const name of ["node"] as const) {
+		const shadowed = probes({ platform: "win32", env, files: [`C:\\Early\\${name}.cpl`, "C:\\Go\\bin\\node.exe"] });
 		assert.deepEqual(await shadowed.probes[name](), { available: null }, name);
 		assert.deepEqual(shadowed.calls, [], `${name}.cpl is never executed`);
 	}
@@ -1026,8 +1006,8 @@ test("Windows: the user's pnpm in a folder another principal may write is never 
 	const exe = `${W_LOCAL}\\pnpm\\global\\v11\\5f1a\\node_modules\\@pnpm\\exe\\pnpm.exe`;
 	const walked: string[] = [];
 	const layout = (storage: (file: string) => void) => probes({ platform: "win32", storage,
-		env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", PNPM_HOME: W_PRIVATE, Path: bin, GENTLE_BOOTSTRAP_TOOLS: W_TOOLS,
-			GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
+		env: { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", PNPM_HOME: W_PRIVATE, Path: bin, TOMIDEV_BOOTSTRAP_TOOLS: W_TOOLS,
+			TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY },
 		files: [`${bin}\\pnpm.cmd`, exe],
 		texts: { [`${bin}\\pnpm.cmd`]: "@SETLOCAL\r\n@\"%~dp0\\..\\global\\v11\\5f1a\\node_modules\\@pnpm\\exe\\pnpm.exe\"   %*\r\n" },
 		results: { [`${W_TOOLS_NODE} ${W_TOOLS_ENTRY} --version`]: { code: 0, stdout: "11.1.1\r\n" }, [`${exe} --version`]: { code: 0, stdout: "10.0.0\r\n" } } });
@@ -1049,11 +1029,11 @@ test("Windows: the user's pnpm in a folder another principal may write is never 
 
 test("Windows: a private PNPM_HOME not created yet holds no global packages, so pnpm list -g never runs before consent", async () => {
 	const env = { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", PNPM_HOME: W_PRIVATE, Path: "C:\\Windows",
-		GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY };
+		TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY };
 	const pnpmHome = { available: true, path: W_PRIVATE, source: "private", rejected: { path: `${W_LOCAL}\\pnpm`, check: "target-acl-mask" } };
 	const absentHome = probes({ platform: "win32", env, pnpmHome, dirs: ["C:\\Users\\u"] });
-	assert.deepEqual([await absentHome.probes.shell(), await absentHome.probes.pi(), await absentHome.probes.gentleAi(), await absentHome.probes.setup()],
-		[{ available: false }, { available: false }, { available: false }, false]);
+	assert.deepEqual([await absentHome.probes.shell(), await absentHome.probes.pi(), await absentHome.probes.setup()],
+		[{ available: false }, { available: false }, false]);
 	assert.deepEqual(absentHome.calls, []);
 	// Once it exists (created by an earlier run), its packages are listed as usual.
 	const existing = probes({ platform: "win32", env, pnpmHome, dirs: ["C:\\Users\\u", W_PRIVATE],
@@ -1067,7 +1047,7 @@ test("Windows: with a blocked PNPM_HOME decision the real probes run no command 
 	const pnpmHome = { available: true, path: `${W_LOCAL}\\pnpm`, source: "default", installed: true,
 		untrusted: { check: "target-acl-mask", at: `${W_LOCAL}\\pnpm`, sid: "S-1-5-21-1", rights: "0x001301BF" } };
 	const env = { LOCALAPPDATA: W_LOCAL, USERPROFILE: "C:\\Users\\u", Path: `${W_LOCAL}\\pnpm\\bin;${W_NODE_DIR}`, PATHEXT: ".COM;.EXE;.BAT;.CMD",
-		GENTLE_INSTALL_PNPM_NODE: W_TOOLS_NODE, GENTLE_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY };
+		TOMIDEV_INSTALL_PNPM_NODE: W_TOOLS_NODE, TOMIDEV_INSTALL_PNPM_ENTRY: W_TOOLS_ENTRY };
 	const walked: string[] = [];
 	const h = probes({ platform: "win32", env, pnpmHome, storage: (file) => { walked.push(file); },
 		files: [W_NODE, `${W_NODE_DIR}\\npm.cmd`, W_NPM_CLI, `${W_LOCAL}\\pnpm\\bin\\npm.cmd`], texts: { [`${W_NODE_DIR}\\npm.cmd`]: nodeNpmCmd },

@@ -7,7 +7,7 @@ import type { AssistantMessage, ToolCall } from "@earendil-works/pi-ai";
 
 test("actual SDK gates direct and nested custom/MCP execution before side effects, with independent denied-call receipts",{timeout:20_000},async t=>{
  const root=mkdtempSync(join(tmpdir(),"auto-sdk-")),profile=join(root,"profile"),config=join(root,"config");mkdirSync(profile);
- const bindings={PI_CODING_AGENT_DIR:profile,PI_CODING_AGENT_SESSION_DIR:join(root,"sessions"),GENTLE_PI_AGENT_HOME:profile,GENTLE_PI_CONFIG_HOME:config};
+ const bindings={PI_CODING_AGENT_DIR:profile,PI_CODING_AGENT_SESSION_DIR:join(root,"sessions"),TOMIDEV_AGENT_HOME:profile,TOMIDEV_CONFIG_HOME:config};
  const previous=Object.fromEntries(Object.keys(bindings).map(key=>[key,process.env[key]]));Object.assign(process.env,bindings);
  t.after(()=>{for(const [key,value]of Object.entries(previous))if(value===undefined)delete process.env[key];else process.env[key]=value;rmSync(root,{recursive:true,force:true});});
  const sdk=await import("@earendil-works/pi-coding-agent"),ai=await import("@earendil-works/pi-ai");

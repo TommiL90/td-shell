@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { artifactFor, uvPinVersion } from "../scripts/installer-downloads.mjs";
 
-// The uv the /gentle:music offer installs inside a bundled prefix (S5): the
+// The uv the /td:music offer installs inside a bundled prefix (S5): the
 // astral-sh/uv release archives, each re-hashed after download before pinning.
 const uvPins = {
 	"darwin-arm64": ["uv-aarch64-apple-darwin.tar.gz", "60fbd5c8a1ed681845eea28d9d622fcde03c51e91a43465b64a1e17db1ed3472", 14235670],

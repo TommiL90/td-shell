@@ -5,6 +5,7 @@ import { bundledUpdatePlan, bundledUpdateNext } from '../runtime/gentle-shell-bu
 
 const PI = '@earendil-works/pi-coding-agent';
 const CLI = 'dist/bundle/cli.js';
+const SOURCE = 'git:github.com/TommiL90/tomidev-shell#v4.1.0';
 
 // The layouts pnpm v11 and npm really produce. pnpm links each top-level
 // package from its own global group into the linked store, where Shell's
@@ -15,11 +16,11 @@ function fixture({windows = false, npm = false, runtime = 'adjacent', groups = '
  artifact = true, configHome = '', installFailure = undefined as undefined | {stdout?: string, stderrTail?: string}} = {}) {
  const base = windows ? 'C:/pnpm' : '/pnpm';
  const home = windows ? 'C:/Users/u' : '/home/u';
- // The tarball `gentle-shell upgrade --channel main` packs, named after its version.
- const tarball = `${configHome || `${home}/.pi/gentle-ai`}/main/packages/gentle-pi-${shellVersion}.tgz`;
+ // The tarball `tomidev upgrade --channel main` packs, named after its version.
+ const tarball = `${configHome || `${home}/.pi/gentle-ai`}/main/packages/tomidev-${shellVersion}.tgz`;
  const storePi = (version: string) => `${base}/store/links/@earendil-works/pi-coding-agent/${version}/h/node_modules/${PI}`;
- const shellModules = npm ? `${base}/npm/lib/node_modules` : `${base}/store/links/@/gentle-pi/4.1.0/h1/node_modules`;
- const shell = `${shellModules}/gentle-pi`;
+ const shellModules = npm ? `${base}/npm/lib/node_modules` : `${base}/store/links/@/tomidev/4.1.0/h1/node_modules`;
+ const shell = `${shellModules}/tomidev`;
  const nestedPeer = `${shell}/node_modules/${PI}`;
  const g1 = npm ? shellModules : `${base}/global/v11/g1/node_modules`;
  const g2 = npm ? shellModules : `${base}/global/v11/g2/node_modules`;
@@ -37,7 +38,7 @@ function fixture({windows = false, npm = false, runtime = 'adjacent', groups = '
  const cwds: unknown[] = [];
  const runOptions: unknown[] = [];
  const entry = (pkg: string, modules: string, extra = {}) => ({[pkg]: {path: `${modules}/${pkg}`, ...extra}});
- const shellEntry = entry('gentle-pi', g1, linked ? {link: true} : {});
+ const shellEntry = entry('tomidev', g1, linked ? {link: true} : {});
  const piEntry = entry(PI, g2, linked ? {resolved: 'file:/src/pi'} : {});
  const listing = () => {
   const deps = {...(groups !== 'pi' ? shellEntry : {}), ...(groups !== 'shell' ? piEntry : {}),
@@ -52,7 +53,7 @@ function fixture({windows = false, npm = false, runtime = 'adjacent', groups = '
   if (n === shimFile) return n;
   // Symlinked components inside a longer path resolve like the real filesystem does.
   if (n.startsWith(`${g2}/${PI}/`)) return (npm ? `${g2}/${PI}` : storePi(state.group)) + n.slice(`${g2}/${PI}`.length);
-  if (n === `${g1}/gentle-pi` || n === `${g1}/unrelated-tool` || n === `${g3}/unrelated-tool`) return n === `${g1}/gentle-pi` ? shell : n;
+  if (n === `${g1}/tomidev` || n === `${g1}/unrelated-tool` || n === `${g3}/unrelated-tool`) return n === `${g1}/tomidev` ? shell : n;
   if (n === `${g2}/${PI}`) return npm ? n : storePi(state.group);
   if (!npm && n === `${shellModules}/${PI}`) return storePi(state.peer);
   if (!npm && n === nestedPeer) throw new Error('ENOENT nested peer');
@@ -64,7 +65,7 @@ function fixture({windows = false, npm = false, runtime = 'adjacent', groups = '
  const readFile = async (value: string) => {
   const n = value.replaceAll('\\', '/');
   if (n === shimFile) return shimText;
-  if (n === `${shell}/package.json`) return JSON.stringify({name: 'gentle-pi', ...(shellVersion ? {version: shellVersion} : {})});
+  if (n === `${shell}/package.json`) return JSON.stringify({name: 'tomidev', ...(shellVersion ? {version: shellVersion} : {})});
   if (n === `${g1}/unrelated-tool/package.json`) return JSON.stringify({name: 'unrelated-tool'});
   const version = n.startsWith(nestedPeer) ? state.peer : /pi-coding-agent\/([\d.]+)\/h\//.exec(n)?.[1];
   if (badManifest || unrelatedPeer) return JSON.stringify({name: unrelatedPeer ? 'other' : PI, version});
@@ -76,12 +77,12 @@ function fixture({windows = false, npm = false, runtime = 'adjacent', groups = '
   mutations.push(args);
   runOptions.push(options);
   if (installFailure) return {code: 1, stdout: installFailure.stdout ?? '', ...('stderrTail' in installFailure ? {stderrTail: installFailure.stderrTail} : {})};
-  if (args.some(arg => arg.startsWith('gentle-pi@') || arg.endsWith('.tgz'))) state.peer = peerAfter;
+  if (args.some(arg => arg === SOURCE || arg.endsWith('.tgz'))) state.peer = peerAfter;
   if (args.some(arg => arg.startsWith(PI + '@'))) state.group = peerAfter;
   return {code: 0};
  };
- return {mutations, out, cwds, runOptions, state, shell, selectedCli, tarball, input: {platform: windows ? 'win32' : 'linux', packageRoot: `${g1}/gentle-pi`, currentVersion: '1.1.0', cwd: '/neutral',
-  home, env: configHome ? {GENTLE_PI_CONFIG_HOME: configHome} : {},
+ return {mutations, out, cwds, runOptions, state, shell, selectedCli, tarball, input: {platform: windows ? 'win32' : 'linux', packageRoot: `${g1}/tomidev`, currentVersion: '1.1.0', cwd: '/neutral',
+  home, env: configHome ? {TOMIDEV_CONFIG_HOME: configHome} : {},
   runtime: runtime === 'adjacent' ? {kind: 'bundled', command: 'node', args: [selectedCli]} : {kind: runtime, command: shim ? shimFile : selectedCli, args: []},
   out: (line: string) => out.push(line),
   adapters: {which: async (name: string) => name === (npm ? 'npm' : 'pnpm') ? `/fake/${name}` : null, fs: {realpath, readFile}, run}}};
@@ -110,8 +111,8 @@ test('all strips only self update before forwarding extension flags', () => {
 for (const windows of [false, true]) test(`an adjacent peer is refreshed by reinstalling its Shell package at the same version, never the separate global Pi (windows: ${windows})`, async () => {
  const f = fixture({windows});
  assert.equal(await updateSelectedPi(f.input), 0);
- assert.deepEqual(f.mutations, [['add', '-g', 'gentle-pi@4.1.0', '--allow-build=gentle-pi']]);
- assert.deepEqual(f.out, ['pnpm installed gentle-pi@4.1.0; the selected Pi is now 1.2.0 (was 1.1.0).']);
+ assert.deepEqual(f.mutations, [['add', '-g', SOURCE, '--allow-build=tomidev']]);
+ assert.deepEqual(f.out, [`pnpm installed ${SOURCE}; the selected Pi is now 1.2.0 (was 1.1.0).`]);
  assert.equal(f.state.group, '1.1.0');
 });
 
@@ -126,19 +127,19 @@ for (const runtime of ['path', 'env']) test(`a ${runtime} runtime sharing the st
 test('npm nests the peer under Shell and reinstalls Shell for it', async () => {
  const f = fixture({npm: true});
  assert.equal(await updateSelectedPi(f.input), 0);
- assert.deepEqual(f.mutations, [['install', '-g', 'gentle-pi@4.1.0']]);
- assert.deepEqual(f.out, ['npm installed gentle-pi@4.1.0; the selected Pi is now 1.2.0 (was 1.1.0).']);
+ assert.deepEqual(f.mutations, [['install', '-g', SOURCE]]);
+ assert.deepEqual(f.out, [`npm installed ${SOURCE}; the selected Pi is now 1.2.0 (was 1.1.0).`]);
 });
 
 // #2324: main-channel Shell versions are never published; only the tarball
-// `gentle-shell upgrade --channel main` packed can reinstall that exact build.
+// `tomidev upgrade --channel main` packed can reinstall that exact build.
 const MAIN = '4.2.0-main.fb5e731119a7';
 const native = (path: string, windows: boolean) => windows ? path.replaceAll('/', '\\') : path;
 
 for (const windows of [false, true]) test(`a main-channel Shell is reinstalled from its recorded tarball, never from the registry (windows: ${windows})`, async () => {
  const f = fixture({windows, shellVersion: MAIN});
  assert.equal(await updateSelectedPi(f.input), 0);
- assert.deepEqual(f.mutations, [['add', '-g', native(f.tarball, windows), '--allow-build=gentle-pi']]);
+ assert.deepEqual(f.mutations, [['add', '-g', native(f.tarball, windows), '--allow-build=tomidev']]);
  assert.deepEqual(f.out, [`pnpm installed ${native(f.tarball, windows)}; the selected Pi is now 1.2.0 (was 1.1.0).`]);
  assert.equal(f.state.group, '1.1.0');
 });
@@ -149,22 +150,22 @@ test('npm reinstalls a main-channel Shell from its recorded tarball', async () =
  assert.deepEqual(f.mutations, [['install', '-g', f.tarball]]);
 });
 
-test('a main-channel tarball is found under GENTLE_PI_CONFIG_HOME', async () => {
+test('a main-channel tarball is found under TOMIDEV_CONFIG_HOME', async () => {
  const f = fixture({shellVersion: MAIN, configHome: '/custom/config'});
  assert.equal(await updateSelectedPi(f.input), 0);
- assert.deepEqual(f.mutations, [['add', '-g', '/custom/config/main/packages/gentle-pi-4.2.0-main.fb5e731119a7.tgz', '--allow-build=gentle-pi']]);
+ assert.deepEqual(f.mutations, [['add', '-g', '/custom/config/main/packages/tomidev-4.2.0-main.fb5e731119a7.tgz', '--allow-build=tomidev']]);
 });
 
 test('a missing main-channel tarball names the rebuild command and installs nothing', async () => {
  const f = fixture({shellVersion: MAIN, artifact: false});
- await assert.rejects(updateSelectedPi(f.input), {message: `gentle-shell update: the main-channel build ${f.tarball} is missing, and this unpublished build cannot be reinstalled from the registry; run 'gentle-shell upgrade --channel release' and then 'gentle-shell upgrade --channel main' to rebuild it. No installation changed.`});
+ await assert.rejects(updateSelectedPi(f.input), {message: `tomidev update: the main-channel build ${f.tarball} is missing, and this unpublished build cannot be reinstalled from the registry; run 'tomidev upgrade --channel release' and then 'tomidev upgrade --channel main' to rebuild it. No installation changed.`});
  assert.deepEqual(f.mutations, []);
  assert.deepEqual(f.out, []);
 });
 
 // A relative config home names different folders for `upgrade` and `update`
 // run from different directories, and npm/pnpm resolve it from the neutral cwd.
-test('a relative GENTLE_PI_CONFIG_HOME is refused for a main-channel Shell without mutation', async () => {
+test('a relative TOMIDEV_CONFIG_HOME is refused for a main-channel Shell without mutation', async () => {
  const f = fixture({shellVersion: MAIN, configHome: 'relative/config'});
  await assert.rejects(updateSelectedPi(f.input), /ownership cannot locate the main-channel build without an absolute config home/);
  assert.deepEqual(f.mutations, []);
@@ -193,7 +194,7 @@ test('an npm PATH runtime updates the global Pi without its scripts', async () =
 test('an unchanged pnpm result names the minimum-release-age rule instead of claiming latest', async () => {
  const f = fixture({peerAfter: '1.1.0'});
  assert.equal(await updateSelectedPi(f.input), 0);
- assert.equal(f.out[0], 'pnpm installed gentle-pi@4.1.0, and the selected Pi is still 1.1.0.');
+ assert.equal(f.out[0], `pnpm installed ${SOURCE}, and the selected Pi is still 1.1.0.`);
  assert.match(f.out[1], /minimumReleaseAge/);
  assert.equal(f.out.length, 2);
 });
@@ -207,13 +208,13 @@ test('every package manager call runs from the neutral directory, never the proj
 test('an unreadable readback is reported, not invented', async () => {
  const f = fixture({readback: false});
  assert.equal(await updateSelectedPi(f.input), 0);
- assert.deepEqual(f.out, ['pnpm installed gentle-pi@4.1.0. The Pi version it now supplies could not be read back; run \'gentle-shell --version\' to check it.']);
+ assert.deepEqual(f.out, [`pnpm installed ${SOURCE}. The Pi version it now supplies could not be read back; run 'tomidev --version' to check it.`]);
 });
 
 test('separate aggregated groups do not block the Shell reinstall', async () => {
  const f = fixture({groups: 'separate'});
  assert.equal(await updateSelectedPi(f.input), 0);
- assert.deepEqual(f.mutations, [['add', '-g', 'gentle-pi@4.1.0', '--allow-build=gentle-pi']]);
+ assert.deepEqual(f.mutations, [['add', '-g', SOURCE, '--allow-build=tomidev']]);
 });
 
 for (const [name, options] of Object.entries({
@@ -233,7 +234,7 @@ for (const [name, options] of Object.entries({
  assert.deepEqual(f.out, []);
 });
 
-for (const [name, options] of Object.entries({'pnpm POSIX shim': {shim: 'posix', runtime: 'path'}, 'Windows .CMD shim': {shim: 'windows', runtime: 'path', windows: true}, 'GENTLE_SHELL_PI shim override': {shim: 'posix', runtime: 'env'}})) test(`a ${name} resolves to the global Pi it runs`, async () => {
+for (const [name, options] of Object.entries({'pnpm POSIX shim': {shim: 'posix', runtime: 'path'}, 'Windows .CMD shim': {shim: 'windows', runtime: 'path', windows: true}, 'TOMIDEV_PI shim override': {shim: 'posix', runtime: 'env'}})) test(`a ${name} resolves to the global Pi it runs`, async () => {
  const f = fixture(options);
  assert.equal(await updateSelectedPi(f.input), 0);
  assert.deepEqual(f.mutations, [['add', '-g', `${PI}@latest`]]);
@@ -256,31 +257,31 @@ test('an unrelated selected override cannot authorize the adjacent Shell group',
 // line of its own output; pnpm 11 prints ERR_PNPM_* on stdout, npm on stderr.
 test('a failed pnpm install names the pnpm it ran and its ERR_PNPM line from stdout', async () => {
  const f = fixture({shellVersion: MAIN, installFailure: {stderrTail: '',
-  stdout: `Progress: resolved 1\n\u001b[31m[ERR_PNPM_INVALID_VERSION_UNION]\u001b[39m Invalid versions union. Found: "gentle-pi@file:/home/u/x.tgz". Use exact versions only.\nDone\n`}});
- await assert.rejects(updateSelectedPi(f.input), {message: `gentle-shell update: pnpm (/fake/pnpm) could not install ${f.tarball}\n[ERR_PNPM_INVALID_VERSION_UNION] Invalid versions union. Found: "gentle-pi@file:~/x.tgz". Use exact versions only.`});
+  stdout: `Progress: resolved 1\n\u001b[31m[ERR_PNPM_INVALID_VERSION_UNION]\u001b[39m Invalid versions union. Found: "tomidev@file:/home/u/x.tgz". Use exact versions only.\nDone\n`}});
+ await assert.rejects(updateSelectedPi(f.input), {message: `tomidev update: pnpm (/fake/pnpm) could not install ${f.tarball}\n[ERR_PNPM_INVALID_VERSION_UNION] Invalid versions union. Found: "tomidev@file:~/x.tgz". Use exact versions only.`});
  assert.deepEqual(f.runOptions, [{deadlineMs: 20 * 60_000, cwd: '/neutral', stderrTail: 4096}]);
  assert.deepEqual(f.out, []);
 });
 
 test('a failed npm install shows its stderr error line before stdout', async () => {
  const f = fixture({npm: true, installFailure: {stdout: 'unrelated', stderrTail: 'npm error code EACCES\nnpm error Error: EACCES: permission denied\nnpm error A complete log is in /home/u/.npm/x.log\n'}});
- await assert.rejects(updateSelectedPi(f.input), {message: 'gentle-shell update: npm (/fake/npm) could not install gentle-pi@4.1.0\nnpm error Error: EACCES: permission denied'});
+ await assert.rejects(updateSelectedPi(f.input), {message: `tomidev update: npm (/fake/npm) could not install ${SOURCE}\nnpm error Error: EACCES: permission denied`});
  assert.deepEqual(f.out, []);
 });
 
 test('a failed install without output keeps the single line, naming the command it ran', async () => {
  const f = fixture({installFailure: {}});
- await assert.rejects(updateSelectedPi(f.input), {message: 'gentle-shell update: pnpm (/fake/pnpm) could not install gentle-pi@4.1.0'});
- assert.deepEqual(f.mutations, [['add', '-g', 'gentle-pi@4.1.0', '--allow-build=gentle-pi']]);
+ await assert.rejects(updateSelectedPi(f.input), {message: `tomidev update: pnpm (/fake/pnpm) could not install ${SOURCE}`});
+ assert.deepEqual(f.mutations, [['add', '-g', SOURCE, '--allow-build=tomidev']]);
 });
 
 test('a stderr warning never hides the ERR_PNPM line pnpm printed on stdout', async () => {
  const f = fixture({installFailure: {stderrTail: '(node:1) [DEP0040] DeprecationWarning: The `punycode` module is deprecated.\n',
   stdout: '[ERR_PNPM_INVALID_VERSION_UNION] Invalid versions union.\n'}});
- await assert.rejects(updateSelectedPi(f.input), {message: 'gentle-shell update: pnpm (/fake/pnpm) could not install gentle-pi@4.1.0\n[ERR_PNPM_INVALID_VERSION_UNION] Invalid versions union.'});
+ await assert.rejects(updateSelectedPi(f.input), {message: `tomidev update: pnpm (/fake/pnpm) could not install ${SOURCE}\n[ERR_PNPM_INVALID_VERSION_UNION] Invalid versions union.`});
 });
 
 test('without any error line the last stderr line is shown', async () => {
  const f = fixture({installFailure: {stderrTail: 'killed\n', stdout: 'Progress: resolved 1\n'}});
- await assert.rejects(updateSelectedPi(f.input), {message: 'gentle-shell update: pnpm (/fake/pnpm) could not install gentle-pi@4.1.0\nkilled'});
+ await assert.rejects(updateSelectedPi(f.input), {message: `tomidev update: pnpm (/fake/pnpm) could not install ${SOURCE}\nkilled`});
 });

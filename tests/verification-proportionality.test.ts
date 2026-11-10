@@ -36,7 +36,7 @@ test("auxiliary gates must protect a concrete requirement or threat", () => {
 test("overengineering warnings visibly simplify the plan without weakening safeguards", () => {
   assert.ok(policy.includes("remove or collapse optional artifacts and checks"));
   assert.ok(policy.includes("State what was removed, what remains indispensable, and the next application outcome"));
-  assert.ok(policy.includes("Keep required functional checks, security controls, and native review authority intact"));
+  assert.ok(policy.includes("Keep required functional checks and security controls intact"));
 });
 
 test("existing verification isolation and bounded correction remain required", () => {

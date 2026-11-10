@@ -14,6 +14,7 @@
  * are validated before any connect/create/PCM. Channel positions are the
  * standard mono(0)/stereo(1,2) mapping (channelmap.h not in the reference set).
  */
+import { BRAND_NAME } from "./brand.ts";
 import { validateNotificationWav } from "./notification-audio.ts";
 import {
 	MAX_REQUEST_TIMEOUT_MS, PulseClient, loadPulseCookie, resolvePulseCookiePath, type PulseClientOptions,
@@ -97,7 +98,7 @@ function buildCreateArgs(pcm: WavPCM, adjustLatency: boolean): PulseTagWriter {
 		.boolean(false).boolean(false).boolean(false).boolean(false).boolean(false).boolean(false).boolean(false) // 7 flags
 		.boolean(false) // muted
 		.boolean(adjustLatency)
-		.proplist([["media.name", "gentle-shell notification"], ["media.role", "event"]]);
+		.proplist([["media.name", `${BRAND_NAME} notification`], ["media.role", "event"]]);
 }
 
 /** v13 reply: stream/sink indices, missing, buffer attrs, spec, map, device, name, suspended, latency. */

@@ -30,7 +30,7 @@ const bind = (modelProfiles: unknown = {}) => ({
 
 // These are supplied branch entries, not evidence of persistence on disk.
 test("writer emits only the v1 user binding fields and a minimal clear", () => {
-	assert.equal(SESSION_PROFILE_CUSTOM_TYPE, "gentle-pi.session-profile/v1");
+	assert.equal(SESSION_PROFILE_CUSTOM_TYPE, "tomidev.session-profile/v1");
 	assert.deepEqual(createSessionProfileBind("work", {}), bind());
 	assert.deepEqual(createSessionProfileClear(), { kind: "clear" });
 });
@@ -272,7 +272,7 @@ test("newest family entry is terminal and retains its actual branch index", () =
 	for (const [entry, status] of [
 		[custom({ kind: "clear" }), "cleared"],
 		[custom({ kind: "bind" }), "invalid"],
-		[custom(bind(), "gentle-pi.session-profile/v2"), "unsupported"],
+		[custom(bind(), "tomidev.session-profile/v2"), "unsupported"],
 	] as const) {
 		assert.deepEqual(
 			replaySessionProfileBranch([old, message, entry, custom({}, "other/v1")]),
@@ -286,16 +286,16 @@ test("newest family entry is terminal and retains its actual branch index", () =
 
 test("family identifier, not payload version, determines support", () => {
 	for (const customType of [
-		"gentle-pi.session-profile/v0",
-		"gentle-pi.session-profile/v99",
-		"gentle-pi.session-profile/future",
+		"tomidev.session-profile/v0",
+		"tomidev.session-profile/v99",
+		"tomidev.session-profile/future",
 	]) {
 		assert.deepEqual(readSessionProfileEntry(custom(null, customType)), {
 			status: "unsupported",
 		});
 	}
 	assert.deepEqual(
-		readSessionProfileEntry(custom(bind(), "gentle-pi.session-profile-other/v1")),
+		readSessionProfileEntry(custom(bind(), "tomidev.session-profile-other/v1")),
 		{ status: "absent" },
 	);
 });
@@ -305,7 +305,7 @@ test("branch order selects latest bind; clear and bad entries can be explicitly 
 	for (const earlier of [
 		custom({ kind: "clear" }),
 		custom(null),
-		custom(null, "gentle-pi.session-profile/v2"),
+		custom(null, "tomidev.session-profile/v2"),
 	]) {
 		assert.deepEqual(replaySessionProfileBranch([earlier, latest]), {
 			status: "bound",
@@ -318,7 +318,7 @@ test("branch order selects latest bind; clear and bad entries can be explicitly 
 test("replay sees only caller-supplied active branch, not siblings or later paths", () => {
 	const ancestor = custom(bind());
 	const sibling = custom({ kind: "clear" });
-	const future = custom(null, "gentle-pi.session-profile/v2");
+	const future = custom(null, "tomidev.session-profile/v2");
 	assert.equal(
 		replaySessionProfileBranch([ancestor, sibling]).status,
 		"cleared",

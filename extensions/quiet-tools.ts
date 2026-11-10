@@ -11,7 +11,8 @@ import {
 import { Text, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
-import { resolveGentleAiDevBinaryOverride, type GentleAiDevBinaryOverride } from "../lib/gentle-ai-binary.ts";
+export type GentleAiDevBinaryOverride = { path: string; sha256?: string };
+export function resolveGentleAiDevBinaryOverride(): GentleAiDevBinaryOverride | undefined { return undefined; }
 import { CARD_CONTENT, cardContent } from "../lib/card-content-policy.ts";
 import { GentleAiElapsedTimingLedger } from "../lib/gentle-ai-elapsed-store.ts";
 import { quietToolsEnabled } from "../lib/quiet-tools-config.ts";
@@ -337,7 +338,7 @@ function validateGate(tokens: string[]): string | undefined {
 /**
  * Matches only supported routine Gentle AI CLI calls, including bounded
  * package-local paths, not arbitrary shell output that merely mentions
- * gentle-ai. Review commands otherwise emit machine-readable RDD data.
+ * gentle-ai.
  */
 export function isGentleAiDirectCommand(args: Record<string, unknown> | undefined, commandArguments = GENTLE_AI_COMMAND_ARGUMENTS): boolean {
 	return gentleAiCommandTokens(args, commandArguments) !== undefined;

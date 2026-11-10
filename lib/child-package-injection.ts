@@ -1,11 +1,12 @@
 import { isAbsolute } from "node:path";
+import { ENV_PREFIX } from "./brand.ts";
 
 // #1690: the gentle-shell launcher injects the gentle-pi package into the
 // parent pi with `-e` instead of a settings declaration, so delegated children
 // would otherwise start without it. The launcher records the exact extension
 // set it injected in this variable; the subagent runner forwards that set to
 // every child. Kept free of launcher imports so the runner can load it cheaply.
-export const CHILD_PACKAGE_INJECTION_ENV = "GENTLE_SHELL_CHILD_PACKAGE_INJECTION";
+export const CHILD_PACKAGE_INJECTION_ENV = `${ENV_PREFIX}CHILD_PACKAGE_INJECTION`;
 
 const CHILD_PACKAGE_INJECTION_VERSION = 1;
 

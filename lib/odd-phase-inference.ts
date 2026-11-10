@@ -1,4 +1,4 @@
-// Deterministic ODD phase inference from observed tool activity. The Gentle
+// Deterministic ODD phase inference from observed tool activity. The Tomidev
 // Shell working label used to depend only on the model calling
 // gentle_odd_phase, which models routinely skip; the tools the primary
 // session actually runs are a reliable, observable signal instead.
@@ -19,10 +19,6 @@ const TOOL_PHASES: Readonly<Record<string, OddPhase>> = {
 	ask_user_choice: "deciding",
 	ask_user_question: "deciding",
 	todo: "planning",
-	gentle_review: "checking",
-	gentle_review_scope: "checking",
-	gentle_review_capture: "checking",
-	gentle_review_capture_group: "checking",
 };
 
 const DELEGATED_PHASES: Readonly<Record<string, OddPhase>> = {

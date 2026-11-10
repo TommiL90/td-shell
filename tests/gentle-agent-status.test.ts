@@ -24,14 +24,14 @@ async function harness(env: NodeJS.ProcessEnv = {}, failing = false) {
 	return { values, ctx, listeners, fire: (name: string, event = {}, context = ctx) => { handlers.get(name)?.(event, context); flush(); },
 		burst: () => { handlers.get("agent_start")?.({}, ctx); handlers.get("agent_settled")?.({}, ctx); flush(); },
 		attention: (active: boolean) => { listeners.get("herdr:blocked")?.({ active }); flush(); },
-		settings: (enabled: boolean) => { writeFileSync(join(home, "herdr-task-summary.json"), JSON.stringify({ schema: "gentle-pi.herdr-task-summary/v1", enabled, summaryColor: "accent", continuationColor: "muted" })); },
-		change: () => { listeners.get("gentle-pi:herdr-task-summary:changed")?.({ configHome: home }); flush(); },
+		settings: (enabled: boolean) => { writeFileSync(join(home, "herdr-task-summary.json"), JSON.stringify({ schema: "tomidev.herdr-task-summary/v1", enabled, summaryColor: "accent", continuationColor: "muted" })); },
+		change: () => { listeners.get("td:herdr-task-summary:changed")?.({ configHome: home }); flush(); },
 		pulse: (ms: number) => { now += ms; tick(); flush(); }, stopped: () => stopped, removed: () => removed };
 }
 const todo = (title: string) => ({ toolName: "todo", result: { details: { gentleTodo: { tasks: [{ title, status: "in_progress" }] } } } });
 test("S2/S3: initial state, blocked dominance, settled idle guard and label", async () => {
-	const h = await harness({ GENTLE_SHELL_HERDR_REPORTER: "1" }); h.fire("session_start");
-	assert.equal(h.values.at(-1)?.agent, "gentle-shell"); assert.equal(h.values.at(-1)?.state, "idle");
+	const h = await harness({ TOMIDEV_HERDR_REPORTER: "1" }); h.fire("session_start");
+	assert.equal(h.values.at(-1)?.agent, "tomidev"); assert.equal(h.values.at(-1)?.state, "idle");
 	h.fire("agent_start"); assert.equal(h.values.at(-1)?.state, "working");
 	h.fire("agent_settled", {}, { ...h.ctx, isIdle: () => false }); assert.equal(h.values.at(-1)?.state, "working");
 	h.attention(true); h.attention(true); h.fire("agent_start"); h.fire("agent_settled");
@@ -61,7 +61,7 @@ test("S6: coalescing, refresh within 10 seconds, shutdown cancellation/removal",
 	h.pulse(10000); h.fire("agent_start"); assert.equal(h.values.length, before + 1);
 });
 test("S7: children and noninteractive excluded; Herdr not required; ownership guarded", async () => {
-	for (const [env, mode] of [[{ GENTLE_PI_AGENTS_CHILD: "1" }, "tui"], [{}, "rpc"], [{}, "json"]] as const) {
+	for (const [env, mode] of [[{ TOMIDEV_AGENTS_CHILD: "1" }, "tui"], [{}, "rpc"], [{}, "json"]] as const) {
 		const h = await harness(env); h.fire("session_start", {}, { ...h.ctx, mode } as ExtensionContext); h.fire("agent_start"); assert.deepEqual(h.values, []);
 	}
 	const h = await harness(); h.fire("session_start"); assert.equal(h.values.length, 1);

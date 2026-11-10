@@ -110,7 +110,7 @@ for (const prior of ["bound", "invalid", "future"] as const) {
    const { manager } = fixture();
    manager.appendCustomEntry(
     prior === "future"
-     ? "gentle-pi.session-profile/v2"
+     ? "tomidev.session-profile/v2"
      : SESSION_PROFILE_CUSTOM_TYPE,
     prior === "bound" ? createSessionProfileBind("unwritten", {}) : {},
    );

@@ -115,16 +115,12 @@ test("the rail Status draws Changes, Review and Integrations with the agent prof
 		review: { state: "consent" as const, scope: "app.ts +2 files" },
 		statuses: ["🧠 gentle-pi · ready", "💥 SUPER YOLO ON — no permission prompts; private paths stay blocked"],
 	};
-	const lines = renderShellSidebarBar(model, plain as never, 48, { density: "comfortable", visibility: { changes: true, rdd: true, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false } }, "ctrl+shift+t todos · alt+u usage");
+	const lines = renderShellSidebarBar(model, plain as never, 48, { density: "comfortable", visibility: { changes: true, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false } }, "ctrl+shift+t todos · alt+u usage");
 	for (const line of lines) assert.equal(visibleWidth(line), 48, `row fills the rail: ${line}`);
 	const rows = lines.map((line) => line.trimEnd());
 	assert.deepEqual(rows, [
 		edge("▾ CHANGES", "22 files", 48),
-		edge("  +802 −352", "/gentle:changes", 48),
-		"",
-		edge("▾ REVIEW", "needs you", 48),
-		"  Needs your consent",
-		"  app.ts +2 files",
+		edge("  +802 −352", "/td:changes", 48),
 		"",
 		edge("▾ INTEGRATIONS", "2", 48),
 		"  - 🧠 gentle-pi · ready",
@@ -138,9 +134,9 @@ test("the rail Status draws Changes, Review and Integrations with the agent prof
 
 test("the rail Status keeps an empty Changes row, hides Review without evidence and honors its toggles", () => {
 	const base = { cwd: "/p", branch: null, dirty: undefined, sessionName: undefined, modelId: "m", effort: undefined, contextPercent: null, contextWindow: 0, costTotal: 0, subscription: false, usage: undefined, statuses: [] };
-	const visibility = { changes: true, rdd: true, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false };
+	const visibility = { changes: true, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false };
 	const rows = renderShellSidebarBar(base, plain as never, 40, { density: "compact", visibility }).map((line) => line.trimEnd());
-	assert.deepEqual(rows, [edge("▾ CHANGES", "clean", 40), edge("  no captured changes", "/gentle:changes", 40), edge("▾ INTEGRATIONS", "none", 40), "  no status reported"]);
+	assert.deepEqual(rows, [edge("▾ CHANGES", "clean", 40), edge("  no captured changes", "/td:changes", 40), edge("▾ INTEGRATIONS", "none", 40), "  no status reported"]);
 	const hidden = renderShellSidebarBar(base, plain as never, 40, { density: "compact", visibility: { ...visibility, changes: false } }).map((line) => line.trimEnd());
 	assert.doesNotMatch(hidden.join("\n"), /CHANGES/);
 });
@@ -191,13 +187,13 @@ test("a narrow status bar drops usage before the model and keeps the branch", ()
 	assert.equal(visibleWidth(tighter), 70);
 	assert.doesNotMatch(tighter, /claude-opus/, "then the model");
 	assert.match(tighter, /feat\/shell-ide-rework ±3 │ 💥 SUPER-YOLO +ctx [▰▱]+ 27% │ \$0\.000 $/, "branch, mode, context and cost stay");
-	const hidden = stripAnsi(renderShellStatusBar(chromeModel, plain as never, 120, "alt+u", { density: "comfortable", visibility: { changes: true, rdd: true, agents: true, todo: true, usageCost: false, modelDetails: false, contextWarning: true, stats: false } }).rows[0]!);
+	const hidden = stripAnsi(renderShellStatusBar(chromeModel, plain as never, 120, "alt+u", { density: "comfortable", visibility: { changes: true, agents: true, todo: true, usageCost: false, modelDetails: false, contextWarning: true, stats: false } }).rows[0]!);
 	assert.doesNotMatch(hidden, /claude-opus|ctx|\$0\.000|usage/, "the visibility toggles hide model, context, cost and usage");
 });
 
 test("Integrations bullets distinguish items from continuations without losing details or folding", () => {
  const model = { ...chromeModel, integrations: ["🧠 gentle-pi · ready", "Fast requested; last response from server: Standard (default)"] };
- const visibility = { changes: false, rdd: true, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false };
+ const visibility = { changes: false, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false };
  for (const width of [28, 40, 72]) {
   const result = renderShellStatusSections(model, plain, width, { density: "compact", visibility });
   const [header, ...body] = result.lines.map(line => stripAnsi(line).trimEnd());
@@ -227,7 +223,7 @@ test("Integrations explains the permission mode without repeating it", () => {
 
 // Mobile (design/shell-rework/05-mobile.html, 07-many-agents-mobile.html): below
 // the rail breakpoint live work folds into one row above the editor, and
-// /gentle:panel opens the rail's sections as a full-width sheet.
+// /td:panel opens the rail's sections as a full-width sheet.
 test("the work row shows the current todo, or the agents while they run, with the todo count", () => {
 	const todo = todoWorkSummary(state([["Done", "done"], ["Run the full suite", "in_progress"], ["Next", "pending"]]), plain);
 	assert.deepEqual(todo, { left: "◐ Run the full suite", right: "1/3", rightLabel: "todos" });
@@ -261,7 +257,7 @@ test("the panel sheet stacks the rail sections under a title row and scrolls wit
 
 test("the mobile sheet wraps and scrolls a long Integrations status", () => {
 	const model = { ...chromeModel, permission: undefined, integrations: ["mobile-integration-with-a-long-name (local)", "MCP connected"] };
-	const visibility = { changes: false, rdd: true, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false };
+	const visibility = { changes: false, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false };
 	const parts = new Map([["footer", { render: (width: number) => renderShellSidebarBar(model, plain, width, { density: "compact", visibility }) }]]);
 	const full = renderPanelSheet(parts, plain, 28, { rows: 15, scrollTop: 0 });
 	assert.match(full.lines.join("").replace(/\s/g, ""), /mobile-integration-with-a-long-name\(local\)/);
@@ -295,14 +291,14 @@ test("the mobile title row carries the model and the profile, since the narrow s
 
 test("a long branch gives way before the context and cost in a phone-width status bar", () => {
 	const longBranch = { ...chromeModel, branch: "feat/shell-ide-rework-07-mobile", dirty: undefined };
-	const narrowSettings = { density: "comfortable" as const, visibility: { changes: true, rdd: true, agents: true, todo: true, usageCost: true, modelDetails: false, contextWarning: true, stats: false } };
+	const narrowSettings = { density: "comfortable" as const, visibility: { changes: true, agents: true, todo: true, usageCost: true, modelDetails: false, contextWarning: true, stats: false } };
 	const row = stripAnsi(renderShellStatusBar(longBranch, plain as never, 56, "alt+u", narrowSettings).rows[0]!);
 	assert.equal(visibleWidth(row), 56);
 	assert.match(row, /ctx [▰▱]+ 27% │ \$0\.000 $/, "context and cost stay");
 	assert.match(row, /^ feat\/shell\S*… │ 💥 SUPER-YOLO /, "the branch is clipped and the permission mode stays");
 });
 
-test("the rail Status sections are click targets: headers collapse them and the Changes row opens /gentle:changes", () => {
+test("the rail Status sections are click targets: headers collapse them and the Changes row opens /td:changes", () => {
 	const model = { ...chromeModel, changes: { files: 2, added: 7, deleted: 3 }, review: undefined };
 	const open = renderShellStatusSections(model, plain as never, 48, undefined, undefined, {});
 	const at = (pattern: RegExp) => open.lines.findIndex((line) => pattern.test(stripAnsi(line)));
@@ -317,7 +313,7 @@ test("the rail Status sections are click targets: headers collapse them and the 
 	const hovered = renderShellStatusSections(model, theme as never, 120, undefined, undefined, { hovered: "changes" }).lines.join("\n");
 	assert.match(hovered, /<warning>▾<\/warning> <warning>\*CHANGES\*<\/warning>/, "a hovered header paints the shared hover role");
 	const hoveredOpen = renderShellStatusSections(model, theme as never, 120, undefined, undefined, { hovered: "open-changes" }).lines.join("\n");
-	assert.match(hoveredOpen, /<warning>\/gentle:changes<\/warning>/, "a hovered Changes row paints its command in the hover role");
+	assert.match(hoveredOpen, /<warning>\/td:changes<\/warning>/, "a hovered Changes row paints its command in the hover role");
 	assert.deepEqual(renderShellSidebarBar(model, plain as never, 48), open.lines, "renderShellSidebarBar stays the lines of the same render");
 });
 
@@ -333,7 +329,7 @@ test("the work row and the sheet's esc back show they are clickable", () => {
 });
 
 test("minimal density drops the rail's key hints row; compact keeps it", () => {
-	const visibility = { changes: true, rdd: true, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false };
+	const visibility = { changes: true, agents: true, todo: true, usageCost: true, modelDetails: true, contextWarning: true, stats: false };
 	const hints = "alt+u usage · / commands";
 	const compact = renderShellStatusSections(chromeModel, plain as never, 48, { density: "compact", visibility }, hints, {}).lines.map(stripAnsi).join("\n");
 	const minimal = renderShellStatusSections(chromeModel, plain as never, 48, { density: "minimal", visibility }, hints, {}).lines.map(stripAnsi).join("\n");

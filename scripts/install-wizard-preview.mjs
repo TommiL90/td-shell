@@ -9,6 +9,7 @@
 //
 // Then open the printed one-time session URL. Not part of the installer entry.
 
+import { BRAND_DISPLAY_NAME } from "../runtime/brand.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PI_INSTALL_VERSION, planPreflight, requirements } from "./installer-preflight.mjs";
 import { createInstallerServer } from "./installer-server.mjs";
@@ -120,7 +121,7 @@ export async function startPreview({ scenario = "ready", stepMs = 600, log = con
 		runInstall: fake.runInstall,
 	});
 	const { url } = await host.listen();
-	log(`Gentle Shell wizard preview (scenario: ${scenario}). Fake plan and fake installer: nothing is installed.`);
+	log(`${BRAND_DISPLAY_NAME} wizard preview (scenario: ${scenario}). Fake plan and fake installer: nothing is installed.`);
 	log(`Open this one-time link (expires in 2 minutes):\n  ${url}`);
 	return { host, url };
 }

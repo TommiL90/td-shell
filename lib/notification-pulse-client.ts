@@ -13,6 +13,7 @@
  * connect()/probe() opens the Unix socket. No stream creation, no samples, no
  * ancillary FDs/SHM, no TCP, no cookies logged or written.
  */
+import { BRAND_NAME } from "./brand.ts";
 import { constants } from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
 import { connect as netConnect, type Socket } from "node:net";
@@ -297,7 +298,7 @@ export class PulseClient {
 		reply.assertEOF();
 		this.negotiatedVersion = version;
 		const properties = boundedPulseTagWriter().proplist([
-			["application.name", options.name ?? "gentle-shell"],
+			["application.name", options.name ?? BRAND_NAME],
 			["application.type", options.type ?? "notification"],
 		]);
 		const named = await this.request(PulseCommand.SET_CLIENT_NAME, properties, signal);

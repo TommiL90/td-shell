@@ -15,7 +15,7 @@ import {
 } from "./voice-artifacts.ts";
 
 // Explicit acquisition and status of the optional voice runtime and model (S1-S3).
-// Nothing runs at import: /gentle:voice calls these on request. A component is
+// Nothing runs at import: /td:voice calls these on request. A component is
 // downloaded into a private staging directory under the voice home, verified by
 // size and digest while it streams, and published with a single rename, with its
 // install marker written last. A failure removes only that staging directory, so

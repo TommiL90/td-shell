@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { __testing, createGentleAiExtension } from "../extensions/gentle-ai.ts";
-import type { ExecFileAdapter, ExecFileResult } from "../lib/native-review-cli.ts";
+import type { ExecFileAdapter, ExecFileResult } from "../lib/process-tree.ts";
 import { setBundledInstallForTesting } from "../lib/gentle-shell-bundled.ts";
 import {
 	decodeTelemetryTriggerDecision,
@@ -23,7 +23,7 @@ import {
 // nudges the local binary once per process. These tests cover the pure
 // predicate/spawn/decode core in lib/telemetry-trigger.ts and the two ways
 // extensions/gentle-ai.ts wires it in: the once-per-process activation nudge
-// and the foreground /gentle:telemetry slash command relay.
+// and the foreground /td:telemetry slash command relay.
 // ---------------------------------------------------------------------------
 
 let fixtureRoot: string | undefined;
@@ -38,8 +38,8 @@ before(() => {
 	mkdirSync(home);
 	Object.assign(fixtureEnvironment, {
 		HOME: home, USERPROFILE: home,
-		GENTLE_PI_CONFIG_HOME: join(home, "config"),
-		GENTLE_PI_AGENT_HOME: join(home, "agents"),
+		TOMIDEV_CONFIG_HOME: join(home, "config"),
+		TOMIDEV_AGENT_HOME: join(home, "agents"),
 		PI_CODING_AGENT_DIR: join(home, "pi"),
 		XDG_CONFIG_HOME: join(home, "xdg"),
 	});
@@ -212,7 +212,7 @@ function buildExtensionHarness(overrides: Parameters<typeof createGentleAiExtens
 		telemetryTriggerSpawn: () => assert.fail("Telemetry fixtures must inject a spawn mock"),
 		telemetryExecFileAdapter: async () => assert.fail("Telemetry fixtures must inject an exec adapter"),
 		...overrides,
-		processEnv: { ...fixtureEnvironment, GENTLE_PI_AGENTS_CHILD: "0", ...overrides.processEnv },
+		processEnv: { ...fixtureEnvironment, TOMIDEV_AGENTS_CHILD: "0", ...overrides.processEnv },
 	})(pi);
 	return { handlers, commands };
 }
@@ -251,9 +251,9 @@ test("activation: spawns the telemetry trigger exactly once for a primary sessio
 
 	assert.equal(fake.calls.length, 1, "the trigger must be attempted at most once per process");
 	const [call] = fake.calls;
-	assert.equal(call.options.env.GENTLE_PI_AGENTS_CHILD, "0");
+	assert.equal(call.options.env.TOMIDEV_AGENTS_CHILD, "0");
 	assert.equal(call.options.env.HOME, fixtureEnvironment.HOME);
-	assert.equal(call.options.env.GENTLE_PI_AGENTS_PARENT_PERMISSION_FD, undefined);
+	assert.equal(call.options.env.TOMIDEV_AGENTS_PARENT_PERMISSION_FD, undefined);
 	assert.deepEqual(call.args, ["telemetry", "trigger", "--json"]);
 	assert.equal(call.options.cwd, fixtureCwd);
 	assert.equal(call.options.detached, true);
@@ -286,7 +286,7 @@ test("activation: a child session neither spawns telemetry nor appends the prima
 	const { handlers } = buildExtensionHarness({
 		resolveTelemetryTriggerBinary: () => "/opt/gentle-ai/gentle-ai",
 		telemetryTriggerSpawn: fake.spawn,
-		processEnv: { GENTLE_PI_AGENTS_CHILD: "1" },
+		processEnv: { TOMIDEV_AGENTS_CHILD: "1" },
 	});
 	const event = { systemPrompt: "base", systemPromptOptions: { appendSystemPrompt: "Child instructions" } };
 	assert.equal(await handlers.get("before_agent_start")!(event, fakeContext([])), undefined);
@@ -312,12 +312,12 @@ test("activation: a missing binary or spawn error never affects activation", asy
 	const event = { systemPrompt: "base", systemPromptOptions: { appendSystemPrompt: "" } };
 	const outcome = await beforeAgentStart!(event, ctx);
 	assert.equal(outcome, undefined, "the handler must not return a replacement systemPrompt");
-	assert.match(event.systemPromptOptions.appendSystemPrompt, /el Gentleman/);
+	assert.match(event.systemPromptOptions.appendSystemPrompt, /(?:el Gentleman|Tomidev Shell)/);
 	assert.equal(notifications.length, 0);
 });
 
 // ---------------------------------------------------------------------------
-// Extension wiring: the foreground /gentle:telemetry slash command.
+// Extension wiring: the foreground /td:telemetry slash command.
 // ---------------------------------------------------------------------------
 
 function fakeAdapter(result: ExecFileResult): { adapter: ExecFileAdapter; requests: Array<{ file: string; arguments: readonly string[] }> } {
@@ -329,7 +329,7 @@ function fakeAdapter(result: ExecFileResult): { adapter: ExecFileAdapter; reques
 	return { adapter, requests };
 }
 
-test("/gentle:telemetry relays a status --json payload", async () => {
+test("/td:telemetry relays a status --json payload", async () => {
 	const payload = { schema: "gentle-ai.telemetry-status/v1", enabled: true, source: "default" };
 	const { adapter, requests } = fakeAdapter({
 		stdout: `${JSON.stringify(payload)}\n`,
@@ -343,8 +343,8 @@ test("/gentle:telemetry relays a status --json payload", async () => {
 		resolveTelemetryTriggerBinary: () => "/opt/gentle-ai/gentle-ai",
 		telemetryExecFileAdapter: adapter,
 	});
-	const command = commands.get("gentle:telemetry");
-	assert.ok(command, "gentle:telemetry must be registered");
+	const command = commands.get("td:telemetry");
+	assert.ok(command, "td:telemetry must be registered");
 	const notifications: Array<{ message: string; severity: string }> = [];
 	await command!.handler("", fakeContext(notifications));
 
@@ -355,7 +355,7 @@ test("/gentle:telemetry relays a status --json payload", async () => {
 	assert.deepEqual(JSON.parse(notifications[0].message), payload);
 });
 
-test("/gentle:telemetry disable prints a one-line confirmation", async () => {
+test("/td:telemetry disable prints a one-line confirmation", async () => {
 	const { adapter } = fakeAdapter({
 		stdout: `${JSON.stringify({ schema: "gentle-ai.telemetry-status/v1", enabled: false, source: "user" })}\n`,
 		stderr: "",
@@ -368,14 +368,14 @@ test("/gentle:telemetry disable prints a one-line confirmation", async () => {
 		resolveTelemetryTriggerBinary: () => "/opt/gentle-ai/gentle-ai",
 		telemetryExecFileAdapter: adapter,
 	});
-	const command = commands.get("gentle:telemetry");
+	const command = commands.get("td:telemetry");
 	const notifications: Array<{ message: string; severity: string }> = [];
 	await command!.handler("disable", fakeContext(notifications));
 
 	assert.deepEqual(notifications, [{ message: "Gentle AI telemetry disabled.", severity: "info" }]);
 });
 
-test("/gentle:telemetry relays a typed non-zero failure", async () => {
+test("/td:telemetry relays a typed non-zero failure", async () => {
 	const { adapter } = fakeAdapter({
 		stdout: "",
 		stderr: "unknown telemetry command\n",
@@ -388,7 +388,7 @@ test("/gentle:telemetry relays a typed non-zero failure", async () => {
 		resolveTelemetryTriggerBinary: () => "/opt/gentle-ai/gentle-ai",
 		telemetryExecFileAdapter: adapter,
 	});
-	const command = commands.get("gentle:telemetry");
+	const command = commands.get("td:telemetry");
 	const notifications: Array<{ message: string; severity: string }> = [];
 	await command!.handler("preview", fakeContext(notifications));
 
@@ -397,13 +397,13 @@ test("/gentle:telemetry relays a typed non-zero failure", async () => {
 	assert.match(notifications[0].message, /unknown telemetry command/);
 });
 
-test("/gentle:telemetry rejects an unknown sub-action without calling the binary", async () => {
+test("/td:telemetry rejects an unknown sub-action without calling the binary", async () => {
 	const { adapter, requests } = fakeAdapter({ stdout: "{}", stderr: "", exitCode: 0, signal: null, timedOut: false, outputLimitExceeded: false });
 	const { commands } = buildExtensionHarness({
 		resolveTelemetryTriggerBinary: () => "/opt/gentle-ai/gentle-ai",
 		telemetryExecFileAdapter: adapter,
 	});
-	const command = commands.get("gentle:telemetry");
+	const command = commands.get("td:telemetry");
 	const notifications: Array<{ message: string; severity: string }> = [];
 	await command!.handler("frobnicate", fakeContext(notifications));
 
@@ -414,7 +414,7 @@ test("/gentle:telemetry rejects an unknown sub-action without calling the binary
 
 // S9: this package running from a bundled install (the testing overlay stands
 // in for its location; the detection itself is tested with real installs in
-// gentle-ai-binary-isolation.test.ts) and the launcher's GENTLE_SHELL_PREFIX.
+// gentle-ai-binary-isolation.test.ts) and the launcher's TOMIDEV_PREFIX.
 function bundledIsolation(t: { after: (fn: () => void) => void }): { prefix: string; env: NodeJS.ProcessEnv } {
 	const prefix = realpathSync(mkdtempSync(join(tmpdir(), "gentle-ai-isolation-site-")));
 	setBundledInstallForTesting({ root: prefix });
@@ -422,7 +422,7 @@ function bundledIsolation(t: { after: (fn: () => void) => void }): { prefix: str
 		setBundledInstallForTesting(undefined);
 		rmSync(prefix, { recursive: true, force: true });
 	});
-	return { prefix, env: { PATH: "/usr/bin", GENTLE_SHELL_PREFIX: prefix } };
+	return { prefix, env: { PATH: "/usr/bin", TOMIDEV_PREFIX: prefix } };
 }
 
 test("spawnTelemetryTrigger: gentle-ai gets Gentle AI's isolation variables only in a bundled install", (t) => {

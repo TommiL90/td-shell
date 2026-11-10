@@ -46,7 +46,7 @@ function recorder(platform = "win32", overrides: Partial<NativeWindowsOptions> =
 		env: {
 			SystemRoot: "D:\\Hostile", windir: "D:\\Hostile", TEMP: "C:\\Temp", TMP: "C:\\Tmp", USERPROFILE: "C:\\Users\\u",
 			OPENAI_API_KEY: "sk", ANTHROPIC_API_KEY: "x", AWS_SECRET_ACCESS_KEY: "y",
-			NODE_OPTIONS: "--inspect", NODE_PATH: "/n", DEBUG: "*", PATH: "C:\\evil", GENTLE_AUDIO_SNAPSHOT: "C:\\leak.wav",
+			NODE_OPTIONS: "--inspect", NODE_PATH: "/n", DEBUG: "*", PATH: "C:\\evil", TOMIDEV_AUDIO_SNAPSHOT: "C:\\leak.wav",
 		},
 		...overrides,
 	});
@@ -272,7 +272,7 @@ test("child environment is a fixed Windows allowlist with forced SystemRoot", as
 		env: {
 			SystemRoot: "D:\\Hostile", windir: "D:\\Hostile", TEMP: "C:\\Temp", TMP: "C:\\Tmp", USERPROFILE: "C:\\Users\\u",
 			OPENAI_API_KEY: "sk", ANTHROPIC_API_KEY: "x", AWS_SECRET_ACCESS_KEY: "y",
-			NODE_OPTIONS: "--inspect", NODE_PATH: "/n", DEBUG: "*", PATH: "C:\\evil", GENTLE_AUDIO_SNAPSHOT: "C:\\leak.wav",
+			NODE_OPTIONS: "--inspect", NODE_PATH: "/n", DEBUG: "*", PATH: "C:\\evil", TOMIDEV_AUDIO_SNAPSHOT: "C:\\leak.wav",
 		},
 	});
 	void player.probe();
@@ -283,7 +283,7 @@ test("child environment is a fixed Windows allowlist with forced SystemRoot", as
 	assert.equal(env.TEMP, "C:\\Temp");
 	assert.equal(env.TMP, "C:\\Tmp");
 	assert.equal(env.USERPROFILE, "C:\\Users\\u");
-	for (const drop of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AWS_SECRET_ACCESS_KEY", "NODE_OPTIONS", "NODE_PATH", "DEBUG", "PATH", "GENTLE_AUDIO_SNAPSHOT"])
+	for (const drop of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AWS_SECRET_ACCESS_KEY", "NODE_OPTIONS", "NODE_PATH", "DEBUG", "PATH", "TOMIDEV_AUDIO_SNAPSHOT"])
 		assert.equal(env[drop], undefined, drop);
 });
 
@@ -530,8 +530,8 @@ test("wsl child env keeps only the interop pair and cannot redirect the fixed ho
 		platform: "linux",
 		env: {
 			WSL_DISTRO_NAME: "Ubuntu", WSL_INTEROP: "/run/WSL/9_interop",
-			SystemRoot: "D:\\Hostile", windir: "D:\\Hostile", PATH: "/evil", WSLENV: "GENTLE_AUDIO_SNAPSHOT",
-			GENTLE_AUDIO_SNAPSHOT: "/tmp/leak.wav", OPENAI_API_KEY: "sk", NODE_OPTIONS: "--inspect",
+			SystemRoot: "D:\\Hostile", windir: "D:\\Hostile", PATH: "/evil", WSLENV: "TOMIDEV_AUDIO_SNAPSHOT",
+			TOMIDEV_AUDIO_SNAPSHOT: "/tmp/leak.wav", OPENAI_API_KEY: "sk", NODE_OPTIONS: "--inspect",
 			TEMP: "/tmp", USERPROFILE: "C:\\Users\\u",
 		},
 		executableAvailable: async () => true,
@@ -547,7 +547,7 @@ test("wsl child env keeps only the interop pair and cannot redirect the fixed ho
 	assert.equal(env.WSL_DISTRO_NAME, "Ubuntu");
 	assert.equal(env.TEMP, "/tmp");
 	assert.equal(env.USERPROFILE, "C:\\Users\\u");
-	for (const drop of ["PATH", "WSLENV", "GENTLE_AUDIO_SNAPSHOT", "OPENAI_API_KEY", "NODE_OPTIONS"])
+	for (const drop of ["PATH", "WSLENV", "TOMIDEV_AUDIO_SNAPSHOT", "OPENAI_API_KEY", "NODE_OPTIONS"])
 		assert.equal(env[drop], undefined, drop);
 });
 

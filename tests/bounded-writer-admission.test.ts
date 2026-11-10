@@ -6,7 +6,6 @@ import { join } from "node:path";
 import test from "node:test";
 import { __testing } from "../extensions/gentle-ai.ts";
 import { allowedEditSurfaces, inheritAllowedEditSurfaces, isBoundedWriter, bindSessionRepositoryPreparation, boundSessionRepositoryAuthorityCurrent, captureBoundSessionRepositoryAuthority, isDevelopmentSurface, prepareBoundSessionRepository, safeBootstrapDirectory, sessionRepositoryAuthority } from "../lib/bounded-writer-admission.ts";
-import type { NativeReviewCli } from "../lib/native-review-cli.ts";
 
 test("development admission excludes sensitive, config and bookkeeping surfaces structurally", () => {
 	for (const path of ["README.md", "odd/tasks/feature.md", ".pi/settings.json", "docs/app.ts", ".ssh/app.ts", ".aws/app.ts", ".gnupg/app.ts", "credentials/app.ts", "tokens/app.ts", "secrets/app.ts", "vite.config.ts", ".env", "private.key"]) assert.equal(isDevelopmentSurface(path), false, path);
@@ -74,34 +73,6 @@ for (const race of ["loss", "replacement", "cancellation"] as const) {
 	});
 }
 
-// Never invoke native code against the real HOME or filesystem root.
-test("explicit review protects canonical HOME aliases, filesystem root and sensitive directories", async t => {
-	const root = realpathSync(mkdtempSync(join(tmpdir(), "bootstrap-safety-")));
-	const home = join(root, "home");
-	const alias = join(root, "home-alias");
-	mkdirSync(home);
-	mkdirSync(join(home, ".ssh"));
-	symlinkSync(home, alias);
-	const previousHome = process.env.HOME;
-	const previousProfile = process.env.USERPROFILE;
-	t.after(() => {
-		if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
-		if (previousProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousProfile;
-		rmSync(root, { recursive: true, force: true });
-	});
-	// Node resolves the home from USERPROFILE on Windows and HOME on POSIX.
-	process.env.HOME = home;
-	process.env.USERPROFILE = home;
-	assert.equal(realpathSync(homedir()), home, "the protected home must be the isolated fixture");
-	let calls = 0;
-	const native = { reviewMode: async () => ({ operation: "status", status: { effective: "on", source: "global", global: "on", cloneLocal: "" } }), targetStatus: async () => { calls++; throw new Error("protected native invocation"); } } as unknown as NativeReviewCli;
-	for (const target of [home, alias, "/", join(home, ".ssh")]) {
-		try { await __testing.executeReviewControllerOperation({ operation: "inspect", workspaceRoot: target }, home, native, undefined, null); }
-		catch { /* The public boundary can reject before returning an envelope. */ }
-	}
-	assert.equal(calls, 0, "no native STATUS against protected directories");
-});
-
 // A Git repository created in HOME, an ancestor of it, or a broad user folder
 // turns every later Git call in the user's tree into a scan of everything
 // below it (a Windows user measured ~47s startups). Bootstrap refuses them.
@@ -149,6 +120,6 @@ test("writer continuations inherit the original surfaces only when they carry no
 
 // gentle-shell#1731: only agents behind the surfaces guard claim surfaces at runtime.
 test("bounded writers are exactly the agents behind the Allowed edit surfaces guard", () => {
-	for (const name of ["gentle-ai-worker", "worker", "jd-fix-agent"]) assert.equal(isBoundedWriter(name), true, name);
-	for (const name of ["explore", "gentle-ai-explore", "gentle-ai-verify", "reviewer", ""]) assert.equal(isBoundedWriter(name), false, name);
+	for (const name of ["gentle-ai-worker", "worker"]) assert.equal(isBoundedWriter(name), true, name);
+	for (const name of ["explore", "gentle-ai-explore", "gentle-ai-verify", "reviewer", "jd-fix-agent", ""]) assert.equal(isBoundedWriter(name), false, name);
 });

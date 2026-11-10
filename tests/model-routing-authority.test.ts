@@ -14,11 +14,11 @@ test("coincident global and legacy paths preserve invalid-global status", async 
 	const cwd = mkdtempSync(join(tmpdir(), "gentle-pi-model-coincidence-"));
 	const configHome = join(cwd, ".pi", "gentle-ai");
 	mkdirSync(configHome, { recursive: true });
-	const previous = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
+	const previous = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
 	t.after(() => {
-		if (previous === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previous;
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	const path = join(configHome, "models.json");
@@ -36,17 +36,17 @@ test("bootstrapped active profile preserves legacy routing while global models a
 	const projectHome = join(cwd, ".pi", "gentle-ai");
 	mkdirSync(configHome, { recursive: true });
 	mkdirSync(projectHome, { recursive: true });
-	const previous = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
+	const previous = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
 	t.after(() => {
-		if (previous === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previous;
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	const config = { "review-risk": { model: "openai/gpt-5" } };
 	writeFileSync(join(projectHome, "models.json"), JSON.stringify(config));
 	writeFileSync(join(configHome, "profiles.json"), JSON.stringify({
-		kind: "gentle-pi.agent_model_profiles", version: 1, active: "current", profiles: { current: config },
+		kind: "tomidev.agent_model_profiles", version: 1, active: "current", profiles: { current: config },
 	}));
 	const expected = { "review-risk": { model: "openai/gpt-5", thinking: undefined } };
 	assert.deepEqual({ sync: readModelConfig(cwd), async: await readModelConfigAsync(cwd) }, {
@@ -61,15 +61,15 @@ test("active profile omission is preserved while global models are still missing
 	const projectHome = join(cwd, ".pi", "gentle-ai");
 	mkdirSync(configHome, { recursive: true });
 	mkdirSync(projectHome, { recursive: true });
-	const previous = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
+	const previous = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
 	t.after(() => {
-		if (previous === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previous;
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	writeFileSync(join(configHome, "profiles.json"), JSON.stringify({
-		kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {} },
+		kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {} },
 	}));
 	writeFileSync(join(projectHome, "models.json"), JSON.stringify({ "review-risk": { model: "openai/gpt-5" } }));
 	assert.deepEqual({ sync: readModelConfig(cwd), async: await readModelConfigAsync(cwd) }, { sync: {}, async: {} });
@@ -82,15 +82,15 @@ test("active profile omission prevents stale legacy materialization while global
 	const projectHome = join(cwd, ".pi", "gentle-ai");
 	mkdirSync(configHome, { recursive: true });
 	mkdirSync(projectHome, { recursive: true });
-	const previous = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
+	const previous = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
 	t.after(() => {
-		if (previous === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previous;
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	writeFileSync(join(configHome, "profiles.json"), JSON.stringify({
-		kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {} },
+		kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {} },
 	}));
 	writeFileSync(join(projectHome, "models.json"), JSON.stringify({ "review-risk": { model: "openai/gpt-5" } }));
 	const materialized: unknown[] = [];
@@ -111,15 +111,15 @@ test("active profile omission prevents stale legacy routing reads and materializ
 	const projectHome = join(cwd, ".pi", "gentle-ai");
 	mkdirSync(configHome, { recursive: true });
 	mkdirSync(projectHome, { recursive: true });
-	const previous = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
+	const previous = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
 	t.after(() => {
-		if (previous === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previous;
 		rmSync(cwd, { recursive: true, force: true });
 	});
 	writeFileSync(join(configHome, "profiles.json"), JSON.stringify({
-		kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {} },
+		kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {} },
 	}));
 	writeFileSync(join(configHome, "models.json"), "{}");
 	writeFileSync(join(projectHome, "models.json"), JSON.stringify({ "review-risk": { model: "openai/gpt-5" } }));
@@ -139,11 +139,11 @@ test("active profile omission prevents stale legacy routing reads and materializ
 // had deliberately cleared its profile read the pin back as saved routing. The
 // profile snapshot only stands in for a legacy file that is actually there.
 test("a pin or active profile invents no saved routing while no model config exists", async (t) => {
-	const previous = process.env.GENTLE_PI_CONFIG_HOME;
+	const previous = process.env.TOMIDEV_CONFIG_HOME;
 	t.after(() => {
 		setProfilePinWorktreeResolverForTesting();
-		if (previous === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previous;
 	});
 	const chosen = { "review-risk": { model: "openai/pinned-risk" } };
 	for (const target of ["pinned", "active"] as const) {
@@ -152,10 +152,10 @@ test("a pin or active profile invents no saved routing while no model config exi
 		const projectHome = join(cwd, ".pi", "gentle-ai");
 		mkdirSync(configHome, { recursive: true });
 		mkdirSync(projectHome, { recursive: true });
-		process.env.GENTLE_PI_CONFIG_HOME = configHome;
+		process.env.TOMIDEV_CONFIG_HOME = configHome;
 		t.after(() => rmSync(cwd, { recursive: true, force: true }));
 		writeFileSync(join(configHome, "profiles.json"), JSON.stringify({
-			kind: "gentle-pi.agent_model_profiles", version: 1, ...(target === "active" ? { active: "chosen" } : {}), profiles: { chosen },
+			kind: "tomidev.agent_model_profiles", version: 1, ...(target === "active" ? { active: "chosen" } : {}), profiles: { chosen },
 		}));
 		const identity = { root: join(cwd, "worktree"), commonDir: join(cwd, "git-common") };
 		mkdirSync(identity.root, { recursive: true });
@@ -298,11 +298,11 @@ test("model routing authority normalizes and preserves sync/async source status"
 		assert.deepEqual(await authority.readSavedModelConfigAsync(globalSource, projectSource), expected);
 	}
 
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = globalDir;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = globalDir;
 	t.after(() => {
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
 	});
 	writeFileSync(projectPath, JSON.stringify({ project: "google/gemini" }));
 	assert.deepEqual(readModelConfig(projectDir), { project: { model: "google/gemini" } });
@@ -340,15 +340,15 @@ test("saved-routing apply fails closed for invalid project and global sources", 
 	mkdirSync(agentHomeSubagentsDir, { recursive: true });
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
-	process.env.GENTLE_PI_AGENT_HOME = agentHome;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
+	process.env.TOMIDEV_AGENT_HOME = agentHome;
 	t.after(() => {
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 	});
 
 	const agentPath = join(projectAgentsDir, "worker.md");
@@ -405,15 +405,15 @@ test("saved-routing apply preserves missing, valid, null, inherit, and omission 
 	mkdirSync(agentHomeSubagentsDir, { recursive: true });
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
-	process.env.GENTLE_PI_AGENT_HOME = agentHome;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
+	process.env.TOMIDEV_AGENT_HOME = agentHome;
 	t.after(() => {
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 	});
 
 	const agentPath = join(projectAgentsDir, "worker.md");

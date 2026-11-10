@@ -1,3 +1,4 @@
+import { brandCommand, ENV_AGENTS_CHILD } from "../lib/brand.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { lstatSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,12 +41,12 @@ import {
 // Session scratch and artifact ledger (odd/tasks/session-scratch-ledger.md):
 // the primary session gets its own TMPDIR, the runtime records the clones and
 // worktrees its bash commands create, removes the scratch at shutdown (and the
-// scratch of crashed sessions at the next start), and /gentle:scratch lists or
-// cleans the rest. Delegated children (GENTLE_PI_AGENTS_CHILD=1) do none of it:
+// scratch of crashed sessions at the next start), and /td:scratch lists or
+// cleans the rest. Delegated children (TOMIDEV_AGENTS_CHILD=1) do none of it:
 // their own TMPDIR comes from the runner and nests under the parent's scratch.
 
 export const SCRATCH_COMMAND_USAGE = [
-	"Usage: /gentle:scratch [list|clean]",
+	"Usage: /td:scratch [list|clean]",
 	"  list   this session's scratch dir with its size, and the clones and worktrees recorded by this and ended sessions",
 	"  clean  remove scratch dirs; after one confirmation, remove recorded worktrees and clones with no uncommitted changes and no unpushed commits",
 ].join("\n");
@@ -340,7 +341,7 @@ export function createSessionScratchExtension(options: SessionScratchOptions = {
 	};
 
 	return (pi: ExtensionAPI) => {
-		if (env.GENTLE_PI_AGENTS_CHILD === "1") return;
+		if (env[ENV_AGENTS_CHILD] === "1") return;
 		pi.on("session_start", (event, ctx) => {
 			try { startSession(ctx, (event as { reason?: string }).reason ?? "startup"); } catch { /* The session keeps the inherited TMPDIR. */ }
 		});
@@ -366,7 +367,7 @@ export function createSessionScratchExtension(options: SessionScratchOptions = {
 			try { await capture(targets, command); } catch { /* Capture never changes a tool result. */ }
 			return undefined;
 		});
-		pi.registerCommand("gentle:scratch", {
+		pi.registerCommand(brandCommand("scratch"), {
 			description: "List or clean this session's scratch dir and the recorded clones and worktrees (list|clean).",
 			getArgumentCompletions: (prefix) => ["list", "clean"].filter((action) => action.startsWith(prefix.trim())).map((action) => ({ value: action, label: action })),
 			handler: async (args, ctx) => {

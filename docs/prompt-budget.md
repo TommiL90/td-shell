@@ -6,7 +6,7 @@ The regression test measures a fixed primary-session fixture, not every live Pi 
 node --experimental-strip-types --test tests/orchestrator-prompt-budget.test.ts tests/session-subject-routing-contract.test.ts tests/orchestrator-state.test.ts tests/orchestrator-work-search.test.ts tests/orchestrator-status-publication-contract.test.ts
 ```
 
-Use isolated temporary and Gentle Pi configuration directories when running tests.
+Use isolated temporary and Tomidev Shell configuration directories when running tests.
 
 ## Budgets and measurements
 
@@ -21,7 +21,7 @@ The baseline is commit `eff5d24694b21663095a4790b3ef15de21c290c2`. Running the s
 
 ## Fixed assembly fixture
 
-The test calls Pi 1.4's actual pure system prompt builder, with the primary Gentleman harness in TUI mode, background policy off, RDD status unknown, and the verified mirrored review fragment. The production `appendSystemPromptOnce` helper appends harness then review; both complete fragments must appear exactly once in the assembled text. An explicit project-policy file inside the temporary fixture pins background off above ambient/global configuration; a regression check renders under both ambient `off` and `on` and requires identical output. Active tools are `read`, `bash`, `edit`, `write`, and the three named declarations above. Registered tool snippets and guidelines and one `work-unit-commits` skill are passed to the builder. The assets, installation/docs, fixture cwd and skill paths in the generated text are normalized to fixed `/fixture` paths before counting UTF-8 bytes.
+The test calls Pi's actual pure system prompt builder with the Tomidev Shell harness in TUI mode and background policy off. The production `appendSystemPromptOnce` helper appends the fixed-persona harness; that complete fragment must appear exactly once in the assembled text. An explicit project-policy file inside the temporary fixture pins background off above ambient/global configuration; a regression check renders under both ambient `off` and `on` and requires identical output. Active tools are `read`, `bash`, `edit`, `write`, and the three named declarations above. Registered tool snippets and guidelines and the `delivery` skill are passed to the builder. The assets, installation/docs, fixture cwd and skill paths in the generated text are normalized to fixed `/fixture` paths before counting UTF-8 bytes.
 
 Pi 1.4 does not export the builder at its package root. This test deliberately resolves its installed internal `core/system-prompt.js` adjacent to the public entrypoint; an upstream move or API change fails the test and requires maintenance. It starts no session and makes no model or native-review call.
 

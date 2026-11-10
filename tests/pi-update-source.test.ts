@@ -13,11 +13,11 @@ async function fixture(t: any, options: {manager?: string, locks?: string[], wor
  t.after(() => fs.rm(temp, {recursive: true, force: true}));
  const root = join(temp, 'checkout');
  const modules = join(temp, 'global', 'node_modules');
- const link = join(modules, 'gentle-pi');
+ const link = join(modules, 'tomidev');
  const peer = join(root, 'node_modules', PI);
  const manager = options.manager ?? 'pnpm';
  const lock = manager === 'npm' ? 'package-lock.json' : 'pnpm-lock.yaml';
- const manifest = JSON.stringify({name: 'gentle-pi', version: '4.4.0', packageManager: `${manager}@11.1.1`, devDependencies: {[PI]: options.range ?? '^1.0.0'}});
+ const manifest = JSON.stringify({name: 'tomidev', version: '4.4.0', packageManager: `${manager}@11.1.1`, devDependencies: {[PI]: options.range ?? '^1.0.0'}});
  await fs.mkdir(join(root, '.git'), {recursive: true});
  await fs.mkdir(modules, {recursive: true});
  await fs.mkdir(join(peer, 'dist', 'bundle'), {recursive: true});
@@ -46,7 +46,7 @@ async function fixture(t: any, options: {manager?: string, locks?: string[], wor
    calls.push({command, args, cwd, ...(env ? {env} : {})});
    if (args.includes('list') && args.includes('--recursive')) return {code:0, stdout:JSON.stringify(options.multipleProjects ? [{path:root},{path:join(temp,'other-project')}] : [{path:root}])};
    if (args.includes('list')) return {code: 0, stdout: JSON.stringify([{path: join(temp, 'pnpm'), dependencies: {}}])};
-   if (args.includes('ls')) return {code: 0, stdout: JSON.stringify({path: join(temp, 'global'), dependencies: {'gentle-pi': {path: link, resolved: 'file:../../checkout'}}})};
+   if (args.includes('ls')) return {code: 0, stdout: JSON.stringify({path: join(temp, 'global'), dependencies: {'tomidev': {path: link, resolved: 'file:../../checkout'}}})};
    if (args.includes('--version')) return {code: 0, stdout: `${options.managerVersion ?? '11.1.1'}\n`};
    if (args.includes('config')) return {code:0, stdout:options.workspace ? '["packages/*"]\n' : ''};
    updates.push({command, args, cwd, ...(env ? {env} : {})});

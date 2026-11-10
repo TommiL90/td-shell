@@ -1,6 +1,6 @@
 # Choose how permission questions are handled
 
-Use **Normal**, **Auto**, **YOLO**, or **Super Yolo** for the current primary session. Optionally save any of them as the user-global default for future sessions. These modes do not redesign Gentle Shell delegation, expand the task you authorized, or replace independent safety and consent. One always-on exception: reading the task's exact resolved skill files (the selected `SKILL.md` plus its referenced instruction files, by registry, catalog or parent-supplied paths) needs no per-file permission question in any mode; secrets, sensitive paths, unrelated personal files and explicit user prohibitions still apply.
+Use **Normal**, **Auto**, **YOLO**, or **Super Yolo** for the current primary session. Optionally save any of them as the user-global default for future sessions. These modes do not redesign Tomidev Shell delegation, expand the task you authorized, or replace independent safety and consent. One always-on exception: reading the task's exact resolved skill files (the selected `SKILL.md` plus its referenced instruction files, by registry, catalog or parent-supplied paths) needs no per-file permission question in any mode; secrets, sensitive paths, unrelated personal files and explicit user prohibitions still apply.
 
 ## Tool context in Auto
 
@@ -31,41 +31,41 @@ The evidence is never restored from transcript text. Session/workspace replaceme
 ## Quick path
 
 ```text
-/gentle:mode auto
-/gentle:mode status
+/td:mode auto
+/td:mode status
 ```
 
 To start future sessions in Auto, save the default separately:
 
 ```text
-/gentle:mode default auto
+/td:mode default auto
 ```
 
 Changing the default does **not** change the current session. To return this session and future sessions to Normal, run both:
 
 ```text
-/gentle:mode normal
-/gentle:mode default normal
+/td:mode normal
+/td:mode default normal
 ```
 
 | Mode | Behavior |
 | --- | --- |
 | **Normal** | Existing permission behavior; the default when no valid global preference exists. Guarded-command confirmations offer scoped choices: **Allow once**, **Allow for this session** (remembers the exact command until the session ends) and **Always allow <family>** (persists `guardedCommands[key]="allow"` in the user-level `runtime-guardrails.json`), besides **Deny**. Recognized data-loss commands never offer Always allow; hosts without a select dialog keep the plain yes/no confirm. |
 | **Auto** | A separate reviewer using the current session model checks eligible actions against live user intent before execution. Local reads are classified too; locality does not exempt an action from explicit restrictions. |
-| **YOLO** | Standing permission for ordinary already-authorized work and delivery; no Auto classifier. Destructive and independent consent boundaries remain, except recursive removal of the session's own [temp scratch](yolo-mode.md#temp-scratch-removal). Destructive confirmations apply only to commands the session actually runs: destructive text quoted from issues, files or docs is not an execution. Reading and listing non-sensitive material outside the workspace (the agent's own skills, docs, configuration) needs no permission question; sensitive-path and private-credential blocks still win. [Full YOLO details](yolo-mode.md). |
-| **Super Yolo** | No permission prompts at all, including data-loss confirmations and configured guardrail actions. The only remaining line is the sensitive-path guard: read/write/edit of `.env`, `.ssh`, keychains, `*.pem/*.key/*.p12/*.pfx`, `secrets/` and cloud credential files stays hard-blocked. Code-level catastrophic denies (`rm -rf /`, `--no-preserve-root`, `git reset --hard`, forced clean, force push) also remain. |
+| **YOLO** | Standing permission for ordinary already-authorized work; each commit or push still asks the commit/push dialog, in every mode; no Auto classifier. Destructive and independent consent boundaries remain, except recursive removal of the session's own [temp scratch](yolo-mode.md#temp-scratch-removal). Destructive confirmations apply only to commands the session actually runs: destructive text quoted from issues, files or docs is not an execution. Reading and listing non-sensitive material outside the workspace (the agent's own skills, docs, configuration) needs no permission question; sensitive-path and private-credential blocks still win. [Full YOLO details](yolo-mode.md). |
+| **Super Yolo** | No permission prompts at all, including data-loss confirmations and configured guardrail actions. The remaining lines are the commit/push dialog, which no mode waives, and the sensitive-path guard: read/write/edit of `.env`, `.ssh`, keychains, `*.pem/*.key/*.p12/*.pfx`, `secrets/` and cloud credential files stays hard-blocked. Code-level catastrophic denies (`rm -rf /`, `--no-preserve-root`, `git reset --hard`, forced clean, force push) also remain. |
 
 ## Commands and menu
 
 | Command | Effect |
 | --- | --- |
-| `/gentle:mode normal`, `auto`, `yolo`, or `super-yolo` | Select exactly one mode for the current interactive primary session. |
-| `/gentle:mode status` or `/gentle:mode` | Show current mode and saved default. |
-| `/gentle:mode default normal`, `auto`, `yolo`, or `super-yolo` | Save the default for new primary sessions, leaving the current mode unchanged. |
-| `/gentle:yolo` | Choose the session mode interactively; cancellation does not grant permission or save a default. Noninteractive callers see status. |
-| `/gentle:yolo enable`, `disable`, or `status` | Existing shortcut; enable selects YOLO, disable selects Normal, and status distinguishes Super Yolo. |
+| `/td:mode normal`, `auto`, `yolo`, or `super-yolo` | Select exactly one mode for the current interactive primary session. |
+| `/td:mode status` or `/td:mode` | Show current mode and saved default. |
+| `/td:mode default normal`, `auto`, `yolo`, or `super-yolo` | Save the default for new primary sessions, leaving the current mode unchanged. |
+| `/td:yolo` | Choose the session mode interactively; cancellation does not grant permission or save a default. Noninteractive callers see status. |
+| `/td:yolo enable`, `disable`, or `status` | Existing shortcut; enable selects YOLO, disable selects Normal, and status distinguishes Super Yolo. |
 
-In `/gentle:customize` → **Editor**, use **Session permissions** to change the current mode, or **Default permissions** to save a future-session preference. The original **YOLO: ON/OFF · session only** row still toggles the live mode; it does not save a default. Browsing, previews, and closing the menu do not grant permission.
+In `/td:customize` → **Editor**, use **Session permissions** to change the current mode, or **Default permissions** to save a future-session preference. The original **YOLO: ON/OFF · session only** row still toggles the live mode; it does not save a default. Browsing, previews, and closing the menu do not grant permission.
 
 Current-session selection takes precedence over the global default. Repository settings, visual profiles, and session transcript entries cannot supply a permission-mode default. Package-owned children do not inherit the parent's elevated mode; their existing bounded delegation and safety paths remain in charge.
 
@@ -120,7 +120,7 @@ The **Auto checks** status and `gentle-auto-permission` session entries account 
 
 ## Persistence and lifetime
 
-The dedicated `permission-mode.json` in Gentle Pi's resolved user config home contains a strict versioned preference. Saving uses a private atomic replacement; malformed or unreadable existing preferences fall back to Normal and refuse an overwrite until repaired. Use the human command/menu path rather than asking model tools to edit this authority file.
+The dedicated `permission-mode.json` in Tomidev Shell's resolved user config home contains a strict versioned preference. Saving uses a private atomic replacement; malformed or unreadable existing preferences fall back to Normal and refuse an overwrite until repaired. Use the human command/menu path rather than asking model tools to edit this authority file.
 
 Model `write`/`edit` calls keep the config home protected except for the main-channel updater's `dev-binary.json`, `channel.json`, `main/` and `tools/go`. Those destinations select or build executable code, so they still require authorization under the current mode's ordinary checks; Auto classifies them and can deny an update. They are not automatically allowed. Permission preferences, global and project `runtime-guardrails.json`, their parent directories and symlink aliases resolving to them stay blocked even if a classifier would allow the action. Other config-home state, including model routing, persona and privacy preferences, remains protected.
 

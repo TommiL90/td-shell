@@ -95,7 +95,7 @@ test("the pin parser rejects foreign kinds, versions, names, and malformed input
 		"[]",
 		"null",
 		'"deep-work"',
-		JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, profile: "deep-work" }),
+		JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, profile: "deep-work" }),
 		JSON.stringify({ kind: PROFILE_PIN_KIND, version: 2, profile: "deep-work" }),
 		JSON.stringify({ kind: PROFILE_PIN_KIND, version: 1 }),
 		JSON.stringify({ kind: PROFILE_PIN_KIND, version: 1, profile: "not a name" }),

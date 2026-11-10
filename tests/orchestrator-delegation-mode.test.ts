@@ -17,7 +17,7 @@ const REPO_ROOT = join(import.meta.dirname, "..");
 const REAL_ASSETS_DIR = join(REPO_ROOT, "assets");
 const VARIANT_FILE = "orchestrator-full-delegation.md";
 const ORGANIC_START = "You are a COORDINATOR, not the default executor for substantial work.";
-const ORGANIC_END = "{{GENTLE_PI_BACKGROUND_POLICY}}";
+const ORGANIC_END = "{{TOMIDEV_BACKGROUND_POLICY}}";
 
 const { __testing } = await import("../extensions/gentle-ai.ts");
 
@@ -40,7 +40,7 @@ after(() => {
 });
 
 const organic = (dir: string) => __testing.renderOrchestratorPrompt(dir);
-const full = (dir: string) => __testing.renderOrchestratorPrompt(dir, undefined, undefined, "full-delegation");
+const full = (dir: string) => __testing.renderOrchestratorPrompt(dir, undefined, "full-delegation");
 
 test("a profile that did not opt in renders the organic workflow region byte for byte", () => {
 	const dir = assetsDirWith();
@@ -49,7 +49,7 @@ test("a profile that did not opt in renders the organic workflow region byte for
 	assert.ok(region.length > 1000, "the fixture must actually span the organic workflow rules");
 	const rendered = organic(dir);
 	assert.ok(rendered.includes(region), "the organic region must survive rendering unchanged");
-	assert.equal(rendered, __testing.renderOrchestratorPrompt(dir, undefined, undefined, "organic"));
+	assert.equal(rendered, __testing.renderOrchestratorPrompt(dir, undefined, "organic"));
 	assert.equal(rendered.includes("in full delegation mode: you never implement"), false);
 });
 
@@ -57,7 +57,7 @@ test("full delegation mode replaces the organic rules instead of adding to them"
 	const dir = assetsDirWith();
 	const rendered = full(dir);
 	const variant = readFileSync(join(REAL_ASSETS_DIR, VARIANT_FILE), "utf8").trim();
-	const [beforeRisk, afterRisk] = variant.split("{{GENTLE_PI_HIGH_RISK_ITEMS}}");
+	const [beforeRisk, afterRisk] = variant.split("{{TOMIDEV_HIGH_RISK_ITEMS}}");
 	assert.ok(rendered.includes(beforeRisk!.trim()) && rendered.includes(afterRisk!.trim()), "the variant block must be injected around its high-risk items");
 	assert.equal(rendered.includes(ORGANIC_START), false, "the organic role text must be gone, not merely followed");
 	// Task Size survives as tracking and risk only; its inline route does not.
@@ -132,13 +132,13 @@ test("an empty variant asset falls back to the organic rules", () => {
 test("the memoized core is keyed by the mode, so a switch cannot serve stale rules", () => {
 	const cwd = REPO_ROOT;
 	const organicPrompt = __testing.getOrchestratorPrompt(cwd);
-	const fullPrompt = __testing.getOrchestratorPrompt(cwd, undefined, undefined, undefined, "full-delegation");
+	const fullPrompt = __testing.getOrchestratorPrompt(cwd, undefined, undefined, "full-delegation");
 	assert.notEqual(organicPrompt, fullPrompt, "a stale cache entry would return the previous profile's rules");
 	assert.ok(organicPrompt.includes("Small path: inline"));
 	assert.equal(fullPrompt.includes("Small path: inline"), false);
 	// Repeating each call still hits its own cache entry and never mixes them.
 	assert.equal(__testing.getOrchestratorPrompt(cwd), organicPrompt);
-	assert.equal(__testing.getOrchestratorPrompt(cwd, undefined, undefined, undefined, "full-delegation"), fullPrompt);
+	assert.equal(__testing.getOrchestratorPrompt(cwd, undefined, undefined, "full-delegation"), fullPrompt);
 });
 
 // gentle-shell#379: delegation stays inside the current runtime. The open

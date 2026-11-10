@@ -15,8 +15,8 @@ const MAX_FILE_BYTES = 1024 * 1024;
 /** The hosts a preview may name: the loopback interface only, as the URL parser normalizes them. */
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-/** The ODD feature document a design links to (S10): a repository-relative `odd/tasks/<name>.md`. */
-export const DESIGN_FEATURE_PATH = /^odd\/tasks\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
+/** The feature document or directory a design links to: a repository-relative `.agents/designs/features/<name>/` or `odd/tasks/<name>.md`. */
+export const DESIGN_FEATURE_PATH = /^(?:\.agents\/designs\/features\/[A-Za-z0-9][A-Za-z0-9._-]*\/?|odd\/tasks\/[A-Za-z0-9][A-Za-z0-9._-]*\.md)$/;
 
 export type DesignHandoffStatus = "sent" | "in_progress" | "implemented";
 
@@ -137,7 +137,7 @@ function parseEntry(where: string, value: unknown): DesignHandoff {
 	for (const key of ["startedAt", "implementedAt"] as const) {
 		if (item[key] !== null && !isTimestamp(item[key])) throw invalid(`${where}.${key} must be a timestamp or null`);
 	}
-	if (item.feature !== undefined && !(typeof item.feature === "string" && DESIGN_FEATURE_PATH.test(item.feature))) throw invalid(`${where}.feature must be a relative odd/tasks/<name>.md path`);
+	if (item.feature !== undefined && !(typeof item.feature === "string" && DESIGN_FEATURE_PATH.test(item.feature))) throw invalid(`${where}.feature must be a relative .agents/designs/features/<name>/ or odd/tasks/<name>.md path`);
 	if (item.note !== undefined) {
 		const problem = noteProblem(item.note);
 		if (problem) throw invalid(`${where}.${problem}`);
@@ -216,7 +216,7 @@ export function createDesignHandoffStore(designRoot: string, deps: DesignHandoff
 			checkFile(file);
 			if (!options || typeof options.queued !== "boolean") throw new DesignHandoffsError("invalid-input", "queued must be true or false");
 			if (options.feature !== undefined && !(typeof options.feature === "string" && DESIGN_FEATURE_PATH.test(options.feature))) {
-				throw new DesignHandoffsError("invalid-input", "feature must be a relative odd/tasks/<name>.md path");
+				throw new DesignHandoffsError("invalid-input", "feature must be a relative .agents/designs/features/<name>/ or odd/tasks/<name>.md path");
 			}
 			return mutate(slug, (document) => {
 				checkRoom(document, slug, file);

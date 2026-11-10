@@ -10,7 +10,7 @@ test("animation policy strictly accepts only the v1 schema and three modes", () 
 		assert.equal(parseAnimationPolicyFile(JSON.stringify({ schema: ANIMATION_SCHEMA, policy })), policy);
 	}
 	for (const raw of ["bad", "null", "[]", '{}', '{"policy":"potato"}', ...[
-		{ schema: "gentle-pi.animations/v2", policy: "potato" },
+		{ schema: "tomidev.animations/v2", policy: "potato" },
 		{ schema: ANIMATION_SCHEMA, policy: "POTATO" },
 		{ schema: ANIMATION_SCHEMA, policy: false },
 		{ schema: ANIMATION_SCHEMA, policy: "quality", extra: true },

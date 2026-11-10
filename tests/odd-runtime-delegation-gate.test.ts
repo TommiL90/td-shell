@@ -19,7 +19,7 @@ test("a second direct file is not refused based on session write history", async
 		} as unknown as ExtensionAPI;
 		// An isolated config home keeps the host's permission mode (for example Auto)
 		// out of a test that only exercises the ODD write gate.
-		const processEnv = { GENTLE_PI_CONFIG_HOME: join(cwd, ".config-home") };
+		const processEnv = { TOMIDEV_CONFIG_HOME: join(cwd, ".config-home") };
 		createGentleAiExtension({ nativeReviewCli: null, processEnv, resolveTelemetryTriggerBinary: () => "/usr/bin/true", telemetryTriggerSpawn: (() => undefined) as never })(pi);
 		const ctx = {
 			cwd, hasUI: false, mode: "interactive", ui: { notify() {} },

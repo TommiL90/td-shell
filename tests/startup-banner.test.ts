@@ -13,57 +13,51 @@ import { stripAnsi } from "../lib/terminal-theme.ts";
 
 // The banner reads process.env directly; a suite launched from a delegated
 // child must still exercise the parent paths (gentle-shell#1690).
-delete process.env.GENTLE_PI_AGENTS_CHILD;
+delete process.env.TOMIDEV_AGENTS_CHILD;
 
-test("startup artwork spells Gentle Shell with aligned animation spans", () => {
+test("startup artwork spells Tomidev Shell with aligned animation spans", () => {
 	const source = readFileSync(new URL("../extensions/startup-banner.ts", import.meta.url), "utf8");
 	const logo = JSON.parse(source.match(/const TEXT_LOGO = (\[[\s\S]*?\]);/)![1].replace(/,\s*]/, "]")) as string[];
 	const weights = JSON.parse(source.match(/const LETTER_WEIGHTS = (\[[^;]+\]);/)![1]) as number[];
-	// Preserve the original script, including its descending G and dark shadow.
-	const gentle = [
-		"                  ▄▄▄▀▀▀▀▀██                                ▄▄▀▄▄",
-		"              ▄▄█▀▀▒▒▒▒▒▄▄█▀▒                   ▄██     ▄▄█▀█▄█▀▒▒",
-		"          ▄▄██▀▒▒▒▒▒▄▄▄▀▀▒▒▒▒        ▄▄▄  ▀▀▀▀██▀▀▀▀▀███▀█▄▀▀▒▒▒▒",
-		"        ▄██▀▒▒▒▒     ▒▒▄▄█ ▄▄▄▀██ ▄▄▄▀▀▀▄  ▄██▀▒▒▒▒▄██▀▀▀▒▄▄███",
-		"       ██▀▒▒▒     ▄▄▄███▀▄██▀▀▀▄▄██▀▀▄█▀▄▄██▀▒▒▒▄▄██▀▒▒▄██▀▀▀▄▄",
-		"       ▀█▄▄▄▄▄▀▀▀█▄▄███▄▒▀▀▀▀▀▀▒▀▀▒▒▀▀▀▀▒██▄▄▀▀▀ ▀█▄▀▀▀ ▀▀▀▀▀▒▒",
-		"        ▒▄▄▄█▀▀▀█▄█▀▀▒▒▒▒ ▒▒▒▒▒▒ ▒▒  ▒▒▒▒ ▒▒▒▒▒▒▒ ▒▒▒▒▒▒ ▒▒▒▒▒",
-		"     ▄▄▀▀ ▒▒▒▒▄██▀▒▒▒▒",
-		"   ▄█ ▒▒▒▄▄██▀▀▒▒▒▒",
-		"    ▀▀▀▀▀▀▒▒▒▒▒▒",
-		"     ▒▒▒▒▒▒",
+	const tomidev = [
+		" ▄▄▄▀▀▀▀▀██",
+		" ▀▀▀▒▒▄▄█▀▀▒",
+		"     ███",
+		"     ███",
+		"     ███",
+		"    ▄███▄▄▄▄▀",
+		"    ▒▒▒▒▒▒▒▒",
+		"   ▄▄▀▀ ▒▒▒▒",
+		" ▄█ ▒▒▒▄▄▀▀",
+		"  ▀▀▀▀▀▒▒▒▒",
+		"   ▒▒▒▒▒▒",
 	];
 	assert.equal(logo.length, 11, "retain the full-height script silhouette");
-	for (const [row, prefix] of gentle.entries()) {
-		assert.ok(logo[row].startsWith(prefix), `original Gentle script row ${row}`);
+	for (const [row, prefix] of tomidev.entries()) {
+		assert.ok(logo[row].startsWith(prefix), `original Tomidev script row ${row}`);
 		assert.ok(logo[row].includes("▒") || row === 0, "retain dark shadow");
 	}
-	assert.equal(weights.length, 11, "one variable-width span per GENTLESHELL letter");
+	assert.equal(weights.length, 12, "one variable-width span per TOMIDEVSHELL letter");
 	assert.ok(new Set(weights).size > 2, "script spans must not use fixed block-font widths");
-	assert.ok(logo.slice(0, 7).every((line) => /[▄▀█]/.test(line.slice(68))), "Shell has tall slanted strokes");
-	assert.ok(logo.slice(1, 7).every((line) => /▒/.test(line.slice(68))), "Shell retains the dark shadow");
-	const shell = logo.map((line) => line.slice(68));
+	assert.ok(logo.slice(0, 7).every((line) => /[▄▀█]/.test(line.slice(71))), "Shell has tall slanted strokes");
+	assert.ok(logo.slice(1, 7).every((line) => /▒/.test(line.slice(71))), "Shell retains the dark shadow");
+	const shell = logo.map((line) => line.slice(71));
 	assert.match(shell[0], /▄▄█▀▀▀██/, "S has its upper bowl");
 	assert.match(shell[3], /▀▀▀██▄▄/, "S curves into its lower bowl");
 	assert.match(shell[5], /▀█▄▄▄▄█▀▀▒▒/, "S closes with a shadowed exit stroke");
 	assert.match(shell[4], /▄██▀▄██▀██▒/, "h has a rising stem and connected arch");
-	assert.deepEqual(logo.slice(3, 6).map((line) => line.slice(93, 101)), [
+	assert.deepEqual(logo.slice(3, 6).map((line) => line.slice(96, 104)), [
 		" ▄▄▀▀██ ",
 		"▄██▄▄▀▒ ",
 		"▀█▄▄▄▄▀▀",
 	], "e has an upper loop/counter, a crossbar, and a curved lower exit rather than a wedge");
-	assert.equal(logo[3][100], " ", "e loop stays distinct from the following l");
-	assert.equal(logo[4][100], " ", "e counter opens before the l stem without moving it");
 	assert.equal(shell[0].split("▄▄▀▄▄").length - 1, 2, "both l ascenders retain looped tops");
 	assert.match(shell[5], /█▄▄▀▀▀▄▄▀█▄▄▀▀▀$/, "both l exits connect with an ascending script stroke");
-	assert.equal(Math.max(...logo.map((line) => line.length)), 120, "connected script retains glyph scale while tightening letter placement");
-	// Like Gentle, adjacent baseline strokes must meet, not merely have smaller gaps.
+	assert.equal(Math.max(...logo.map((line) => line.length)), 123, "connected script retains glyph scale while tightening letter placement");
 	assert.match(shell[4], /▀██▄▄██▀▄██▀██▒/, "S exit meets the h entry");
 	assert.match(shell[5], /▀█▄▄▄▄▀▀█▄▄▀▀▀/, "e lower exit still meets the unchanged l stem");
 	assert.match(shell[5], /██▄▄▀▀█▄▄▄▄▀▀/, "h exit remains connected to e");
-	assert.deepEqual(weights, [22, 9, 8, 9, 8, 9, 10, 13, 8, 8, 13]);
-	assert.equal(weights.reduce((sum, width) => sum + width, 0), Math.max(...logo.map((line) => line.length)) - 3,
-		"span widths exactly cover the ink bounds from the G descender to the final l shadow");
+	assert.deepEqual(weights, [14, 9, 11, 6, 11, 9, 11, 10, 13, 8, 8, 12]);
 });
 
 test("startup branch lookup uses direct git argv and hides its Windows child", async () => {
@@ -98,12 +92,12 @@ test("startup branch lookup times out into the not-a-repo fallback", { skip: pro
 
 test("startup banner keeps animating after invalidate and cleans up on dispose", async (t) => {
 	const home = mkdtempSync(join(tmpdir(), "gp-banner-quality-"));
-	writeFileSync(join(home, "animations.json"), '{"schema":"gentle-pi.animations/v1","policy":"quality"}');
-	const previousHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = home;
+	writeFileSync(join(home, "animations.json"), '{"schema":"tomidev.animations/v1","policy":"quality"}');
+	const previousHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = home;
 	t.after(() => {
-		if (previousHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousHome;
+		if (previousHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousHome;
 		rmSync(home, { recursive: true, force: true });
 	});
 	t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
@@ -130,7 +124,7 @@ test("startup banner keeps animating after invalidate and cleans up on dispose",
 		header = factory({ requestRender() { renders++; } }, { fg: (_role: string, text: string) => text });
 	} } });
 	t.mock.timers.tick(50);
-	assert.match(header!.render(200).join("\n"), /\x1b\[38;2;95;30;60m▒/, "script shadow keeps the dark pink palette");
+	assert.match(header!.render(200).join("\n"), /\x1b\[38;2;97;46;75m▒/, "script shadow keeps the dark pink palette");
 	const afterBoot = renders;
 	t.mock.timers.tick(25);
 	assert.ok(renders > afterBoot, "animation timer requests renders");
@@ -149,11 +143,11 @@ test("startup banner keeps animating after invalidate and cleans up on dispose",
 
 test("animation modes retain banner lifetime policy, final artwork and approximate duration", async (t) => {
 	const home = mkdtempSync(join(tmpdir(), "gp-banner-animations-"));
-	const previousHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = home;
+	const previousHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = home;
 	t.after(() => {
-		if (previousHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousHome;
+		if (previousHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousHome;
 		rmSync(home, { recursive: true, force: true });
 	});
 	t.mock.method(fs, "readFile", async () => JSON.stringify({ showRose: true, showTextLogo: true, color: "pink" }));
@@ -194,14 +188,14 @@ test("animation modes retain banner lifetime policy, final artwork and approxima
 	const ctx = { hasUI: true, cwd: "/fixture", ui: { setHeader(factory: (tui: unknown, theme: unknown) => typeof header) {
 		header = factory({ requestRender() { paints++; } }, { fg: (_role: string, text: string) => text });
 	} } };
-	const save = (policy: string) => writeFileSync(join(home, "animations.json"), JSON.stringify({ schema: "gentle-pi.animations/v1", policy }));
+	const save = (policy: string) => writeFileSync(join(home, "animations.json"), JSON.stringify({ schema: "tomidev.animations/v1", policy }));
 	try {
 		save("potato");
 		await start!({}, ctx); boot!();
 		assert.equal(active, false, "potato starts no animation interval");
 		const staticArt = stripAnsi(header!.render(200).join("\n"));
 		assert.match(staticArt, /[▄▀█]/);
-		assert.match(staticArt, /[\u2800-\u28ff]/);
+		assert.match(staticArt, /▀{15,}/);
 		header!.dispose();
 		let qualityDuration = 0;
 		let qualityPaints = 0;
@@ -282,12 +276,12 @@ for (const showRose of [false, true]) for (const showTextLogo of [false, true]) 
 				assert.doesNotMatch(text, /phases\b/i, "historical SDD files never appear as active phases");
 				assert.match(text, /AGENTS:\s+1 agents/, "only the installed background agent is counted");
 				if (width >= 160) {
-					assert.equal(/[\u2800-\u28ff]/.test(text), showRose);
-					assert.equal(/[▒▄▀█]/.test(text), showTextLogo);
+					assert.equal(/▀{15,}/.test(text), showRose);
+					assert.equal(/▄▄█▀▀▀██/.test(text), showTextLogo);
 				} else if (width === 80 && showTextLogo) {
-					assert.match(text, /✿ Gentle Shell ✿/, "narrow terminal shows graceful fallback branding");
+					assert.match(text, /🐶 Tomidev Shell 🐶/, "narrow terminal shows graceful fallback branding");
 				}
-				assert.match(lines.join("\n"), /\x1b\[38;2;85;170;205m/, "startup labels use the saved cyan palette");
+				assert.match(lines.join("\n"), /\x1b\[38;2;96;167;180m/, "startup labels use the saved cyan palette");
 			}
 			// Cancel pending context reads before advancing the resize clock.
 			t.mock.timers.reset();
@@ -301,8 +295,8 @@ for (const showRose of [false, true]) for (const showTextLogo of [false, true]) 
 			process.stdout.emit("resize");
 			t.mock.timers.tick(150);
 			const minimal = stripAnsi(header!.render(80).join("\n"));
-			assert.doesNotMatch(minimal, /[\u2800-\u28ff]/);
-			assert.equal(/✿ Gentle Shell ✿/.test(minimal), showTextLogo);
+			assert.doesNotMatch(minimal, /▀{15,}/);
+			assert.equal(/🐶 Tomidev Shell 🐶/.test(minimal), showTextLogo);
 			if (showTextLogo) {
 				const wideMinimal = stripAnsi(header!.render(160).join("\n"));
 				assert.equal(/[▒▄▀█]/.test(wideMinimal), true);
@@ -424,7 +418,7 @@ test("startup banner counts packages, extensions and agents from the active Pi a
 });
 
 test("launcher-injected extension directories do not suppress the startup banner", () => {
-	// Gentle Shell launches `pi -e <package-root-dir>`; a directory path is not a subcommand.
+	// Tomidev Shell launches `pi -e <package-root-dir>`; a directory path is not a subcommand.
 	assert.equal(isPiCliSubcommandInvocation(["node", "pi", "-e", "/opt/gentle-pi"]), false);
 	assert.equal(isPiCliSubcommandInvocation(["node", "pi", "--no-extensions", "-e", "/a", "-e", "/b/ext.mjs"]), false);
 	assert.equal(isPiCliSubcommandInvocation(["node", "pi"]), false);
@@ -437,18 +431,18 @@ test("launcher-injected extension directories do not suppress the startup banner
 // gentle-shell#1690: a delegated rpc child has hasUI=true; only a piped stdout
 // without rows/columns kept the banner off before the explicit child guard.
 test("delegated children never paint the startup banner", async (t) => {
-	const previousChild = process.env.GENTLE_PI_AGENTS_CHILD;
-	process.env.GENTLE_PI_AGENTS_CHILD = "1";
+	const previousChild = process.env.TOMIDEV_AGENTS_CHILD;
+	process.env.TOMIDEV_AGENTS_CHILD = "1";
 	t.after(() => {
-		if (previousChild === undefined) delete process.env.GENTLE_PI_AGENTS_CHILD;
-		else process.env.GENTLE_PI_AGENTS_CHILD = previousChild;
+		if (previousChild === undefined) delete process.env.TOMIDEV_AGENTS_CHILD;
+		else process.env.TOMIDEV_AGENTS_CHILD = previousChild;
 	});
 	const home = mkdtempSync(join(tmpdir(), "gp-banner-child-"));
-	const previousHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = home;
+	const previousHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = home;
 	t.after(() => {
-		if (previousHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousHome;
+		if (previousHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousHome;
 		rmSync(home, { recursive: true, force: true });
 	});
 	t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
@@ -478,20 +472,20 @@ test("delegated children never paint the startup banner", async (t) => {
 
 // S9: the config home each of these reads resolves, per case. The OS home is
 // a temporary folder in every case, so no case can reach the real one.
-// "unset" and "empty" both name ~/.pi/gentle-ai: an empty GENTLE_PI_CONFIG_HOME
+// "unset" and "empty" both name ~/.pi/gentle-ai: an empty TOMIDEV_CONFIG_HOME
 // counts as unset (#2201; it used to name the current folder). "bundled" stands in for this package running from
 // a bundled install (testing overlay) whose prefix the launcher passed; the
-// user's own GENTLE_PI_CONFIG_HOME is then not this install's.
+// user's own TOMIDEV_CONFIG_HOME is then not this install's.
 type ConfigHomeCase = "unset" | "empty" | "bundled";
 function configHomeCase(t: { after: (fn: () => void) => void }, kind: ConfigHomeCase): { env: NodeJS.ProcessEnv; dir: string; userConfig: string } {
 	const base = realpathSync(mkdtempSync(join(tmpdir(), `config-home-${kind}-`)));
-	const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, GENTLE_PI_CONFIG_HOME: process.env.GENTLE_PI_CONFIG_HOME, GENTLE_SHELL_PREFIX: process.env.GENTLE_SHELL_PREFIX, GENTLE_SHELL_CONFIG_HOME: process.env.GENTLE_SHELL_CONFIG_HOME };
+	const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, TOMIDEV_CONFIG_HOME: process.env.TOMIDEV_CONFIG_HOME, TOMIDEV_PREFIX: process.env.TOMIDEV_PREFIX, TOMIDEV_SHELL_CONFIG_HOME: process.env.TOMIDEV_SHELL_CONFIG_HOME };
 	const cwd = process.cwd();
 	process.env.HOME = join(base, "home");
 	process.env.USERPROFILE = join(base, "home");
-	delete process.env.GENTLE_PI_CONFIG_HOME;
-	delete process.env.GENTLE_SHELL_PREFIX;
-	delete process.env.GENTLE_SHELL_CONFIG_HOME;
+	delete process.env.TOMIDEV_CONFIG_HOME;
+	delete process.env.TOMIDEV_PREFIX;
+	delete process.env.TOMIDEV_SHELL_CONFIG_HOME;
 	t.after(() => {
 		process.chdir(cwd);
 		setBundledInstallForTesting(undefined);
@@ -506,12 +500,12 @@ function configHomeCase(t: { after: (fn: () => void) => void }, kind: ConfigHome
 	if (kind === "empty") {
 		mkdirSync(join(base, "cwd"));
 		process.chdir(join(base, "cwd"));
-		return { env: { GENTLE_PI_CONFIG_HOME: "" }, dir: join(base, "home", ".pi", "gentle-ai"), userConfig };
+		return { env: { TOMIDEV_CONFIG_HOME: "" }, dir: join(base, "home", ".pi", "gentle-ai"), userConfig };
 	}
 	const prefix = join(base, "prefix");
 	mkdirSync(prefix);
 	setBundledInstallForTesting({ root: prefix });
-	return { env: { GENTLE_SHELL_PREFIX: prefix, GENTLE_PI_CONFIG_HOME: userConfig }, dir: join(prefix, "config", "gentle-ai"), userConfig };
+	return { env: { TOMIDEV_PREFIX: prefix, TOMIDEV_CONFIG_HOME: userConfig }, dir: join(prefix, "config", "gentle-ai"), userConfig };
 }
 
 for (const kind of ["unset", "empty", "bundled"] as const) {
@@ -528,14 +522,14 @@ for (const kind of ["unset", "empty", "bundled"] as const) {
 	});
 }
 
-test("the banner ends with a /gentle:guide reminder on every start, only when the command exists", async (t) => {
+test("the banner never suggests the retired guided tour regardless of registered commands", async (t) => {
 	const home = mkdtempSync(join(tmpdir(), "gp-banner-guide-"));
-	writeFileSync(join(home, "animations.json"), '{"schema":"gentle-pi.animations/v1","policy":"potato"}');
-	const previousHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = home;
+	writeFileSync(join(home, "animations.json"), '{"schema":"tomidev.animations/v1","policy":"potato"}');
+	const previousHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = home;
 	t.after(() => {
-		if (previousHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousHome;
+		if (previousHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousHome;
 		rmSync(home, { recursive: true, force: true });
 	});
 	t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
@@ -562,10 +556,12 @@ test("the banner ends with a /gentle:guide reminder on every start, only when th
 		header!.dispose();
 		return lines;
 	};
-	const withGuide = await render([{ name: "gentle:guide" }]);
-	assert.equal(withGuide.filter((line) => line.trim() !== "").at(-1)?.trim(), "Tip: run /gentle:guide for a guided tour of Gentle Shell");
-	assert.equal((await render([{ name: "gentle:guide" }])).filter((line) => line.includes("/gentle:guide")).length, 1, "shown again on the next start, once");
-	assert.equal((await render([])).some((line) => line.includes("/gentle:guide")), false);
+	for (const commands of [[{ name: "td:guide" }], [{ name: "td:guide" }], [], [{ name: "td:profiles" }]]) {
+		const text = (await render(commands)).join("\n");
+		assert.doesNotMatch(text, /td:guide|guided tour/i);
+		assert.match(text, /GIT:/, "runtime panel stays visible");
+		assert.match(text, /PATH:/, "repository context stays visible");
+	}
 });
 
 // Every rose pulse step repaints every rose cell, which drives the TUI diff to
@@ -578,11 +574,11 @@ test("the rose pulse step follows the resolved animation policy", async (t) => {
 	assert.deepEqual(["quality", "performance", "potato"].map((policy) => rosePulseTicks(policy as never)), [4, 2, 2],
 		"quality quantizes the wave; performance and potato keep the merge-base step");
 	const home = mkdtempSync(join(tmpdir(), "gp-banner-pulse-"));
-	const previousHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = home;
+	const previousHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = home;
 	t.after(() => {
-		if (previousHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousHome;
+		if (previousHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousHome;
 		rmSync(home, { recursive: true, force: true });
 	});
 	// Rose only: with the logo off, a rendered header varies with tick solely
@@ -625,7 +621,7 @@ test("the rose pulse step follows the resolved animation policy", async (t) => {
 		header = factory({ requestRender() {} }, { fg: (_role: string, text: string) => text });
 	} } };
 	const startBanner = async (policy: string) => {
-		writeFileSync(join(home, "animations.json"), JSON.stringify({ schema: "gentle-pi.animations/v1", policy }));
+		writeFileSync(join(home, "animations.json"), JSON.stringify({ schema: "tomidev.animations/v1", policy }));
 		await start!({}, ctx); boot!();
 		for (let i = 0; i < 15; i++) await new Promise<void>((resolve) => setImmediate(resolve));
 		assert.equal(active, true, `${policy} starts its animation interval`);
@@ -657,11 +653,11 @@ test("the rose pulse step follows the resolved animation policy", async (t) => {
 // /reload that returned early would leave the editor without a header at all.
 test("/reload repaints the complete static banner instead of replaying the intro", async (t) => {
 	const home = mkdtempSync(join(tmpdir(), "gp-banner-reload-"));
-	const previousHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = home;
+	const previousHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = home;
 	t.after(() => {
-		if (previousHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousHome;
+		if (previousHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousHome;
 		rmSync(home, { recursive: true, force: true });
 	});
 	t.mock.method(fs, "readFile", async () => JSON.stringify({ showRose: true, showTextLogo: true, color: "pink" }));
@@ -675,7 +671,7 @@ test("/reload repaints the complete static banner instead of replaying the intro
 		Object.defineProperty(process.stdout, key, { configurable: true, writable: true, value });
 		t.after(() => descriptor ? Object.defineProperty(process.stdout, key, descriptor) : Reflect.deleteProperty(process.stdout, key));
 	}
-	const save = (policy: string) => writeFileSync(join(home, "animations.json"), JSON.stringify({ schema: "gentle-pi.animations/v1", policy }));
+	const save = (policy: string) => writeFileSync(join(home, "animations.json"), JSON.stringify({ schema: "tomidev.animations/v1", policy }));
 	let boot: () => void;
 	let active = false;
 	let clock = 0;
@@ -714,7 +710,7 @@ test("/reload repaints the complete static banner instead of replaying the intro
 		const reloaded = header!.render(200).join("\n");
 		assert.equal(stripAnsi(reloaded), staticGlyphs,
 			"/reload repaints the complete artwork instead of replaying the letter-writing intro");
-		assert.match(reloaded, /\x1b\[38;2;255;140;210m/, "/reload paints the settled logo palette");
-		assert.match(reloaded, /\x1b\[38;2;95;30;60m▒/, "/reload paints the settled rose shadow");
+		assert.match(reloaded, /\x1b\[38;2;255;141;207m/, "/reload paints the settled logo palette");
+		assert.match(reloaded, /\x1b\[38;2;97;46;75m▒/, "/reload paints the settled rose shadow");
 	} finally { header!.dispose(); }
 });

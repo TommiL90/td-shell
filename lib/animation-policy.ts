@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -6,7 +7,7 @@ import { gentlePiConfigHome } from "./agent-home.ts";
 export const ANIMATION_POLICY = { QUALITY: "quality", PERFORMANCE: "performance", POTATO: "potato" } as const;
 export type AnimationPolicy = (typeof ANIMATION_POLICY)[keyof typeof ANIMATION_POLICY];
 const SOURCE = { GLOBAL: "global_file", DEFAULT: "default" } as const;
-export const ANIMATION_SCHEMA = "gentle-pi.animations/v1";
+export const ANIMATION_SCHEMA = brandSchema("animations", 1);
 
 interface AnimationOptions { gentlePiConfigHome?: string }
 export interface AnimationResolution {
@@ -20,7 +21,7 @@ export function parseAnimationPolicyFile(raw: string): AnimationPolicy | undefin
 	try {
 		const value: unknown = JSON.parse(raw);
 		if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-		if (!("schema" in value) || value.schema !== ANIMATION_SCHEMA || !("policy" in value) || Object.keys(value).length !== 2) return undefined;
+		if (!("schema" in value) || !isBrandSchema(value.schema, "animations", 1) || !("policy" in value) || Object.keys(value).length !== 2) return undefined;
 		return value.policy === "quality" || value.policy === "performance" || value.policy === "potato" ? value.policy : undefined;
 	} catch { return undefined; }
 }

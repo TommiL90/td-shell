@@ -94,7 +94,7 @@ export const TODO_DETAILS_KEY = "gentleTodo";
 export const TODO_TOOL_NAME = "todo";
 export const TODO_GLYPH = "❀";
 /** Emitted on pi.events after each successful todo write; gentle-agents publishes it as session progress. */
-export const TODO_PROGRESS_EVENT = "gentle-pi:todo:progress";
+export const TODO_PROGRESS_EVENT = "td:todo:progress";
 
 export interface TodoProgress {
 	sessionId: string;
@@ -126,7 +126,7 @@ const NOTE_ROLE = "muted";
 const STALE_AFTER_TURNS = 2;
 /** Above this many rows the finished tasks fold into one line and the rest is capped. */
 const ROW_CAP = 12;
-/** The key that folds the Todos card and section; GENTLE_PI_TODO_KEY overrides it ("" or "off" disables it), then keymaps.json. */
+/** The key that folds the Todos card and section; TOMIDEV_TODO_KEY overrides it ("" or "off" disables it), then keymaps.json. */
 export function todoCollapseKey(env: NodeJS.ProcessEnv = process.env, bindings: KeymapBindings = {}): string | undefined {
 	return effectiveKey("todo.collapse", env, bindings);
 }

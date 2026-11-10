@@ -53,7 +53,7 @@ Progress is published automatically from the todo list: never call `orchestrator
 | Write a unit with a Writer rule reason | — | ✅ one bounded writer per unit |
 | Bash for state (`git`, `gh`) | ✅ | — |
 | Focused test and suite of the change being made | ✅ in one command | — |
-| Named high-risk item (assess `escalate` when RDD is on or unknown) | — | ✅ independent `gentle-ai-verify` |
+| Named high-risk item (`Risk: item N`) | — | ✅ independent `gentle-ai-verify` |
 
 Check duration alone never triggers a verifier.
 
@@ -71,7 +71,7 @@ The canonical Writer rule under Delegation Triggers overrides this general runti
 2. **Writer rule**: follow the canonical Writer rule under Delegation Triggers.
 3. **Incident rule**: after wrong `cwd`, accidental repository/worktree mutation, failed merge recovery, confusing test command, or environment workaround, stop and diagnose the incident separately before resuming.
 4. **Context backstop**: when the runtime signals the context backstop, pause and delegate the next unit that needs several steps instead of silently continuing monolithically; single small edits stay inline.
-5. **Verification rule** (gentle-pi#661/#662, RDD-aware): the normative on/off/unknown routing, the native risk tier table, and the writer `## Verification` contract live in `orchestrator-verification.md`; load it when this rule fires or a delegated writer returns.
+5. **Verification rule**: the lane and risk routing and the writer `## Verification` contract live in `orchestrator-verification.md`; load it when this rule fires or a delegated writer returns.
 
 ### Work Routing Ladder
 
@@ -99,7 +99,7 @@ When the policy is on and `subagent_run` is available:
 - The runtime already defaults `subagent_run` to `mode: "background"` under this policy in interactive and RPC sessions, so omit `mode` for ordinary delegation. It returns a task id at once; the terminal stays free and the human keeps typing. Pass a `label` of three to six words naming the work.
 - A child `agent_end` retains its latest answer but is not completion: Pi may still retry, compact, or run a queued follow-up. Treat the task as finished only at `agent_settled`; only then release its queue slot, publish its background result, or terminate it. If it exits first, report failure with its retained answer as diagnostics.
 - When a background task settles, its result arrives as a message in this session (custom type `gentle-agents.result`, one per task) and starts a new turn if you are idle. Wait for it: end the turn once launches and any non-overlapping work are done. Never sleep or periodically poll `subagent_status`/`subagent_result` for completion or cache maintenance. Retain the task ID. Use `subagent_status` only at a real orchestration decision boundary: user-requested inspection, relevant scope change, input request, or suspected abnormal behavior. Never relaunch equivalent work merely because it is queued or running. Cache warming belongs to Pi's native runtime, never to model-driven maintenance turns.
-- Do not claim an implementation ready or RDD-ready while its required verification or correction follow-up remains queued. Run the required focused verification before that claim, and retain legitimate post-correction verification. This does not invent a universal full-suite requirement or make a receipt a delivery gate.
+- Do not claim an implementation ready while its required verification or correction follow-up remains queued. Run the required focused verification before that claim, and retain legitimate post-correction verification. This does not invent a universal full-suite requirement or make a receipt a delivery gate.
 - Use `mode: "task"` only when the subagent must ask the human something mid-flight (task-mode dialogs reach the human; background dialogs are dismissed) or when the human asked to wait.
 - Launch as many independent tasks as the work has; the runner queues beyond `max_concurrency`. Do not duplicate launches or work, and do not overlap files or topics.
 - Finished tasks persist across restarts; running ones are stopped when pi exits and must be relaunched, never claimed as recovered.
@@ -111,7 +111,7 @@ For generic mapping, follow the Evidence-budget rule in the delegation card.
 
 The canonical Writer rule under Delegation Triggers overrides the general runtime preference above.
 
-Delegate generic verification that executes or delegates commands per the RDD-aware Verification rule (trigger 3 under Delegation Triggers, gentle-pi#661) -- the normative on/off/unknown routing lives in `orchestrator-verification.md`, not here: the bounded writer always self-verifies via `## Verification`; a named high-risk item also requires `gentle-ai-verify` (or the native `Agent` fallback, with the same read-only verification constraints, exact parent-authorized commands, and fallback reporting). When RDD is on or unknown, use the `gentle_review` `assess` plan and named `escalate` item; validated off does not require assessment (gentle-pi#662). `## Known environmental failures` follows the same definition as `gentle-ai-worker`'s Verification contract: exact pre-existing base failures reported as evidence, never blockers -- any other failing required command still forces `status: partial`. The change's own focused test and suite run inline. Separate exploration stays reserved for when the parent needs the map to decide or route; reading that prepares a write belongs with the writer making the change, consistent with the Delegation Rules table above.
+Delegate generic verification that executes or delegates commands per the Verification rule (trigger 3 under Delegation Triggers) -- the routing lives in `orchestrator-verification.md`, not here: the bounded writer always self-verifies via `## Verification`; a named high-risk item also requires `gentle-ai-verify` (or the native `Agent` fallback, with the same read-only verification constraints, exact parent-authorized commands, and fallback reporting). `## Known environmental failures` follows the same definition as `gentle-ai-worker`'s Verification contract: exact pre-existing base failures reported as evidence, never blockers -- any other failing required command still forces `status: partial`. The change's own focused test and suite run inline. Separate exploration stays reserved for when the parent needs the map to decide or route; reading that prepares a write belongs with the writer making the change, consistent with the Delegation Rules table above.
 
 For delegation other than a large task's bounded writes, use the generic fallback: if `subagent_*` tools are unavailable, fall back to Pi's native `Agent` tool in the current runtime; never fall back to an external pane, terminal, session, window, or remote worker. The delegation trigger remains mandatory. If no delegation mechanism is available, stop the complex work and tell the user instead of silently continuing inline.
 

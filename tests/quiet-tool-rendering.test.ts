@@ -178,20 +178,20 @@ async function withEnvAsync<T>(updates: Record<string, string | undefined>, run:
 // No executor, shellPath, or claim of production native-Bash UI parity.
 function quietTools(pi: any, resolveOverride?: any) {
 	productionQuietTools(pi, resolveOverride);
-	if (process.env.GENTLE_PI_QUIET_TOOLS !== "0") {
+	if (process.env.TOMIDEV_QUIET_TOOLS !== "0") {
 		pi.registerTool({ name: "bash", ...createQuietToolRenderer("bash", resolveOverride) });
 	}
 }
 
 function registeredQuietTools() {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	return tools;
 }
 
 function registeredQuietToolsWithResolver(resolveOverride: () => unknown) {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any, resolveOverride as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any, resolveOverride as any));
 	return tools;
 }
 
@@ -208,7 +208,7 @@ function assertGenericBash(tool: any, command: string): void {
 }
 
 test("quiet tools register six overrides and codemode, never Bash", () => {
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => {
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => {
 		const { pi, tools } = createPi();
 
 		productionQuietTools(pi as any);
@@ -225,7 +225,7 @@ test("quiet tools register six overrides and codemode, never Bash", () => {
 });
 
 test("quiet tools never replace an existing native Bash tool", () => {
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => {
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => {
 		const { pi, tools } = createPi({ throwOnToolConflict: true });
 		const native = createSdkTool("bash");
 		pi.registerTool(native);
@@ -245,7 +245,7 @@ test("standalone Bash rendering fixture does not interpret shellPath", () => {
 });
 
 test("quiet tool rendering can be disabled by env", () => {
-	withEnv({ GENTLE_PI_QUIET_TOOLS: "0" }, () => {
+	withEnv({ TOMIDEV_QUIET_TOOLS: "0" }, () => {
 		const { pi, tools } = createPi();
 
 		productionQuietTools(pi as any);
@@ -256,7 +256,7 @@ test("quiet tool rendering can be disabled by env", () => {
 
 test("pi-pretty suppresses overlapping tools before quiet tools register", async () => {
 	await withEnvAsync(
-		{ GENTLE_PI_AGENTS_CHILD: undefined, GENTLE_PI_QUIET_TOOLS: undefined, PRETTY_DISABLE_TOOLS: "multi_grep" },
+		{ TOMIDEV_AGENTS_CHILD: undefined, TOMIDEV_QUIET_TOOLS: undefined, PRETTY_DISABLE_TOOLS: "multi_grep" },
 		async () => {
 			const { pi, tools } = createPi({ throwOnToolConflict: true });
 
@@ -274,7 +274,7 @@ test("pi-pretty suppresses overlapping tools before quiet tools register", async
 
 test("pi-pretty preserves byte-exact model-visible read results when quiet tools suppress its renderer", async () => {
 	await withEnvAsync(
-		{ GENTLE_PI_AGENTS_CHILD: undefined, GENTLE_PI_QUIET_TOOLS: undefined, PRETTY_DISABLE_TOOLS: undefined },
+		{ TOMIDEV_AGENTS_CHILD: undefined, TOMIDEV_QUIET_TOOLS: undefined, PRETTY_DISABLE_TOOLS: undefined },
 		async () => {
 			const { pi, hooks } = createPi();
 			await piPretty(pi as any, fakePiPrettyDeps as any);
@@ -297,8 +297,8 @@ test("pi-pretty preserves byte-exact model-visible read results when quiet tools
 test("pi-pretty suppression is skipped when quiet tools are disabled", async () => {
 	await withEnvAsync(
 		{
-			GENTLE_PI_AGENTS_CHILD: undefined,
-			GENTLE_PI_QUIET_TOOLS: "0",
+			TOMIDEV_AGENTS_CHILD: undefined,
+			TOMIDEV_QUIET_TOOLS: "0",
 			PRETTY_DISABLE_TOOLS: undefined,
 			PRETTY_ENABLE_TOOLS: "ls",
 		},
@@ -318,7 +318,7 @@ test("pi-pretty suppression is skipped when quiet tools are disabled", async () 
 
 test("quiet tool rendering uses bounded previews while preserving search summaries", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 
 	const read = renderToString(
 		tools.get("read").renderResult(textResult("first line\nsecond line"), { expanded: false, isPartial: false }, passthroughTheme, {}),
@@ -489,7 +489,7 @@ test("quiet Bash normalizes compact JSON for bounded previews while keeping expa
 
 test("retired SDD commands use generic bash rendering while review remains private", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const bash = tools.get("bash");
 	for (const command of [
 		"gentle-ai sdd-status rose --json",
@@ -506,7 +506,7 @@ test("retired SDD commands use generic bash rendering while review remains priva
 	}
 	const review = "gentle-ai review status --next-transition";
 	assert.equal(gentleAiRoutineCommand({ command: review }), "review");
-	assert.equal(cardTitle(renderToString(bash.renderCall({ command: review }, passthroughTheme, { args: { command: review } }))), "🌹 rdd running · status");
+	assert.equal(cardTitle(renderToString(bash.renderCall({ command: review }, passthroughTheme, { args: { command: review } }))), "🌹 gentle-ai running · review status");
 });
 
 test("quiet tool rendering identifies only routine Gentle AI review commands", () => {
@@ -523,7 +523,7 @@ test("quiet tool rendering identifies only routine Gentle AI review commands", (
 
 test("quiet tool rendering refuses to compact composed Gentle AI shell commands", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const commands = [
 		"gentle-ai review status --next-transition && rm -rf target",
 		"gentle-ai review status; rm -rf target",
@@ -553,7 +553,7 @@ test("quiet tool rendering refuses to compact composed Gentle AI shell commands"
 
 test("quiet tool rendering previews direct Gentle AI results and preserves expanded errors", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const command = "gentle-ai review status --next-transition";
 	const rose = "\u{1F339}";
 	const tool = tools.get("bash");
@@ -570,7 +570,7 @@ test("quiet tool rendering previews direct Gentle AI results and preserves expan
 
 	assert.equal([...rose].length, 1, "the rose is a plain emoji, no presentation selector");
 	assert.equal(visibleWidth(rose), 2);
-	assert.equal(cardTitle(call), `🌹 rdd running · status`);
+	assert.equal(cardTitle(call), `🌹 gentle-ai running · review status`);
 	assert.equal(cardBody(collapsed), "stop", "a JSON envelope collapses to its readable summary");
 	assert.doesNotMatch(collapsed, /\{"|next_transition/);
 	assert.equal(cardBody(expanded), '{\n  "next_transition": "stop"\n}', "expanded JSON is pretty-printed");
@@ -587,7 +587,7 @@ test("quiet tool rendering previews direct Gentle AI results and preserves expan
 
 test("quiet tool rendering transitions one Gentle AI header through lifecycle states", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const command = "gentle-ai review status --cwd /repo/private-change";
 
@@ -624,10 +624,10 @@ test("quiet tool rendering transitions one Gentle AI header through lifecycle st
 	assert.strictEqual(initial, running);
 	assert.strictEqual(running, completed);
 	assert.strictEqual(completed, failed);
-	assert.equal(cardTitle(initialText), "🌹 rdd running · status"); assert.equal(cardTone(initialText), "warning");
-	assert.equal(cardTitle(runningText), "🌹 rdd running · status"); assert.equal(cardTone(runningText), "warning");
-	assert.equal(cardTitle(completedText), "🌹 rdd status"); assert.equal(cardTone(completedText), "success");
-	assert.equal(cardTitle(failedText), "🌹 rdd failed · status"); assert.equal(cardTone(failedText), "error");
+	assert.equal(cardTitle(initialText), "🌹 gentle-ai running · review status"); assert.equal(cardTone(initialText), "warning");
+	assert.equal(cardTitle(runningText), "🌹 gentle-ai running · review status"); assert.equal(cardTone(runningText), "warning");
+	assert.equal(cardTitle(completedText), "🌹 gentle-ai review status"); assert.equal(cardTone(completedText), "success");
+	assert.equal(cardTitle(failedText), "🌹 gentle-ai failed · review status"); assert.equal(cardTone(failedText), "error");
 	assert.doesNotMatch(failedText, /private-change/);
 });
 
@@ -641,14 +641,14 @@ test("quiet Bash keeps direct Gentle AI calls seamless while streaming", () => {
 	const command = "gentle-ai review status --token 'lineage-secret";
 	const state = {};
 	const [preparing, collapsed] = render(command, state);
-	assert.equal(cardTitle(collapsed), "🌹 rdd preparing · status");
+	assert.equal(cardTitle(collapsed), "🌹 gentle-ai preparing · review status");
 	assert.doesNotMatch(collapsed, /token|lineage-secret/);
 	const expanded = render(command, state, { expanded: true, lastComponent: preparing })[1];
-	assert.equal(cardTitle(expanded), "🌹 rdd preparing · status"); assert.equal(cardBody(expanded), "$ gentle-ai review status --token 'lineage-secret");
+	assert.equal(cardTitle(expanded), "🌹 gentle-ai preparing · review status"); assert.equal(cardBody(expanded), "$ gentle-ai review status --token 'lineage-secret");
 
 	const direct = "gentle-ai review status";
 	const [running, runningText] = render(direct, state, { argsComplete: true, executionStarted: true, lastComponent: preparing });
-	assert.strictEqual(running, preparing); assert.equal(cardTitle(runningText), "🌹 rdd running · status");
+	assert.strictEqual(running, preparing); assert.equal(cardTitle(runningText), "🌹 gentle-ai running · review status");
 	const genericState = {};
 	const [generic, genericText] = render("gentle-ai review status | cat", genericState);
 	assert.doesNotMatch(genericText, rose); assert.match(genericText, /\| cat/);
@@ -670,7 +670,7 @@ test("quiet Bash keeps direct Gentle AI calls seamless while streaming", () => {
 
 test("quiet tool rendering displays only finite safe Gentle AI operation paths", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const cases = [
 		["gentle-ai review capabilities --cwd /repo/private", "review capabilities"],
@@ -726,19 +726,19 @@ test("quiet tool rendering displays only finite safe Gentle AI operation paths",
 				routineRenderContext({ args: { command } }),
 			),
 		);
-		assert.equal(cardTitle(rendered), path === "review" ? "🌹 rdd running" : `🌹 rdd running · ${path.slice("review ".length)}`, command);
+		assert.equal(cardTitle(rendered), `🌹 gentle-ai running · ${path}`, command);
 		assert.doesNotMatch(rendered, /change-123|private|secret|lineage|sha256|result\.json|incident\.json/);
 	}
 });
 
 test("quiet tool rendering covers version and future standalone Gentle AI commands", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const cases = [
 		["gentle-ai version", "gentle-ai running · version"],
 		["gentle-ai future-command --authorization-root /repo/private", "gentle-ai running · command"],
-		["gentle-ai review future-operation --path /repo/private", "rdd running"],
+		["gentle-ai review future-operation --path /repo/private", "gentle-ai running · review"],
 		["/package/.gentle-ai/v2.2.0/gentle-ai version", "gentle-ai running · version"],
 		["C:\\package\\.gentle-ai\\v2.2.0\\gentle-ai.exe future-command --root C:\\private", "gentle-ai running · command"],
 	] as const;
@@ -754,7 +754,7 @@ test("quiet tool rendering covers version and future standalone Gentle AI comman
 
 test("quiet tool rendering recognizes exact quoted, escaped, Windows, and command-prefixed Gentle AI executables", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const routineCommands = [
 		"gentle-ai.exe version",
@@ -794,10 +794,10 @@ test("quiet tool rendering recognizes only the exact resolved dev binary", () =>
 	});
 	const tool = tools.get("bash");
 	const cases = [
-		[`${devPath} review validate --gate pre-commit --cwd /repo/private`, "rdd running · validate pre commit"],
-		[`'${devPath}' review status --lineage secret`, "rdd running · status"],
+		[`${devPath} review validate --gate pre-commit --cwd /repo/private`, "gentle-ai running · review validate pre commit"],
+		[`'${devPath}' review status --lineage secret`, "gentle-ai running · review status"],
 		[`"${devPath}" version`, "gentle-ai running · version"],
-		[`env FOO='a b' ${devPath} review capabilities`, "rdd running · capabilities"],
+		[`env FOO='a b' ${devPath} review capabilities`, "gentle-ai running · review capabilities"],
 	] as const;
 	for (const [command, operationPath] of cases) {
 		const call = renderToString(tool.renderCall({ command }, statusTheme, routineRenderContext({ args: { command } })));
@@ -806,10 +806,10 @@ test("quiet tool rendering recognizes only the exact resolved dev binary", () =>
 	}
 	const command = `${devPath} review status --prompt hidden-prompt --lineage lineage-secret --body private-body`;
 	const lifecycleContext = routineRenderContext({ args: { command }, state: {} });
-	assert.match(renderToString(tool.renderCall({ command }, passthroughTheme, lifecycleContext)), /rdd running · status/);
+	assert.match(renderToString(tool.renderCall({ command }, passthroughTheme, lifecycleContext)), /gentle-ai running · review status/);
 	devPath = "/new/dev/gentle-ai-main";
 	const refreshedCommand = `${devPath} review status --token token-secret`;
-	assert.match(renderToString(tool.renderCall({ command: refreshedCommand }, passthroughTheme, routineRenderContext({ args: { command: refreshedCommand } }))), /rdd running · status/);
+	assert.match(renderToString(tool.renderCall({ command: refreshedCommand }, passthroughTheme, routineRenderContext({ args: { command: refreshedCommand } }))), /gentle-ai running · review status/);
 	assertGenericBash(tool, cases[2][0]);
 	const text = "error: private failure\nlineage=secret body=hidden\x1b[31m";
 	const collapsed = renderToolResult(tool, textResult(text), { expanded: false, isPartial: false, isError: true }, lifecycleContext);
@@ -843,7 +843,7 @@ test("quiet tool rendering keeps unregistered dev lookalikes and composed calls 
 });
 test("quiet tool rendering previews routine partial content while the header owns state", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const command = "gentle-ai review status --cwd /repo/private";
 
@@ -902,7 +902,7 @@ test("quiet tool rendering previews routine partial content while the header own
 
 test("quiet tool rendering hides invocation arguments but previews result content without redaction", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const command = "gentle-ai review finalize --prompt hidden-prompt --lineage lineage-secret --body private-body --authorization-root /private/root";
 	const call = renderToString(tool.renderCall({ command }, passthroughTheme, { args: { command } }));
@@ -915,7 +915,7 @@ test("quiet tool rendering hides invocation arguments but previews result conten
 		),
 	);
 
-	assert.equal(cardTitle(call), "🌹 rdd running · finalize");
+	assert.equal(cardTitle(call), "🌹 gentle-ai running · review finalize");
 	assert.match(cardBody(collapsed), /audit:/);
 	for (const forbidden of ["hidden-prompt", "lineage-secret", "private-body", "/private/root", "audit:"]) {
 		assert.doesNotMatch(call, new RegExp(forbidden));
@@ -925,7 +925,7 @@ test("quiet tool rendering hides invocation arguments but previews result conten
 
 test("quiet tool rendering keeps shell compositions, expansions, and lookalikes generic", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const commands = [
 		"gentle-ai version && echo done",
@@ -1052,7 +1052,7 @@ test("quiet write expansion preserves failures, partial results and fallback con
 
 test("quiet tool rendering sanitizes collapsed output and call rows", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 
 	const collapsed = renderToString(
 		tools.get("bash").renderResult(textResult("safe\x1b[31mred\x1b[0m"), { expanded: false, isPartial: false }, passthroughTheme, { args: { command: "printf output" } }),
@@ -1079,7 +1079,7 @@ test("quiet tool rendering sanitizes only rendered fields", () => {
 
 test("quiet tool rendering call rows show tool calls without result output", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 
 	const readCall = renderToString(tools.get("read").renderCall({ path: "/tmp/example.ts", offset: 2, limit: 3 }, passthroughTheme, {}));
 	const bashCall = renderToString(tools.get("bash").renderCall({ command: "printf noisy", timeout: 5 }, passthroughTheme, {}));
@@ -1121,7 +1121,7 @@ test("quiet tool rendering classifies quoted and escaped literal shell metachara
 	]) {
 		const call = renderToString(tool.renderCall({ command }, passthroughTheme, { args: { command } }));
 		const collapsed = renderToolResult(tool, textResult("private output"), { expanded: false, isPartial: false }, { args: { command } });
-		assert.match(call, /🌹 rdd running · status/, command);
+		assert.match(call, /🌹 gentle-ai running · review status/, command);
 		assert.match(collapsed, /private output/, command);
 	}
 });
@@ -1154,7 +1154,7 @@ test("quiet tool rendering recognizes a quoted exact dev override path containin
 	const command = `"${devPath}" review status "literal \\$|#;"`;
 	const call = renderToString(tool.renderCall({ command }, passthroughTheme, { args: { command } }));
 	const collapsed = renderToolResult(tool, textResult("private result"), { expanded: false, isPartial: false }, { args: { command } });
-	assert.equal(cardTitle(call), "🌹 rdd running · status");
+	assert.equal(cardTitle(call), "🌹 gentle-ai running · review status");
 	assert.doesNotMatch(call, /\/opt\/Gentle AI\/gentle-ai|literal/);
 	assert.match(collapsed, /private result/);
 });
@@ -1335,7 +1335,7 @@ test("quiet tool rendering fails closed on unquoted shell expansions", () => {
 		const call = renderToString(bash.renderCall({ command }, passthroughTheme, { args: { command } }));
 		const collapsed = renderToolResult(bash, textResult("dummy-secret"), { expanded: false, isPartial: false }, { args: { command } });
 		assert.equal(gentleAiRoutineCommand({ command }), "review", command);
-		assert.match(call, /🌹 rdd running · status/, command);
+		assert.match(call, /🌹 gentle-ai running · review status/, command);
 		assert.match(collapsed, /dummy-secret/, command);
 	}
 });
@@ -1351,7 +1351,7 @@ test("quiet tool rendering redacts only exact package-local executable paths wit
 		const call = renderToString(bash.renderCall({ command }, passthroughTheme, { args: { command } }));
 		const collapsed = renderToolResult(bash, textResult("dummy-secret"), { expanded: false, isPartial: false }, { args: { command } });
 		assert.equal(gentleAiRoutineCommand({ command }), "review", command);
-		assert.match(call, /🌹 rdd running · status/, command);
+		assert.match(call, /🌹 gentle-ai running · review status/, command);
 		assert.doesNotMatch(call, /Gentle Package|secret/, command);
 		assert.match(collapsed, /dummy-secret/, command);
 	}
@@ -1380,7 +1380,7 @@ test("quiet tool rendering respects command and env wrapper order", () => {
 		const call = renderToString(bash.renderCall({ command }, passthroughTheme, { args: { command } }));
 		const collapsed = renderToolResult(bash, textResult("dummy-secret"), { expanded: false, isPartial: false }, { args: { command } });
 		assert.equal(gentleAiRoutineCommand({ command }), "review", command);
-		assert.match(call, /🌹 rdd running · status/, command);
+		assert.match(call, /🌹 gentle-ai running · review status/, command);
 		assert.match(collapsed, /dummy-secret/, command);
 	}
 
@@ -1393,7 +1393,7 @@ test("quiet tool rendering lets a final result promote a replayed call card to i
 	// The promotion invalidates after the render returns (a microtask), never inside it.
 	const flush = () => new Promise((resolve) => queueMicrotask(() => resolve(undefined)));
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const command = "gentle-ai review status";
 	const state = {};
@@ -1401,20 +1401,20 @@ test("quiet tool rendering lets a final result promote a replayed call card to i
 	const replayed = routineRenderContext({ args: { command }, state, argsComplete: false, executionStarted: false, isPartial: false, invalidate: () => { invalidations += 1; } });
 
 	const call = tool.renderCall({ command }, statusTheme, replayed);
-	assert.equal(cardTitle(renderToString(call)), "🌹 rdd preparing · status");
+	assert.equal(cardTitle(renderToString(call)), "🌹 gentle-ai preparing · review status");
 	renderToString(tool.renderResult(textResult("done"), { expanded: false, isPartial: false }, statusTheme, replayed));
 	assert.equal(invalidations, 0, "never reentrant");
 	await flush();
 	assert.equal(invalidations, 1);
 	const promoted = tool.renderCall({ command }, statusTheme, { ...replayed, lastComponent: call });
 	assert.strictEqual(promoted, call);
-	assert.equal(cardTitle(renderToString(promoted)), "🌹 rdd status");
+	assert.equal(cardTitle(renderToString(promoted)), "🌹 gentle-ai review status");
 	assert.equal(cardTone(renderToString(promoted)), "success");
 
 	renderToString(tool.renderResult(textResult("boom"), { expanded: false, isPartial: false }, statusTheme, { ...replayed, isError: true }));
 	await flush();
 	assert.equal(invalidations, 2);
-	assert.equal(cardTitle(renderToString(tool.renderCall({ command }, statusTheme, { ...replayed, lastComponent: call }))), "🌹 rdd failed · status");
+	assert.equal(cardTitle(renderToString(tool.renderCall({ command }, statusTheme, { ...replayed, lastComponent: call }))), "🌹 gentle-ai failed · review status");
 	renderToString(tool.renderResult(textResult("boom"), { expanded: false, isPartial: false }, statusTheme, { ...replayed, isError: true }));
 	await flush();
 	assert.equal(invalidations, 2, "an unchanged outcome must not request another render");
@@ -1422,14 +1422,14 @@ test("quiet tool rendering lets a final result promote a replayed call card to i
 
 test("quiet tool rendering puts the expand key in the finished call card's top rule, not in the result", () => {
 	const { pi, tools } = createPi();
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	const tool = tools.get("bash");
 	const command = "gentle-ai review status";
 	const running = renderToString(tool.renderCall({ command }, passthroughTheme, routineRenderContext({ args: { command }, executionStarted: true, isPartial: true })));
 	assert.equal(cardHint(running), undefined, "a running call has nothing to expand yet");
 	const completed = renderToString(tool.renderCall({ command }, passthroughTheme, routineRenderContext({ args: { command }, executionStarted: true, isPartial: false, expanded: false })));
 	assert.match(cardHint(completed) ?? "", /to expand$/);
-	assert.equal(cardTitle(completed), "🌹 rdd status");
+	assert.equal(cardTitle(completed), "🌹 gentle-ai review status");
 	const expanded = renderToString(tool.renderCall({ command }, passthroughTheme, routineRenderContext({ args: { command }, executionStarted: true, isPartial: false, expanded: true })));
 	assert.match(cardHint(expanded) ?? "", /to collapse$/);
 	const collapsedResult = renderToolResult(tool, textResult("{\"next_transition\":\"stop\"}"), { expanded: false, isPartial: false }, { args: { command } });
@@ -1736,7 +1736,7 @@ test("the default Card content preference restores result previews and native ba
 		(pi as any).registerToolRenderer = (resolver: (toolName: string, next: () => unknown) => unknown) => {
 			resolvers.push(resolver);
 		};
-		withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+		withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 		const native = { marker: "native" };
 		assert.equal(resolvers.at(-1)!("bash", () => native), native, "default content defers bash drawing to the native renderer");
 		assert.equal(resolvers.at(-1)!("read", () => native), native, "every other tool still defers");
@@ -1752,7 +1752,7 @@ test("the production factory takes over native bash drawing through a tool rende
 	(pi as any).registerToolRenderer = (resolver: (toolName: string, next: () => unknown) => unknown) => {
 		resolvers.push(resolver);
 	};
-	withEnv({ GENTLE_PI_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
+	withEnv({ TOMIDEV_QUIET_TOOLS: undefined }, () => quietTools(pi as any));
 	assert.ok(resolvers.length >= 1, "quiet tools registers a tool renderer resolver");
 	const resolver = resolvers.at(-1)!;
 	const native = { marker: "native" };

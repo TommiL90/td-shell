@@ -145,8 +145,8 @@ export interface ActiveProvider {
 // fetch call. Re-registration for the same provider replaces the previous
 // source, so a second `session_start` emitting the same payload is a no-op
 // in effect, not an accumulation.
-export const USAGE_SOURCE_EVENT = "gentle-pi:usage-source/v1";
-export const USAGE_SOURCE_SCHEMA = "gentle-pi.usage-source/v1";
+export const USAGE_SOURCE_EVENT = "td:usage-source/v1";
+export const USAGE_SOURCE_SCHEMA = "tomidev.usage-source/v1";
 const USAGE_SOURCE_PROVIDER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export interface UsageSource {

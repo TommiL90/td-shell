@@ -1,10 +1,11 @@
 // Agent-model profiles: named, switchable snapshots of the global
-// `models.json` routing behind `/gentle:profiles`. The store lives at
+// `models.json` routing behind `/td:profiles`. The store lives at
 // `<configHome>/profiles.json` and single-profile exports at
 // `<configHome>/profiles.export.json`. Everything here is pure except the two
 // path helpers and the thin read/write wrappers at the bottom; the extension
 // panel owns all TUI and orchestration concerns.
 
+import { brandId, isBrandId } from "./brand.ts";
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -17,9 +18,9 @@ import {
 	type AgentRoutingEntry,
 } from "./model-routing-authority.ts";
 
-export const PROFILES_KIND = "gentle-pi.agent_model_profiles";
+export const PROFILES_KIND = brandId("agent_model_profiles");
 export const PROFILES_VERSION = 1;
-export const PROFILE_EXPORT_KIND = "gentle-pi.agent_model_profile";
+export const PROFILE_EXPORT_KIND = brandId("agent_model_profile");
 export const PROFILE_EXPORT_VERSION = 1;
 
 // The orchestrator workflow a profile opts into (full-delegation-mode S1).
@@ -160,7 +161,7 @@ function requireValidName(name: string): string {
 
 export function normalizeProfilesFile(value: unknown): NormalizedProfilesFile | undefined {
 	if (!isRecord(value)) return undefined;
-	if (value.kind !== PROFILES_KIND || value.version !== PROFILES_VERSION) return undefined;
+	if (!isBrandId(value.kind, "agent_model_profiles") || value.version !== PROFILES_VERSION) return undefined;
 	const rawProfiles = value.profiles;
 	if (!isRecord(rawProfiles)) return undefined;
 	const profiles: Record<string, AgentModelConfig> = {};
@@ -658,7 +659,7 @@ export function parseProfileExportTextWithDrops(
 		return undefined;
 	}
 	if (!isRecord(value)) return undefined;
-	if (value.kind !== PROFILE_EXPORT_KIND || value.version !== PROFILE_EXPORT_VERSION) {
+	if (!isBrandId(value.kind, "agent_model_profile") || value.version !== PROFILE_EXPORT_VERSION) {
 		return undefined;
 	}
 	if (!isValidProfileName(value.name) || !isRecord(value.config)) return undefined;

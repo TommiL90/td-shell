@@ -184,7 +184,7 @@ If multiple rows match, run the narrow set that covers the risk. Example: shell 
 
 The detailed SDD workflow is intentionally not embedded in this always-on parent prompt. Before handling any `/sdd-*` command, natural-language SDD request, SDD continuation/routing, apply/verify/sync/archive work, or SDD/Judgment-Day phase delegation, read this package asset first:
 
-`{{GENTLE_PI_SDD_WORKFLOW_PATH}}`
+`{{TOMIDEV_SDD_WORKFLOW_PATH}}`
 
 That lazy surface contains the SDD phases, native dispatcher rules, status contract, preflight/init guards, artifact-store policy, execution mode, Strict TDD forwarding, phase result contract, and review workload guard.
 

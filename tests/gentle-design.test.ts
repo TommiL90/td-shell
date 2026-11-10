@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import { formatDesignComment, formatDesignCommentBatch, startDesignCanvasServer,
 import type { OpenInBrowserResult } from "../lib/design-open-browser.ts";
 import { __testing } from "../extensions/skill-registry.ts";
 
-// /gentle:design wiring: a brief starts one design run through the
+// /td:design wiring: a brief starts one design run through the
 // gentle-design skill; open/no arguments show the canvas for a design in the
 // session cwd; stop and session shutdown close it; canvas comments reach the
 // session; sync runs the skill's design-system mode; implement hands an
@@ -45,17 +45,21 @@ function fakePi(skillLoaded = true) {
 	return { pi, sent, emit, command: () => commands.get(DESIGN_COMMAND_NAME)!, tool: (name: string) => tools.get(name) };
 }
 
-function fakeContext(cwd: string, idle = true) {
+function fakeContext(cwd: string, idle = true, choice: string | undefined = "Canvas (HTML artboards)") {
 	const notices: Array<{ message: string; level?: string }> = [];
-	const state = { idle };
+	const selections: Array<{ title: string; options: string[] }> = [];
+	const state = { idle, choice };
 	const ctx = {
 		hasUI: true,
 		cwd,
 		isIdle: () => state.idle,
 		sessionManager: { getCwd: () => cwd },
-		ui: { notify: (message: string, level?: string) => notices.push({ message, level }) },
+		ui: {
+			notify: (message: string, level?: string) => notices.push({ message, level }),
+			select: async (title: string, options: string[]) => { selections.push({ title, options }); return state.choice; },
+		},
 	} as unknown as ExtensionContext;
-	return { ctx, notices, state };
+	return { ctx, notices, state, selections };
 }
 
 const scratchDirs: string[] = [];
@@ -103,10 +107,10 @@ function fakeCanvas(opened: OpenInBrowserResult = { opened: true }) {
 	return { startServer, openBrowser, starts, opens, shows, pages, closes: () => closes };
 }
 
-test("registers /gentle:design with help text naming the brief form and every subcommand", () => {
+test("registers /td:design with help text naming the brief form and every subcommand", () => {
 	const { pi, command } = fakePi();
 	gentleDesign(pi);
-	assert.equal(DESIGN_COMMAND_NAME, "gentle:design");
+	assert.equal(DESIGN_COMMAND_NAME, "td:design");
 	const description = command().description;
 	for (const word of ["<brief>", "open", "stop", "sync", "implement"]) assert.ok(description.includes(word), `help names ${word}`);
 });
@@ -117,9 +121,94 @@ test("a brief sends exactly one message that runs the gentle-design skill with t
 	const { ctx, notices } = fakeContext(scratchCwd());
 	await command().handler("  a pricing page for a note-taking app  ", ctx);
 	assert.equal(sent.length, 1);
-	assert.equal(sent[0].content, "/skill:gentle-design a pricing page for a note-taking app");
+	assert.equal(sent[0].content, "/skill:gentle-design Canvas route selected for this task; do not ask again.\n\na pricing page for a note-taking app");
 	assert.deepEqual(sent[0].options, { expandPromptTemplates: true });
 	assert.deepEqual(notices, []);
+});
+
+test("T15: every new brief selects a route, canvas dispatches only its skill, cancel starts nothing", async () => {
+	const cwd = scratchCwd();
+	const fake = fakePi();
+	const canvas = fakeCanvas();
+	gentleDesign(fake.pi, canvas);
+	const session = fakeContext(cwd);
+	await fake.command().handler("a login screen", session.ctx);
+	assert.deepEqual(session.selections, [{ title: "How would you like to design?", options: ["Canvas (HTML artboards)", "Direct application work", "Repository-defined workflow"] }]);
+	assert.deepEqual(fake.sent, [{ content: "/skill:gentle-design Canvas route selected for this task; do not ask again.\n\na login screen", options: { expandPromptTemplates: true } }]);
+	session.state.choice = undefined;
+	await fake.command().handler("a separate dashboard", session.ctx);
+	assert.equal(session.selections.length, 2, "no stored global route preference");
+	assert.equal(fake.sent.length, 1, "cancel sends nothing");
+	assert.deepEqual(session.notices, []);
+	assert.deepEqual(canvas.starts, []);
+	assert.deepEqual(canvas.opens, []);
+	assert.deepEqual(readdirSync(cwd), [], "entry and cancellation create no artifacts");
+});
+
+for (const [choice, instruction] of [
+	["Direct application work", "Direct application route selected for this task; do not ask again. Work in the application's real stack using project skills and conventions. Do not invoke builtin canvas skills, gentle_design list, system sync, canvas artifacts or server. Reuse existing feature tracking; do not create competing artifacts."],
+	["Repository-defined workflow", "Repository-defined route selected for this task; do not ask again. Inspect the project's instructions and relevant skills through existing skill discovery, then follow its design workflow and existing artifacts. If no repository design workflow is defined, report that clearly and stop; do not invent one or fall back to canvas. Respect project prohibitions and runtime safety."],
+]) {
+	test(`T15: ${choice} dispatches only the selected route`, async () => {
+		const cwd = scratchCwd();
+		const fake = fakePi();
+		const canvas = fakeCanvas();
+		gentleDesign(fake.pi, canvas);
+		const session = fakeContext(cwd, false, choice);
+		await fake.command().handler("a login screen", session.ctx);
+		assert.deepEqual(fake.sent, [{ content: `${instruction}\n\nDesign brief:\na login screen`, options: { deliverAs: "followUp" } }]);
+		assert.equal(session.selections.length, 1);
+		assert.deepEqual(session.notices, []);
+		assert.deepEqual(canvas.starts, []);
+		assert.deepEqual(canvas.opens, []);
+		assert.deepEqual(readdirSync(cwd), []);
+	});
+}
+
+test("T15: headless entry rejects with actionable guidance, without selecting or launching anything", async () => {
+	const cwd = scratchCwd();
+	const fake = fakePi();
+	const canvas = fakeCanvas();
+	gentleDesign(fake.pi, canvas);
+	const session = fakeContext(cwd);
+	Object.assign(session.ctx, { hasUI: false });
+	await assert.rejects(fake.command().handler("a login screen", session.ctx), { message: "Design route selection requires human input. Run /td:design <brief> in an interactive or UI-capable RPC session to choose canvas, direct application work, or repository-defined workflow; alternatively send a plain-language request explicitly naming your chosen route. Nothing was started." });
+	assert.deepEqual(fake.sent, []);
+	assert.deepEqual(session.selections, []);
+	assert.deepEqual(session.notices, []);
+	assert.deepEqual(canvas.starts, []);
+	assert.deepEqual(readdirSync(cwd), []);
+});
+
+test("T15: explicit canvas utilities and comments never ask for a new route", async () => {
+	const cwd = scratchCwd();
+	writeDesign(cwd, "login", "Login screen");
+	const fake = fakePi();
+	const canvas = fakeCanvas();
+	gentleDesign(fake.pi, canvas);
+	const session = fakeContext(cwd, true, undefined);
+	for (const args of ["open login", "", "sync", "implement login/01-a.html", "stop"]) await fake.command().handler(args, session.ctx);
+	const result = await fake.tool("gentle_design_comments")!.execute("comments", { action: "list" }, undefined, undefined, session.ctx);
+	assert.equal(toolText(result), "No open comments in design/.");
+	assert.deepEqual(session.selections, []);
+	assert.equal(fake.sent.length, 2);
+	assert.equal(fake.sent[0].content, '/skill:gentle-design sync the project design system: follow "Design system sync" to read the project\'s design sources and write design/system.md and design/system.html.');
+	assert.match(String(fake.sent[1].content), /^Implement the design artboard design\/login\/01-a.html/);
+	assert.deepEqual(session.notices, [
+		{ message: "Design canvas: http://127.0.0.1:4100/tok/d/login/", level: "info" },
+		{ message: "Design canvas: http://127.0.0.1:4100/tok/d/login/", level: "info" },
+		{ message: "Design canvas stopped.", level: "info" },
+	]);
+	assert.equal(canvas.closes(), 1);
+});
+
+test("T15: natural-language routing instructions ask once, honor route and prefer repository guidance", () => {
+	const source = readFileSync(SKILL_PATH, "utf8");
+	assert.match(source, /ask once[^\n]*canvas[^\n]*direct[^\n]*repository/i);
+	assert.match(source, /project[^\n]*skills[^\n]*precedence/i);
+	assert.match(source, /compatible artifacts/);
+	assert.doesNotMatch(source, /Use this skill by default/);
+	assert.doesNotMatch(DESIGN_HINT, /uses the gentle-design skill by default|Pair it with/);
 });
 
 test("without the skill loaded, the message points the model at the bundled skill file", async () => {
@@ -148,7 +237,7 @@ test("no arguments and no designs prints usage only and sends nothing", async ()
 	await command().handler("", ctx);
 	assert.equal(sent.length, 0);
 	assert.equal(notices.length, 1);
-	assert.match(notices[0].message, /\/gentle:design <brief>/);
+	assert.match(notices[0].message, /\/td:design <brief>/);
 	assert.doesNotMatch(notices[0].message, /Designs in this project/);
 });
 
@@ -159,7 +248,7 @@ test("a whitespace-only brief behaves like no arguments", async () => {
 	await command().handler(" \t\n ", ctx);
 	assert.equal(sent.length, 0);
 	assert.equal(notices.length, 1);
-	assert.match(notices[0].message, /\/gentle:design <brief>/);
+	assert.match(notices[0].message, /\/td:design <brief>/);
 });
 
 test("open starts one canvas server on design/, opens the slug URL and notifies it; a second open reuses it", async () => {
@@ -289,7 +378,7 @@ test("open without designs warns with usage and starts nothing", async () => {
 	assert.equal(notices.length, 1);
 	assert.equal(notices[0].level, "warning");
 	assert.match(notices[0].message, /No designs in design\/ yet/);
-	assert.match(notices[0].message, /\/gentle:design <brief>/);
+	assert.match(notices[0].message, /\/td:design <brief>/);
 });
 
 test("open <slug> without designs keeps the same no-designs warning as open", async () => {
@@ -462,6 +551,20 @@ function writeLinkedDesign(cwd: string, slug: string, feature?: unknown) {
 	writeFileSync(join(cwd, "design", slug, "02-card.html"), "<h1>Card</h1>");
 }
 
+test("T15: canvas handoff reuses project feature tracking without imposing ODD tracking", async () => {
+	const cwd = scratchCwd();
+	writeLinkedDesign(cwd, "login", ".agents/designs/features/login/");
+	const fake = fakePi();
+	gentleDesign(fake.pi, { startServer: unexpectedServer, openBrowser: unexpectedBrowser });
+	await fake.command().handler("implement login/01-split.html", fakeContext(cwd).ctx);
+	assert.match(String(fake.sent[0].content), /Reuse the existing project tracking at .agents\/designs\/features\/login\/ in its current format/);
+	assert.doesNotMatch(String(fake.sent[0].content), /ODD feature|add or reopen|log this handoff/);
+	writeLinkedDesign(cwd, "standalone");
+	await fake.command().handler("implement standalone/02-card.html", fakeContext(cwd).ctx);
+	assert.match(String(fake.sent[1].content), /Follow the project's workflow and existing feature tracking; do not create competing tracking just for this handoff/);
+	assert.doesNotMatch(String(fake.sent[1].content), /ODD rules/);
+});
+
 test("implement sends one handoff message with the artboard, tokens, open comments and feature link", async () => {
 	const cwd = scratchCwd();
 	writeLinkedDesign(cwd, "login", "odd/tasks/login-page.md");
@@ -479,13 +582,13 @@ test("implement sends one handoff message with the artboard, tokens, open commen
 	assert.equal(sent.length, 1);
 	assert.equal(sent[0].options, undefined);
 	const content = String(sent[0].content);
-	for (const part of ["design/login/01-split.html", "Split layout", "Calm; less room for the form", "real stack", "visual spec", "existing components", "verbatim", "design/system.md", "open01", "body > h1", "\"A\"", "Make the headline shorter", "gentle_design_comments", "track this implementation in odd/tasks/login-page.md", "This handoff itself commits nothing.", 'gentle_design tool: action "handoff", target "login/01-split.html"', 'status "in_progress" when you start', 'status "implemented" when it is done', "previewUrl"]) {
+	for (const part of ["design/login/01-split.html", "Split layout", "Calm; less room for the form", "real stack", "visual spec", "existing components", "verbatim", "design/system.md", "open01", "body > h1", "\"A\"", "Make the headline shorter", "gentle_design_comments", "Reuse the existing project tracking at odd/tasks/login-page.md in its current format", "This handoff itself commits nothing.", 'gentle_design tool: action "handoff", target "login/01-split.html"', 'status "in_progress" when you start', 'status "implemented" when it is done', "previewUrl"]) {
 		assert.ok(content.includes(part), `the message names ${part}`);
 	}
 	for (const absent of ["done01", "other1", "ODD rules as usual"]) assert.ok(!content.includes(absent), `the message omits ${absent}`);
 });
 
-test("implement without system.md, comments or a valid feature falls back to the ODD rules", async () => {
+test("implement without system.md, comments or a valid feature follows the project workflow",  async () => {
 	const cwd = scratchCwd();
 	writeLinkedDesign(cwd, "login", "../outside.md");
 	const { pi, sent, command } = fakePi();
@@ -494,7 +597,7 @@ test("implement without system.md, comments or a valid feature falls back to the
 	assert.equal(sent.length, 1);
 	const content = String(sent[0].content);
 	assert.ok(content.includes("design/login/02-card.html"));
-	assert.ok(content.includes("size it under the project's ODD rules as usual"));
+	assert.ok(content.includes("Follow the project's workflow and existing feature tracking; do not create competing tracking just for this handoff."));
 	assert.ok(content.includes("This handoff itself commits nothing."));
 	for (const absent of ["design/system.md", "track this implementation", "outside.md", "gentle_design_comments"]) assert.ok(!content.includes(absent), `the message omits ${absent}`);
 });
@@ -507,7 +610,7 @@ test("implement reports an invalid feature link instead of dropping it silently"
 	const { ctx, notices } = fakeContext(cwd);
 	await command().handler("implement login/02-card.html", ctx);
 	assert.equal(sent.length, 1);
-	assert.deepEqual(notices, [{ message: "design/login/design.json: feature must be a relative odd/tasks/<name>.md path; it was ignored", level: "warning" }]);
+	assert.deepEqual(notices, [{ message: "design/login/design.json: feature must be a relative .agents/designs/features/<name>/ or odd/tasks/<name>.md path; it was ignored", level: "warning" }]);
 });
 
 test("implement with a valid feature link reports nothing", async () => {
@@ -749,7 +852,7 @@ test("sync with extra words warns and sends nothing", async () => {
 	const { ctx, notices } = fakeContext(scratchCwd());
 	await command().handler("sync only the buttons", ctx);
 	assert.equal(sent.length, 0);
-	assert.deepEqual(notices, [{ message: "/gentle:design sync takes no arguments.", level: "warning" }]);
+	assert.deepEqual(notices, [{ message: "/td:design sync takes no arguments.", level: "warning" }]);
 });
 
 test("sync is queued as a follow-up while the agent is busy", async () => {
@@ -790,7 +893,7 @@ test("skills/design/SKILL.md is named gentle-design and documents the manifest f
 	}
 });
 
-// S11: the gentle_design tool reaches every /gentle:design action without the
+// S11: the gentle_design tool reaches every /td:design action without the
 // command, and a system-prompt hint makes the gentle-design flow the default.
 
 function designTool(fake: ReturnType<typeof fakePi>) {
@@ -928,13 +1031,13 @@ test("gentle_design list caps the design sources it names at 20, with the total"
 	assert.ok(toolText(result).includes("t19-tokens.json, … 3 more\n"), toolText(result));
 });
 
-test("the gentle_design tool description says to call list before designing", () => {
+test("the gentle_design tool description scopes list to the selected canvas route", () => {
 	const fake = fakePi();
 	gentleDesign(fake.pi);
-	assert.match(fake.tool("gentle_design")!.description, /Call list before designing/);
+	assert.match(fake.tool("gentle_design")!.description, /After the canvas route is selected, call list/);
 });
 
-test("gentle_design open starts the canvas once, returns its URL, and /gentle:design open reuses that server", async () => {
+test("gentle_design open starts the canvas once, returns its URL, and /td:design open reuses that server", async () => {
 	const cwd = scratchCwd();
 	writeDesign(cwd, "pricing-page", "Pricing page", 2000);
 	writeDesign(cwd, "login", "Login screen", 1000);
@@ -1048,19 +1151,19 @@ test("gentle_design implement fails on an unknown target and reports an invalid 
 	}
 	await assert.rejects(run({ action: "implement" }, ctx), /<slug>\/<artboard>/);
 	const result = await run({ action: "implement", target: "login/02-card.html" }, ctx);
-	const warning = "design/login/design.json: feature must be a relative odd/tasks/<name>.md path; it was ignored";
-	assert.ok(result.content[0].text.includes("size it under the project's ODD rules as usual"));
+	const warning = "design/login/design.json: feature must be a relative .agents/designs/features/<name>/ or odd/tasks/<name>.md path; it was ignored";
+	assert.ok(result.content[0].text.includes("Follow the project's workflow and existing feature tracking; do not create competing tracking just for this handoff."));
 	assert.equal(result.content[1].text, `Warning: ${warning}`);
 	assert.deepEqual(result.details, { target: "login/02-card.html", warnings: [warning] });
 	assert.equal(fake.sent.length, 0);
 });
 
 const DESIGN_HINT = [
-	"Gentle Design: any request for a UI design, mockup, screen, landing page or visual directions uses the gentle-design skill by default; read the skill first when it is not loaded.",
-	"Pair it with the gentle-ui-design skill for UX quality: read that skill and only the references relevant to the brief before choosing directions.",
-	'Before designing, call the gentle_design tool (action "list"); when the project has design sources but no design/system.md, run the skill\'s design system sync first.',
-	'After writing or changing a design, open or refresh it on the canvas with the gentle_design tool (action "open" with the slug), unless the user said not to.',
-	"Designs stay under design/<slug>/.",
+	"Tomidev Design: at entry to each new UI design, mockup, screen, landing page or visual-directions task, ask once whether the user prefers canvas (HTML artboards), direct application work, or the repository-defined workflow. Start nothing until the human selects a route; never assume a default.",
+	"Honor the chosen route throughout that task; do not ask again for continuations or explicit canvas utilities (list/open/stop/sync/implement/comments). A subsequent independent task asks anew; there is no global preference.",
+	"Direct: work in the application's real stack using project skills and conventions; do not invoke builtin canvas skills, gentle_design list, system sync, canvas artifacts or server.",
+	"Repository: inspect the project's instructions and relevant skills through existing skill discovery, follow its workflow and artifacts, and report clearly if no repository design workflow is defined; do not invent one or fall back to canvas.",
+	"Canvas only after selection: follow project design/UX skills and conventions first; gentle-design supplies missing canvas delivery guidance, gentle-ui-design only missing UX guidance. Reuse compatible artifacts and existing feature tracking; never create competing tracking. The integrated canvas requires self-contained HTML artboards and its design/<slug>/ manifest layout; explain incompatible project formats rather than claiming they work. Explicit project prohibitions and runtime safety remain binding.",
 ].join("\n");
 
 async function promptAfterStart(fake: ReturnType<typeof fakePi>, skills: Array<{ name: string }> = []) {
@@ -1087,7 +1190,7 @@ test("the design hint is absent without the skill and in child sessions", async 
 	gentleDesign(missing.pi, { env: {} });
 	assert.equal(await promptAfterStart(missing, [{ name: "gentle-ai" }]), "");
 	const child = fakePi(true);
-	gentleDesign(child.pi, { env: { GENTLE_PI_AGENTS_CHILD: "1" } });
+	gentleDesign(child.pi, { env: { TOMIDEV_AGENTS_CHILD: "1" } });
 	assert.equal(await promptAfterStart(child, [{ name: "gentle-design" }]), "");
 });
 
@@ -1098,14 +1201,16 @@ test("the skill triggers on natural-language design requests and opens the canva
 	assert.ok(description.length <= 250, `description stays short (${description.length})`);
 	const steps = source.slice(source.indexOf("## Execution Steps"), source.indexOf("\n## ", source.indexOf("## Execution Steps") + 1));
 	assert.match(steps, /`gentle_design`[^\n]*"open"[^\n]*slug[^\n]*unless the user/);
-	assert.match(source, /`\/gentle:design`[^\n]*optional shortcuts/);
+	assert.match(source, /`\/td:design`[^\n]*optional shortcuts/);
 });
 
-test("the artboard workflow loads gentle-ui-design before choosing directions and self-checks against it", () => {
+test("the artboard workflow uses project UX guidance first and builtin guidance only for gaps", () => {
 	const source = readFileSync(SKILL_PATH, "utf8");
 	const steps = source.slice(source.indexOf("## Execution Steps"), source.indexOf("\n## ", source.indexOf("## Execution Steps") + 1));
 	const load = steps.search(/`gentle-ui-design`/);
-	assert.ok(load !== -1, "the steps load gentle-ui-design");
+	assert.ok(load !== -1, "the steps offer gentle-ui-design as fallback");
+	assert.match(steps, /project[^\n]*skills first/);
+	assert.match(steps, /only[^\n]*gaps/);
 	assert.ok(load < steps.indexOf("Make the directions differ"), "it loads before the directions are chosen");
 	assert.match(steps, /audience, primary job, (and )?success condition/);
 	const check = steps.search(/UX self-check[^\n]*composition-and-feedback[^\n]*adaptive-interfaces/);
@@ -1116,7 +1221,8 @@ test("the artboard workflow loads gentle-ui-design before choosing directions an
 test("gentle-ui-design pairs with gentle-design instead of deferring to it", () => {
 	const source = readFileSync(fileURLToPath(new URL("../skills/gentle-ui-design/SKILL.md", import.meta.url)), "utf8");
 	const activation = source.slice(source.indexOf("## Activation Contract"), source.indexOf("\n## ", source.indexOf("## Activation Contract") + 1));
-	assert.match(activation, /Pair with `gentle-design`[^\n]*gentle-design owns delivery[^\n]*this skill owns UX quality/);
+	assert.match(activation, /Only after the canvas route is selected/);
+	assert.match(activation, /project[^\n]*skills take precedence/);
 	assert.doesNotMatch(activation, /Use `gentle-design` for its HTML artboard workflow/);
 	assert.match(activation, /`gentle-ai-tui-design` for terminal interfaces/);
 });

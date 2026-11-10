@@ -19,6 +19,10 @@ interface HarnessOptions {
 	mode?: "normal" | "yolo" | "super-yolo";
 	/** Counts the approval dialog, so a test can prove the mode fixture is live. */
 	onApprovalPrompt?: () => void;
+	/** Whether an interactive UI exists; headless sessions cannot approve a commit or push. */
+	hasUI?: boolean;
+	/** The human's answer to every confirmation dialog. */
+	answer?: boolean;
 }
 
 function toolCall(options: HarnessOptions = {}) {
@@ -33,11 +37,11 @@ function toolCall(options: HarnessOptions = {}) {
 	// undefined. A block from any check is then observable, not just this guard's.
 	const home = mkdtempSync(join(tmpdir(), "gentle-shell-2349-"));
 	if (options.mode !== undefined) {
-		writeFileSync(join(home, "permission-mode.json"), `${JSON.stringify({ schema: "gentle-pi.permission-mode/v1", mode: options.mode })}\n`);
+		writeFileSync(join(home, "permission-mode.json"), `${JSON.stringify({ schema: "tomidev.permission-mode/v1", mode: options.mode })}\n`);
 	}
-	createGentleAiExtension({ processEnv: { GENTLE_PI_AGENTS_CHILD: options.child === true ? "1" : "0", GENTLE_PI_CONFIG_HOME: home }, nativeReviewCli: null })(pi);
+	createGentleAiExtension({ processEnv: { TOMIDEV_AGENTS_CHILD: options.child === true ? "1" : "0", TOMIDEV_CONFIG_HOME: home }, nativeReviewCli: null })(pi);
 	const sessionManager = { getSessionId: () => "session-2349", getBranch: () => [], getEntries: () => [] };
-	const ctx = { cwd: process.cwd(), hasUI: false, sessionManager, ui: { confirm: async () => false, select: async () => { options.onApprovalPrompt?.(); return undefined; } } } as unknown as ExtensionContext;
+	const ctx = { cwd: process.cwd(), hasUI: options.hasUI ?? false, sessionManager, ui: { confirm: async () => options.answer ?? false, select: async () => { options.onApprovalPrompt?.(); return undefined; } } } as unknown as ExtensionContext;
 	return async (toolName: string, input: unknown) => {
 		for (const handler of handlers) {
 			const result = await handler({ toolName, input, toolCallId: "probe" }, ctx);
@@ -117,7 +121,8 @@ const shellAllow = [
 
 for (const command of shellAllow) {
 	test(`bash admits ordinary commands and prose mentioning a sensitive name: ${command} (gentle-shell#2349)`, async () => {
-		const call = toolCall();
+		// A commit needs the human's approval, so the prose case approves it: the sensitive-path guard itself must not fire.
+		const call = toolCall(/^git commit/.test(command) ? { hasUI: true, answer: true } : {});
 		assert.equal(await call("bash", { command }), undefined, command);
 	});
 }
@@ -135,18 +140,21 @@ for (const mode of ["yolo", "super-yolo"] as const) {
 }
 
 // The mode fixture above is only meaningful if it is live, so pin the modal it
-// changes: YOLO waives the push approval, and the same push without the fixture
-// still needs one.
+// changes: YOLO waives a guarded rebase's approval, and the same rebase without the
+// fixture still needs one. No mode waives the commit/push dialog.
 test("the permission-mode fixture really switches the mode (gentle-shell#2349)", async () => {
 	let prompts = 0;
 	const yolo = toolCall({ mode: "yolo", onApprovalPrompt: () => { prompts += 1; } });
-	assert.equal(await yolo("bash", { command: "git push origin main" }), undefined);
+	assert.equal(await yolo("bash", { command: "git rebase origin/main" }), undefined);
 	assert.equal(prompts, 0);
 	const normal = toolCall();
-	assert.deepEqual(await normal("bash", { command: "git push origin main" }), {
+	assert.deepEqual(await normal("bash", { command: "git rebase origin/main" }), {
 		block: true,
 		reason: "Gentle AI safety policy requires interactive confirmation before this command.",
 	});
+	const yoloPush = toolCall({ mode: "yolo", hasUI: true, answer: false });
+	const pushReason = (await yoloPush("bash", { command: "git push origin main" })) as { reason?: string } | undefined;
+	assert.match(pushReason?.reason ?? "", /not confirmed by the human/, "YOLO still asks the commit/push dialog");
 });
 
 test("child sessions inherit the shell sensitive-path deny through the same gate (gentle-shell#2349)", async () => {
@@ -190,7 +198,7 @@ const shellAllowSurface = [
 
 for (const command of shellAllowSurface) {
 	test(`bash admits a sensitive name that is not a path: ${command} (gentle-shell#2349)`, async () => {
-		const call = toolCall();
+		const call = toolCall(/^git commit/.test(command) ? { hasUI: true, answer: true } : {});
 		assert.equal(await call("bash", { command }), undefined, command);
 	});
 }

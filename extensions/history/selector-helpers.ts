@@ -444,7 +444,7 @@ export function filterPrompts(
  * can read it without importing gentle-shell. Shape per lib/shell-sidebar.ts:
  * `{ active: boolean; ownsHost?: () => boolean; railColumns?: number; ... }`.
  */
-const SIDEBAR_STATE_SYMBOL = Symbol.for("gentle-pi.experimental-sidebar.state");
+const SIDEBAR_STATE_SYMBOL = Symbol.for("tomidev.experimental-sidebar.state");
 
 /**
  * Visual breathing room between the picker and the sidebar rail, added on top

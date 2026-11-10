@@ -6,7 +6,9 @@ them are specified in gentle-shell#2742.
 
 ## Payloads
 
-A custom entry uses `customType: "gentle-pi.session-profile/v1"` and one payload:
+A custom entry uses `customType: "tomidev.session-profile/v1"` and one payload.
+Sessions written before the tomidev rename carry `customType: "gentle-pi.session-profile/v1"`;
+readers accept both spellings, and nothing writes the legacy one any more.
 
 ```json
 {"kind":"bind","origin":"user","name":"work","modelProfiles":{"worker":{"model":"provider/model"},"orchestrator":{"thinking":"high"}}}

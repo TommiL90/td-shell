@@ -30,7 +30,7 @@ const pi = {
 	events: { on() {}, emit() {} },
 	registerTool(tool: Declaration) { tools.set(tool.name, tool); },
 };
-gentleAgents(pi as never, { GENTLE_PI_CONFIG_HOME: fixture }, { home: fixture, agentHome: fixture });
+gentleAgents(pi as never, { TOMIDEV_CONFIG_HOME: fixture }, { home: fixture, agentHome: fixture });
 const names = ["orchestrator_session_id", "orchestrator_list", "subagent_run"];
 const selected = names.map(name => {
 	const tool = tools.get(name);
@@ -65,12 +65,9 @@ test("fixed primary host system assembly fits the byte budget", async t => {
 	const assembler = await import(pathToFileURL(join(dist, "core", "system-prompt.js")).href);
 	assert.equal(typeof assembler.buildSystemPrompt, "function", "Pi system assembler unavailable");
 	const activeTools = ["read", "bash", "edit", "write", ...names];
-	const harness = __testing.buildGentlePrompt("gentleman", fixture, activeTools, undefined, "tui");
+	const harness = __testing.buildGentlePrompt(fixture, activeTools, "tui");
 	assert.match(harness, /Background subagent policy: off/);
-	assert.match(harness, /Receipt-driven development: unknown \(native status unavailable\)/);
-	const review = __testing.readMirroredReviewContractFragment();
-	assert.ok(review, "verified mirrored review fragment must be present");
-	const { skills, diagnostics } = loadSkillsFromDir({ dir: join(root, "skills", "work-unit-commits"), source: "fixture" });
+	const { skills, diagnostics } = loadSkillsFromDir({ dir: join(root, "skills", "delivery"), source: "fixture" });
 	assert.equal(diagnostics.length, 0);
 	assert.equal(skills.length, 1);
 	const builtins = [createReadToolDefinition(fixture), createBashToolDefinition(fixture), createEditToolDefinition(fixture), createWriteToolDefinition(fixture)];
@@ -79,14 +76,11 @@ test("fixed primary host system assembly fits the byte budget", async t => {
 	const toolGuidelines = Object.fromEntries(registered.filter(tool => tool.promptGuidelines).map(tool => [tool.name, tool.promptGuidelines]));
 	const options = { appendSystemPrompt: "" };
 	appendSystemPromptOnce(options, `\n\n${harness}`);
-	appendSystemPromptOnce(options, `\n\n${review}`);
 	const system: string = assembler.buildSystemPrompt({
 		cwd: fixture, selectedTools: activeTools, toolSnippets, toolGuidelines,
 		...options, skills,
 	});
-	for (const [label, fragment] of [["harness", harness], ["review contract", review]]) {
-		assert.equal(system.split(fragment.replace(/^\n+/, "")).length - 1, 1, `complete ${label} must appear exactly once`);
-	}
+	assert.equal(system.split(harness.replace(/^\n+/, "")).length - 1, 1, `complete harness must appear exactly once`);
 	const replacements: Array<[string, string]> = [
 		[getReadmePath(), "/fixture/pi/README.md"], [getDocsPath(), "/fixture/pi/docs"],
 		[getExamplesPath(), "/fixture/pi/examples"], [assets, "/fixture/assets"],
@@ -103,20 +97,20 @@ test("fixed primary host system assembly fits the byte budget", async t => {
 });
 
 test("fixed harness is independent of ambient background policy", () => {
-	const previous = process.env.GENTLE_PI_BACKGROUND_SUBAGENTS;
+	const previous = process.env.TOMIDEV_BACKGROUND_SUBAGENTS;
 	const activeTools = ["read", "bash", "edit", "write", ...names];
 	const rendered: string[] = [];
 	try {
 		for (const policy of ["off", "on"]) {
-			process.env.GENTLE_PI_BACKGROUND_SUBAGENTS = policy;
-			const harness = __testing.buildGentlePrompt("gentleman", fixture, activeTools, undefined, "tui");
+			process.env.TOMIDEV_BACKGROUND_SUBAGENTS = policy;
+			const harness = __testing.buildGentlePrompt(fixture, activeTools, "tui");
 			assert.match(harness, /Background subagent policy: off/);
 			rendered.push(harness);
 		}
 		assert.equal(rendered[0], rendered[1]);
 	} finally {
-		if (previous === undefined) delete process.env.GENTLE_PI_BACKGROUND_SUBAGENTS;
-		else process.env.GENTLE_PI_BACKGROUND_SUBAGENTS = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_BACKGROUND_SUBAGENTS;
+		else process.env.TOMIDEV_BACKGROUND_SUBAGENTS = previous;
 	}
 });
 

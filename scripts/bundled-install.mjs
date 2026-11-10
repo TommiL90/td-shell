@@ -2,9 +2,10 @@
 // own pinned Node with its npm and pnpm (and Go only when asked), every pnpm and npm folder inside it,
 // one frozen install per version, an atomic `current`, a launcher and one PATH
 // entry. The user's node, npm, pnpm and go are never run, read or changed.
-// Shared by the web installer and `gentle-shell upgrade`; every effect outside
+// Shared by the web installer and `tomidev upgrade`; every effect outside
 // plain path arithmetic goes through an injectable adapter for tests.
 import { createHash, randomBytes } from "node:crypto";
+import { GIT_SOURCE, ENV_PREFIX, HOME_DIRNAME, LOG_PREFIX, BRAND_DISPLAY_NAME } from "../runtime/brand.mjs";
 import { accessSync, chmodSync, closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync,
 	rmSync, symlinkSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { posix, win32 } from "node:path";
@@ -16,26 +17,26 @@ import { ensureWindowsPrivateFolder, readWindowsPnpmArchive, verifyWindowsStorag
 
 // The acquisition pins already verified for the installer; never a second copy.
 const pins = Object.freeze({ node: artifactFor("node", "linux", "x64").version, pnpm: artifactFor("pnpm").version });
-const RUNTIME_MARKER = ".gentle-shell-runtime";
-const VERSION_MARKER = ".gentle-shell-version";
-const WINDOWS_MARKER = Object.freeze({ marker: ".gentle-shell-bundle", text: "gentle-shell bundled install" });
-const LAUNCHER_MARK = "gentle-shell bundled launcher (generated; do not edit)";
-const LAUNCHER_MISSING = "gentle-shell: no active Gentle Shell version; run the Gentle Shell installer again.";
-const PROFILE_MARK = "# gentle-shell bundled install";
+const RUNTIME_MARKER = ".tomidev-runtime";
+const VERSION_MARKER = ".tomidev-version";
+const WINDOWS_MARKER = Object.freeze({ marker: ".tomidev-bundle", text: "tomidev bundled install" });
+const LAUNCHER_MARK = "tomidev bundled launcher (generated; do not edit)";
+const LAUNCHER_MISSING = `${LOG_PREFIX} no active ${BRAND_DISPLAY_NAME} version; run the ${BRAND_DISPLAY_NAME} installer again.`;
+const PROFILE_MARK = "# tomidev bundled install";
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 const STABLE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const PI_PACKAGE = "@earendil-works/pi-coding-agent";
 const VERSION_ID = /^[0-9A-Za-z][0-9A-Za-z.-]*$/;
 const MAX_EXPANDED = 512 * 1024 * 1024;
 const INSTALL_TIMEOUT = 15 * 60 * 1000;
-// The gentle-stream commit the /gentle:music offer installs, as a GitHub
+// The gentle-stream commit the /td:music offer installs, as a GitHub
 // archive (no git needed); `samples` adds pyfluidsynth for the sample voices.
 export const MUSIC_PLAYER_ARCHIVE = "https://github.com/Gentleman-Programming/gentle-stream/archive/381290451544ad2ca3348a68a81b3056bdac73b7.tar.gz";
 const MUSIC_PYTHON = "3.13";
-const MUSIC_MARKER = ".gentle-shell-music";
+const MUSIC_MARKER = ".tomidev-music";
 // uv links its tool executables on POSIX (bin/gentle-stream -> tools/…): the
 // player counts when it resolves to a regular file inside <prefix>/music.
-// The /gentle:music extension asks the same question before running it.
+// The /td:music extension asks the same question before running it.
 export function installedMusicPlayer(layout) {
 	try {
 		const real = realpathSync(layout.gentleStream);
@@ -60,23 +61,23 @@ function envValue(env, name, platform) {
 	const key = platform === "win32" ? Object.keys(env).find((candidate) => candidate.toUpperCase() === name) : name;
 	return key === undefined ? undefined : env[key];
 }
-/** %LOCALAPPDATA%\gentle-shell, then %USERPROFILE%\.gentle-shell-bundle, as the bootstrap claims its tools. */
+/** %LOCALAPPDATA%\tomidev, then %USERPROFILE%\.tomidev-bundle, as the bootstrap claims its tools. */
 function windowsCandidates(env) {
 	const usable = (value) => typeof value === "string" && win32.isAbsolute(value) && !value.startsWith("\\\\");
 	const local = envValue(env, "LOCALAPPDATA", "win32");
 	const profile = envValue(env, "USERPROFILE", "win32");
-	return [usable(local) ? win32.join(local, "gentle-shell") : null, usable(profile) ? win32.join(profile, ".gentle-shell-bundle") : null].filter(Boolean);
+	return [usable(local) ? win32.join(local, "tomidev") : null, usable(profile) ? win32.join(profile, ".tomidev-bundle") : null].filter(Boolean);
 }
 
-/** Every bundled path, from plain path arithmetic only. POSIX: `~/.gentle-shell`.
+/** Every bundled path, from plain path arithmetic only. POSIX: `~/.tomidev`.
  * Windows: `root` as claimPrefix chose it, otherwise the %LOCALAPPDATA% candidate.
- * The agent home stays `<home>/.gentle-shell/agent` on every platform.
+ * The agent home stays `<home>/.tomidev/agent` on every platform.
  */
 export function prefixLayout({ platform, env = {}, home, root }) {
 	const path = pathFor(platform);
 	if (typeof home !== "string" || !path.isAbsolute(home)) throw new Error("The bundled install needs an absolute home directory");
 	const windows = platform === "win32";
-	const base = root ?? (windows ? windowsCandidates(env)[0] : path.join(home, ".gentle-shell"));
+	const base = root ?? (windows ? windowsCandidates(env)[0] : path.join(home, HOME_DIRNAME));
 	if (typeof base !== "string" || !path.isAbsolute(base)) throw new Error("The bundled install has no private folder");
 	const runtime = path.join(base, "runtime");
 	const nodeDir = path.join(runtime, `node-${pins.node}`);
@@ -85,12 +86,12 @@ export function prefixLayout({ platform, env = {}, home, root }) {
 	const npmHome = path.join(base, "npm");
 	const bin = path.join(base, "bin");
 	return Object.freeze({
-		platform, root: base, agent: path.join(home, ".gentle-shell", "agent"), runtime,
+		platform, root: base, agent: path.join(home, HOME_DIRNAME, "agent"), runtime,
 		nodeDir, node: windows ? path.join(nodeDir, "node.exe") : path.join(nodeDir, "bin", "node"),
 		// The npm bundled in the same Node archive, for Pi's own package installs.
 		npmCli: path.join(nodeDir, ...(windows ? [] : ["lib"]), "node_modules", "npm", "bin", "npm-cli.js"),
 		// The entry Pi's npmCommand runs that npm through (ensureNpmShim).
-		npmShim: path.join(nodeDir, "gentle-shell", "npm"),
+		npmShim: path.join(nodeDir, "tomidev", "npm"),
 		npmHome, npmPrefix: path.join(npmHome, "prefix"), npmCache: path.join(npmHome, "cache"), npmGlobalConfig: path.join(npmHome, "npmrc"),
 		pnpmDir, pnpm: path.join(pnpmDir, "package", "bin", "pnpm.mjs"),
 		// acquireGo publishes `<goRoot>/<version>/go`.
@@ -98,7 +99,7 @@ export function prefixLayout({ platform, env = {}, home, root }) {
 		// The pinned Engram (ensureEngram), given to Gentle AI and gentle-engram (S9).
 		engramDir: path.join(runtime, `engram-${engramPinVersion}`),
 		engram: path.join(runtime, `engram-${engramPinVersion}`, windows ? "engram.exe" : "engram"),
-		// Only when /gentle:music's offer is accepted (installMusicPlayer): the
+		// Only when /td:music's offer is accepted (installMusicPlayer): the
 		// pinned uv, and the Python and gentle-stream it installs under music/.
 		uvDir: path.join(runtime, `uv-${uvPinVersion}`),
 		uv: path.join(runtime, `uv-${uvPinVersion}`, windows ? "uv.exe" : "uv"),
@@ -110,7 +111,7 @@ export function prefixLayout({ platform, env = {}, home, root }) {
 		// The applied PATH entry (writePathReceipt), which self-uninstall reverts exactly.
 		pathReceipt: path.join(base, "path-entry.json"),
 		current: path.join(base, "current"), currentKind: windows ? "pointer" : "symlink",
-		bin, launcher: path.join(bin, windows ? "gentle-shell.cmd" : "gentle-shell"),
+		bin, launcher: path.join(bin, windows ? "tomidev.cmd" : "tomidev"),
 	});
 }
 
@@ -149,7 +150,7 @@ function prepareFolders(layout) {
 	if (!regular(layout.npmrc)) throw new Error(`Unsafe bundled prefix: ${layout.npmrc}`);
 }
 
-/** Claims the prefix and returns its layout. POSIX: `~/.gentle-shell` is created
+/** Claims the prefix and returns its layout. POSIX: `~/.tomidev` is created
  * 0700, or kept when it is a real directory of this user (the agent home lives
  * there); group or other write access, which umask 002 leaves, is removed
  * (go-w). A link, a non-folder or another owner's folder is refused. Windows: each candidate's nearest existing
@@ -185,7 +186,7 @@ export function claimPrefix({ platform, env = {}, home, root, adapters = {} }) {
 
 /** The folder claimPrefix will claim, chosen with read-only checks only, so a
  * plan shows the same folder the installation uses. POSIX: undefined (the
- * prefix is always `~/.gentle-shell`). Windows: the first candidate whose
+ * prefix is always `~/.tomidev`). Windows: the first candidate whose
  * nearest existing folder passes the storage walk; an untrusted owner or ACL
  * moves to the next candidate, any other failure throws.
  */
@@ -224,7 +225,7 @@ function nodeArchive(descriptor) {
 	return { file, stem };
 }
 // Our own POSIX npm and npx: our Node runs npm's entry next to it, whatever `node` is on PATH.
-const npmWrapper = (entry) => ["#!/bin/sh", "# gentle-shell bundled npm (generated; do not edit)", 'basedir=$(dirname "$0")',
+const npmWrapper = (entry) => ["#!/bin/sh", "# tomidev bundled npm (generated; do not edit)", 'basedir=$(dirname "$0")',
 	`exec "$basedir/node" "$basedir/../lib/node_modules/npm/bin/${entry}" "$@"`, ""].join("\n");
 /** Every file runtime/node-<v>/ holds, from one verified Node archive, as
  * [{ name (relative, `/`-separated), data, executable }] with `npm` set to the
@@ -488,7 +489,7 @@ export function musicEnvironment(layout, { env = {} } = {}) {
 	};
 }
 
-/** S5: the /gentle:music offer, after the user accepted it. Publishes the
+/** S5: the /td:music offer, after the user accepted it. Publishes the
  * pinned uv (ensureUv), then `uv tool install`s the pinned gentle-stream
  * archive with its `samples` extra into <prefix>/music (musicEnvironment);
  * when that fails (pyfluidsynth, which needs the system FluidSynth library),
@@ -504,7 +505,7 @@ export async function installMusicPlayer({ layout, platform = layout.platform, a
 	if (installedMusicPlayer(layout) && (done === `${musicSpec(true)}\n` || done === `${musicSpec(false)}\n`)) {
 		return { gentleStream: layout.gentleStream, samples: done === `${musicSpec(true)}\n`, installed: false };
 	}
-	out(`Downloading uv ${uvPinVersion} into Gentle Shell…`);
+	out(`Downloading uv ${uvPinVersion} into ${BRAND_DISPLAY_NAME}…`);
 	await ensureUv({ layout, platform, arch, env, adapters });
 	ensureDirectory(layout.music, layout.platform);
 	const childEnv = musicEnvironment(layout, { env });
@@ -625,18 +626,18 @@ function npmEnvironment(layout) {
 	return { npm_config_userconfig: layout.npmrc, npm_config_globalconfig: layout.npmGlobalConfig, npm_config_prefix: layout.npmPrefix,
 		npm_config_cache: layout.npmCache, npm_config_update_notifier: "false" };
 }
-/** The environment `gentle-shell setup` runs in from the bundled install: our
+/** The environment `tomidev setup` runs in from the bundled install: our
  * Node and its npm first on PATH, then the version's node_modules/.bin (its
  * `pi`), then the user's PATH; npm's settings inside the prefix
  * (npmEnvironment). Inherited npm and pnpm settings, NODE_OPTIONS, NODE_PATH
- * and the wizard's GENTLE_BOOTSTRAP_ and GENTLE_INSTALL_ handoff are dropped;
+ * and the wizard's TOMIDEV_BOOTSTRAP_ and TOMIDEV_INSTALL_ handoff are dropped;
  * the user's XDG folders are kept, since Pi and Gentle AI read their own
  * configuration through them.
  */
 export function setupEnvironment(layout, { platform = layout.platform, env = {}, id }) {
 	if (typeof id !== "string" || !VERSION_ID.test(id) || id.includes("..")) throw new Error("Unsafe version id");
 	const path = pathFor(platform);
-	const dropped = /^(?:npm_config_.*|pnpm_.*|corepack_.*|node_options|node_path|path|gentle_(?:bootstrap|install)_.*)$/i;
+	const dropped = /^(?:npm_config_.*|pnpm_.*|corepack_.*|node_options|node_path|path|tomidev_(?:bootstrap|install)_.*)$/i;
 	const kept = Object.fromEntries(Object.entries(env).filter(([key]) => !dropped.test(key)));
 	const rest = String(envValue(env, "PATH", platform) ?? "").split(path.delimiter).filter((entry) => entry.length > 0);
 	const bin = path.join(layout.versions, id, "node_modules", ".bin");
@@ -702,12 +703,12 @@ function versionsOf(manifest) {
  */
 export function distributionFiles(manifest) {
 	const { shell, pi } = versionsOf(manifest);
-	const project = { name: "gentle-shell-distribution", version: shell, private: true, dependencies: { "gentle-pi": shell, "@earendil-works/pi-coding-agent": pi } };
-	return { "package.json": `${JSON.stringify(project, null, "\t")}\n`, "pnpm-workspace.yaml": "allowBuilds:\n  gentle-pi: true\nstrictDepBuilds: false\n" };
+	const project = { name: "tomidev-distribution", version: shell, private: true, dependencies: { "tomidev": `${GIT_SOURCE}#v${shell}`, "@earendil-works/pi-coding-agent": pi } };
+	return { "package.json": `${JSON.stringify(project, null, "\t")}\n`, "pnpm-workspace.yaml": "allowBuilds:\n  tomidev: true\nstrictDepBuilds: false\n" };
 }
 
 /** The two release assets (T1b), under stable names. */
-export const DISTRIBUTION_ASSETS = Object.freeze({ distribution: "gentle-shell-distribution.json", lockfile: "gentle-shell-distribution-lock.yaml" });
+export const DISTRIBUTION_ASSETS = Object.freeze({ distribution: "tomidev-distribution.json", lockfile: "tomidev-distribution-lock.yaml" });
 const DISTRIBUTION_SCHEMA = 1;
 const sha256 = (text) => createHash("sha256").update(text, "utf8").digest("hex");
 /** The distribution asset text: the exact versions, the pinned Node and pnpm
@@ -768,14 +769,6 @@ function processAlive(pid) {
 	try { process.kill(pid, 0); return true; }
 	catch (error) { return error.code === "EPERM"; }
 }
-/** The pinned Go acquireGo published under runtime/go: a regular file there. */
-function pinnedGo(layout, go) {
-	const path = pathFor(layout.platform);
-	if (typeof go !== "string" || !path.isAbsolute(go)) return false;
-	const relative = path.relative(layout.goRoot, go);
-	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative) && regular(go);
-}
-
 /** Installs `<shell>-<pi>` into versions/<shell>-<pi>/ in place: that folder
  * is claimed and marked `installing <id> <pid>` first, the distribution files
  * and the release lockfile are written, our pnpm runs `install --frozen-lockfile`
@@ -784,9 +777,8 @@ function pinnedGo(layout, go) {
  * ran: on Windows pnpm links packages with absolute junctions when symlinks are
  * not allowed. An installed version is reused; a folder left by an interrupted
  * install of this id (its process gone) is removed and installed again; any
- * other folder is never replaced. On Windows the pinned Go is required, so
- * gentle-pi's postinstall never builds with the user's go.exe. `unverified`
- * (`gentle-shell update --latest` only) installs without a release lockfile:
+ * other folder is never replaced. No Go toolchain is required. `unverified`
+ * (`tomidev update --latest` only) installs without a release lockfile:
  * none is written beforehand and pnpm resolves the exact versions itself
  * (`--no-frozen-lockfile`, so a CI environment cannot turn it frozen; the
  * pnpm-lock.yaml pnpm leaves behind is never read again); the installed
@@ -801,7 +793,6 @@ export async function installVersion({ layout, manifest, lockfile, unverified = 
 	const path = pathFor(process.platform);
 	const marker = path.join(destination, VERSION_MARKER);
 	if (installedVersion(layout, id)) return { id, path: destination, installed: false };
-	if (platform === "win32" && !pinnedGo(layout, go)) throw new Error("A Windows version install needs the pinned Go from ensureRuntime({ go: true })");
 	if (!unverified && (typeof lockfile !== "string" || lockfile.length === 0)) throw new Error("Release lockfile missing");
 	const existing = stat(destination);
 	if (existing) {
@@ -823,9 +814,9 @@ export async function installVersion({ layout, manifest, lockfile, unverified = 
 			throw Object.assign(new Error(`pnpm install failed (exit ${result.status})`),
 				{ stderr: [String(result.stdout ?? "").slice(-6000), String(result.stderr ?? "").slice(-4000)].filter(Boolean).join("\n") });
 		}
-		const shellDirectory = installedPackage(destination, "gentle-pi", shell, "gentle-pi");
+		const shellDirectory = installedPackage(destination, "tomidev", shell, "tomidev");
 		installedPackage(destination, PI_PACKAGE, pi, "Pi");
-		if (!regular(path.join(shellDirectory, "bin", "gentle-shell.mjs"))) throw new Error("Installed gentle-pi has no launcher entry");
+		if (!regular(path.join(shellDirectory, "bin", "tomidev.mjs"))) throw new Error("Installed tomidev has no launcher entry");
 		replaceAtomically(marker, (temp) => writeFileSync(temp, `${id}\n`, { flag: "wx", mode: 0o600 }));
 		return { id, path: destination, installed: true };
 	} catch (error) {
@@ -908,10 +899,10 @@ const RELEASE_EXPORTS = Object.freeze(["prefixLayout", "ensureRuntime", "ensureL
 /** The variable that makes a version's launcher run in bundled mode for
  * `--version` only, as if `current` named that version (lib/gentle-shell-bundled.ts).
  */
-const VERIFY_ENV = "GENTLE_SHELL_VERIFY_VERSION";
+const VERIFY_ENV = `${ENV_PREFIX}VERIFY_VERSION`;
 
-const NPM_SHIM_MARK = "gentle-shell bundled npm entry (generated; do not edit)";
-/** Writes runtime/node-<v>/gentle-shell/npm, a CommonJS file that runs the npm
+const NPM_SHIM_MARK = "tomidev bundled npm entry (generated; do not edit)";
+/** Writes runtime/node-<v>/tomidev/npm, a CommonJS file that runs the npm
  * bundled with that Node, and a package.json beside it that keeps it CommonJS
  * under any package.json with "type": "module" above the prefix. Pi names the
  * package manager from the basenames in npmCommand (getPackageManagerName in
@@ -973,10 +964,10 @@ async function releaseModule(file, versionPath) {
 async function loadRelease({ layout, id, home, platform, env, adapters, active }) {
 	const path = pathFor(process.platform);
 	const versionPath = versionDirectory(layout, id);
-	const file = path.join(versionPath, "node_modules", "gentle-pi", "scripts", "bundled-install.mjs");
+	const file = path.join(versionPath, "node_modules", "tomidev", "scripts", "bundled-install.mjs");
 	const module = await (adapters.load ?? releaseModule)(file, versionPath);
 	if (!module || RELEASE_EXPORTS.some((name) => typeof module[name] !== "function")) {
-		throw new Error(`Gentle Shell ${id} has no usable scripts/bundled-install.mjs (${RELEASE_EXPORTS.join(", ")}); current stays at ${active}`);
+		throw new Error(`${BRAND_DISPLAY_NAME} ${id} has no usable scripts/bundled-install.mjs (${RELEASE_EXPORTS.join(", ")}); current stays at ${active}`);
 	}
 	return { module, next: module.prefixLayout({ platform, env, home, root: layout.root }) };
 }
@@ -990,11 +981,11 @@ function activateWithLauncher(layout, id, active, { module, next }) {
 	} catch (error) {
 		if (active) activateVersion(layout, active);
 		else unlinkSync(layout.current);
-		throw new Error(`the launcher for Gentle Shell ${id} could not be written (${error.message}); current stays at ${active}`);
+		throw new Error(`the launcher for ${BRAND_DISPLAY_NAME} ${id} could not be written (${error.message}); current stays at ${active}`);
 	}
 }
 
-/** `gentle-shell upgrade` in a bundled install (S5, S6, S8): the latest
+/** `tomidev upgrade` in a bundled install (S5, S6, S8): the latest
  * release's distribution assets (adapters.latest, adapters.distribution) are
  * installed beside the active version with our runtime, then the new version's
  * own module (loaded only from that version folder) installs its pinned runtime
@@ -1015,7 +1006,7 @@ export async function upgradeBundled({ layout, home, platform = layout.platform,
 	const { shell, pi, id } = versionsOf(manifest);
 	const active = activeVersion(layout);
 	if (active === id) {
-		out(`Gentle Shell ${shell} with Pi ${pi} is already current.`);
+		out(`${BRAND_DISPLAY_NAME} ${shell} with Pi ${pi} is already current.`);
 		return { id, changed: false };
 	}
 	let activePi = null;
@@ -1023,7 +1014,10 @@ export async function upgradeBundled({ layout, home, platform = layout.platform,
 		try {
 			if (!installedVersion(layout, active)) throw new Error("not installed");
 			const dependencies = JSON.parse(read(pathFor(process.platform).join(versionDirectory(layout, active), "package.json"))).dependencies;
-			const current = versionsOf({ shell: dependencies?.["gentle-pi"], pi: dependencies?.[PI_PACKAGE] });
+			const source = dependencies?.["tomidev"];
+			// Older bundled installs recorded a registry version; new ones pin the source tag.
+			const shellVersion = typeof source === "string" && source.startsWith(`${GIT_SOURCE}#v`) ? source.slice(`${GIT_SOURCE}#v`.length) : source;
+			const current = versionsOf({ shell: shellVersion, pi: dependencies?.[PI_PACKAGE] });
 			if (current.id !== active) throw new Error("version mismatch");
 			activePi = current.pi;
 		} catch {
@@ -1032,15 +1026,15 @@ export async function upgradeBundled({ layout, home, platform = layout.platform,
 	}
 	if (activePi && newerVersion(activePi, pi)) {
 		if (piOfVersion(active, shell)) {
-			out(`Gentle Shell ${shell} is current; Pi ${activePi} is newer than this release's verified Pi ${pi}.`);
+			out(`${BRAND_DISPLAY_NAME} ${shell} is current; Pi ${activePi} is newer than this release's verified Pi ${pi}.`);
 			return { id: active, changed: false };
 		}
-		out(`warning: keeping Pi ${activePi}, newer than this release's verified Pi ${pi}; installing without the release's verified lockfile. Gentle Shell features that rely on audited Pi internals may turn off.`);
+		out(`warning: keeping Pi ${activePi}, newer than this release's verified Pi ${pi}; installing without the release's verified lockfile. ${BRAND_DISPLAY_NAME} features that rely on audited Pi internals may turn off.`);
 		return installAndActivate({ layout, home, platform, arch, env, adapters, out, manifest: { ...manifest, pi: activePi }, unverified: true, active,
-			success: `Upgraded to Gentle Shell ${shell} with Pi ${activePi} (from ${active}). Run 'gentle-shell upgrade --rollback' to switch back.` });
+			success: `Upgraded to ${BRAND_DISPLAY_NAME} ${shell} with Pi ${activePi} (from ${active}). Run 'tomidev upgrade --rollback' to switch back.` });
 	}
 	return installAndActivate({ layout, home, platform, arch, env, adapters, out, manifest, lockfile, active,
-		success: `Upgraded to Gentle Shell ${shell} with Pi ${pi} (from ${active ?? "no active version"}). Run 'gentle-shell upgrade --rollback' to switch back.` });
+		success: `Upgraded to ${BRAND_DISPLAY_NAME} ${shell} with Pi ${pi} (from ${active ?? "no active version"}). Run 'tomidev upgrade --rollback' to switch back.` });
 }
 
 /** The Pi of version id `<shell>-<pi>` for exactly this `shell`, or null. */
@@ -1079,16 +1073,15 @@ function newerVersion(a, b) {
  */
 async function installAndActivate({ layout, home, platform, arch, env, adapters, out, manifest, lockfile, unverified = false, active, success }) {
 	const { shell, pi, id } = versionsOf(manifest);
-	const go = platform === "win32";
-	const runtime = await (adapters.ensureRuntime ?? ensureRuntime)({ layout, platform, arch, go, env });
+	const runtime = await (adapters.ensureRuntime ?? ensureRuntime)({ layout, platform, arch, env });
 	const version = await installVersion({ layout, manifest, lockfile, unverified, platform, env, go: runtime.go, adapters: adapters.install ?? {} });
 	try {
 		const loaded = await loadRelease({ layout, id, home, platform, env, adapters, active });
 		// The release's own pins, its Engram included (an older module ignores `engram`).
-		await loaded.module.ensureRuntime({ layout: loaded.next, platform, arch, go, engram: true, env });
+		await loaded.module.ensureRuntime({ layout: loaded.next, platform, arch, engram: true, env });
 		const check = await checkLauncher(loaded.next, { id, shell, pi, platform, env, run: adapters.run });
 		if (!check.ok) {
-			throw Object.assign(new Error(`Gentle Shell ${id} reported ${JSON.stringify(check.reported)}, not gentle-shell ${shell} with pi ${pi}; current stays at ${active}`),
+			throw Object.assign(new Error(`${BRAND_DISPLAY_NAME} ${id} reported ${JSON.stringify(check.reported)}, not tomidev ${shell} with pi ${pi}; current stays at ${active}`),
 				{ stderr: check.stderr });
 		}
 		activateWithLauncher(layout, id, active, loaded);
@@ -1121,7 +1114,7 @@ export async function publishedPi(layout, { platform = layout.platform, env = {}
 	return version;
 }
 
-/** `gentle-shell update --latest` in a bundled install (S3): the newest
+/** `tomidev update --latest` in a bundled install (S3): the newest
  * published stable Pi (adapters.latestPi) installed with this Gentle Shell
  * `shell` as version `<shell>-<pi>`, without the release's verified lockfile
  * (installVersion `unverified`), after a warning; then verified and activated
@@ -1139,15 +1132,15 @@ export async function upgradePiLatest({ layout, home, shell, platform = layout.p
 		return { id, changed: false };
 	}
 	const activePi = piOfVersion(active, shell);
-	if (!activePi) throw new Error(`the active version ${active ?? "(none)"} is not Gentle Shell ${shell}; current stays as it is`);
+	if (!activePi) throw new Error(`the active version ${active ?? "(none)"} is not ${BRAND_DISPLAY_NAME} ${shell}; current stays as it is`);
 	// A `latest` dist-tag moved back (or a release pinning a Pi newer than it) never downgrades Pi.
 	if (!newerVersion(pi, activePi)) {
 		out(`Pi ${activePi} is newer than the latest published Pi (${pi}); nothing changed.`);
 		return { id: active, changed: false };
 	}
-	out(`warning: Pi ${pi} is newer than the Pi verified for this Gentle Shell release (${activePi}); it installs without the release's verified lockfile, and Gentle Shell features that rely on audited Pi internals (such as the Vim editor) may turn off until a Gentle Shell release verifies it.`);
+	out(`warning: Pi ${pi} is newer than the Pi verified for this ${BRAND_DISPLAY_NAME} release (${activePi}); it installs without the release's verified lockfile, and ${BRAND_DISPLAY_NAME} features that rely on audited Pi internals (such as the Vim editor) may turn off until a ${BRAND_DISPLAY_NAME} release verifies it.`);
 	return installAndActivate({ layout, home, platform, arch, env, adapters, out, manifest, unverified: true, active,
-		success: `Installed Pi ${pi} with Gentle Shell ${shell} (from ${active}). Run 'gentle-shell upgrade --rollback' to switch back.` });
+		success: `Installed Pi ${pi} with ${BRAND_DISPLAY_NAME} ${shell} (from ${active}). Run 'tomidev upgrade --rollback' to switch back.` });
 }
 
 /** Whether version `id` reports exactly `gentle-shell <shell>` and `pi <pi>` to
@@ -1161,17 +1154,17 @@ export async function checkLauncher(layout, { id, shell, pi, platform = layout.p
 	// The environment our pnpm ran in, without any Pi or Gentle override that
 	// could point the launcher at another Pi or agent home, plus the one input
 	// that runs this version in bundled mode for its --version (exact Pi).
-	const launchEnv = { ...Object.fromEntries(Object.entries(pnpmEnvironment(layout, { platform, env })).filter(([key]) => !/^(?:gentle_|pi_)/i.test(key))),
+	const launchEnv = { ...Object.fromEntries(Object.entries(pnpmEnvironment(layout, { platform, env })).filter(([key]) => !/^(?:tomidev_|gentle_|pi_)/i.test(key))),
 		[VERIFY_ENV]: id };
-	const entry = pathFor(platform).join(layout.versions, id, "node_modules", "gentle-pi", "bin", "gentle-shell.mjs");
+	const entry = pathFor(platform).join(layout.versions, id, "node_modules", "tomidev", "bin", "tomidev.mjs");
 	const [command, args] = launcher && platform !== "win32" ? [layout.launcher, ["--version"]] : [layout.node, [entry, "--version"]];
 	const result = await (run ?? runCommand)(command, args, { cwd: layout.root, env: launchEnv, timeout: 120000 });
 	const reported = String(result.stdout ?? "").trim();
 	const [shellLine, piLine] = reported.split(/\r?\n/);
-	return { ok: result.status === 0 && shellLine === `gentle-shell ${shell}` && piLine === `pi ${pi}`, reported, stderr: String(result.stderr ?? "").slice(-4000) };
+	return { ok: result.status === 0 && shellLine === `tomidev ${shell}` && piLine === `pi ${pi}`, reported, stderr: String(result.stderr ?? "").slice(-4000) };
 }
 
-/** `gentle-shell upgrade --rollback`: `current` switches back to the most
+/** `tomidev upgrade --rollback`: `current` switches back to the most
  * recently active other version still installed, with that version's own
  * launcher and runtime pins (its own scripts/bundled-install.mjs, loaded like
  * upgradeBundled loads it). Without a usable module nothing changes; when its
@@ -1180,15 +1173,15 @@ export async function checkLauncher(layout, { id, shell, pi, platform = layout.p
 export async function rollbackBundled({ layout, home, platform = layout.platform, arch = process.arch, env = {}, adapters = {} }) {
 	const active = activeVersion(layout);
 	const previous = readHistory(layout).find((id) => id !== active && installedVersion(layout, id));
-	if (!previous) throw new Error("No previous Gentle Shell version is kept to roll back to");
+	if (!previous) throw new Error(`No previous ${BRAND_DISPLAY_NAME} version is kept to roll back to`);
 	const loaded = await loadRelease({ layout, id: previous, home, platform, env, adapters, active });
-	await loaded.module.ensureRuntime({ layout: loaded.next, platform, arch, go: platform === "win32", engram: true, env });
+	await loaded.module.ensureRuntime({ layout: loaded.next, platform, arch, engram: true, env });
 	activateWithLauncher(layout, previous, active, loaded);
 	return { from: active, to: previous };
 }
 
 /** The launcher text: our Node running the current gentle-pi's
- * bin/gentle-shell.mjs, passing every argument and the exit code. Without an
+ * bin/tomidev.mjs, passing every argument and the exit code. Without an
  * active version it says so and exits 1. The Windows one reads the pointer file
  * with delayed expansion off, so `!`, `%`, `^` or `&` in the prefix path stay
  * literal inside its quotes.
@@ -1196,18 +1189,18 @@ export async function rollbackBundled({ layout, home, platform = layout.platform
 export function launcherText(layout) {
 	if (layout.platform === "win32") {
 		const node = win32.relative(layout.root, layout.node);
-		const entry = "%~dp0..\\versions\\%GENTLE_SHELL_CURRENT%\\node_modules\\gentle-pi\\bin\\gentle-shell.mjs";
-		return ["@echo off", `rem ${LAUNCHER_MARK}`, "setlocal DisableDelayedExpansion", 'set "GENTLE_SHELL_CURRENT="',
-			'if exist "%~dp0..\\current" set /p GENTLE_SHELL_CURRENT=<"%~dp0..\\current"', "if not defined GENTLE_SHELL_CURRENT goto missing",
+		const entry = "%~dp0..\\versions\\%TOMIDEV_CURRENT%\\node_modules\\tomidev\\bin\\tomidev.mjs";
+		return ["@echo off", `rem ${LAUNCHER_MARK}`, "setlocal DisableDelayedExpansion", 'set "TOMIDEV_CURRENT="',
+			'if exist "%~dp0..\\current" set /p TOMIDEV_CURRENT=<"%~dp0..\\current"', "if not defined TOMIDEV_CURRENT goto missing",
 			`if not exist "${entry}" goto missing`, `"%~dp0..\\${node}" "${entry}" %*`, "exit /b %errorlevel%", ":missing",
 			`>&2 echo ${LAUNCHER_MISSING}`, "exit /b 1", ""].join("\r\n");
 	}
 	const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
-	const entry = posix.join(layout.current, "node_modules/gentle-pi/bin/gentle-shell.mjs");
+	const entry = posix.join(layout.current, "node_modules/tomidev/bin/tomidev.mjs");
 	return ["#!/bin/sh", `# ${LAUNCHER_MARK}`, `if [ ! -f ${quote(entry)} ]; then`, `\techo '${LAUNCHER_MISSING}' >&2`, "\texit 1", "fi",
 		`exec ${quote(layout.node)} ${quote(entry)} "$@"`, ""].join("\n");
 }
-/** Writes bin/gentle-shell (bin/gentle-shell.cmd on Windows). A launcher this
+/** Writes bin/tomidev (bin/tomidev.cmd on Windows). A launcher this
  * module wrote is refreshed; any other file there is never replaced.
  */
 export function ensureLauncher(layout) {
@@ -1250,7 +1243,7 @@ function profileFiles(platform, env, home) {
 	return {
 		zsh: [posix.join(posix.isAbsolute(env.ZDOTDIR ?? "") ? env.ZDOTDIR : home, ".zshrc")],
 		bash: platform === "darwin" ? [".bash_profile", ".bash_login", ".profile"].map((name) => posix.join(home, name)) : [posix.join(home, ".bashrc")],
-		fish: [posix.join(config, "fish", "conf.d", "gentle-shell.fish")],
+		fish: [posix.join(config, "fish", "conf.d", "tomidev.fish")],
 		other: [posix.join(home, ".profile")],
 	};
 }
@@ -1319,7 +1312,7 @@ export function pathEntryPlan(layout, { platform = layout.platform, env = {}, ho
 	if (entries.includes(layout.bin)) return { kind: "none" };
 	const localBin = posix.join(home, ".local", "bin");
 	if (entries.includes(localBin) && stat(localBin)?.isDirectory()) {
-		const link = posix.join(localBin, "gentle-shell");
+		const link = posix.join(localBin, "tomidev");
 		const existing = stat(link);
 		if (!existing) return { kind: "symlink", path: link, target: layout.launcher };
 		if (existing.isSymbolicLink() && readlinkSync(link) === layout.launcher) return { kind: "none" };
@@ -1419,7 +1412,7 @@ export function removePathEntry(plan, { registry } = {}) {
 }
 
 // The PATH receipt (S7): the one PATH change applyPathEntry made, kept in the
-// prefix so `gentle-shell self-uninstall` reverts exactly that change.
+// prefix so `tomidev self-uninstall` reverts exactly that change.
 const RECEIPT_SCHEMA = 1;
 const RECEIPT_FIELDS = Object.freeze({ symlink: ["path", "target"], profile: ["path", "line", "create", "separator"], registry: ["key", "name", "entry"] });
 /** Writes an applied receipt to layout.pathReceipt (mode 0600, replaced with
@@ -1445,7 +1438,7 @@ export function writePathReceipt(layout, receipt) {
 function ownPathEntry(layout, receipt, { env, home }) {
 	if (layout.platform === "win32") return receipt.kind === "registry" && receipt.key === "HKCU\\Environment" && receipt.name === "Path" && receipt.entry === layout.bin;
 	if (typeof home !== "string" || !posix.isAbsolute(home)) return false;
-	if (receipt.kind === "symlink") return receipt.path === posix.join(home, ".local", "bin", "gentle-shell") && receipt.target === layout.launcher;
+	if (receipt.kind === "symlink") return receipt.path === posix.join(home, ".local", "bin", "tomidev") && receipt.target === layout.launcher;
 	if (receipt.kind !== "profile" || typeof receipt.create !== "boolean" || typeof receipt.separator !== "boolean") return false;
 	// Only a file pathEntryPlan can choose here, holding the line it writes there.
 	const lines = profileLines(layout.bin);
@@ -1480,25 +1473,25 @@ export function describePathReceipt(receipt) {
 	return `${receipt.entry} in your user Path (${receipt.key})`;
 }
 
-// Windows: once process GENTLE_SHELL_REMOVE_AFTER_PID exits, deletes each file
-// in GENTLE_SHELL_REMOVE_FILES (retrying while it is still in use), then
-// GENTLE_SHELL_REMOVE_LAST (the prefix marker) only when nothing is left at any
+// Windows: once process TOMIDEV_REMOVE_AFTER_PID exits, deletes each file
+// in TOMIDEV_REMOVE_FILES (retrying while it is still in use), then
+// TOMIDEV_REMOVE_LAST (the prefix marker) only when nothing is left at any
 // of those paths, so a failed removal can be retried with self-uninstall, then each
-// folder in GENTLE_SHELL_REMOVE_DIRECTORIES only when it is empty (never
+// folder in TOMIDEV_REMOVE_DIRECTORIES only when it is empty (never
 // recursively, so no link is followed). Every path is data, never script text.
 const deferredRemovalScript = `$ErrorActionPreference = 'SilentlyContinue'
-$waitFor = [int]$env:GENTLE_SHELL_REMOVE_AFTER_PID
+$waitFor = [int]$env:TOMIDEV_REMOVE_AFTER_PID
 try { Wait-Process -Id $waitFor -Timeout 600 -ErrorAction Stop } catch {}
 Start-Sleep -Seconds 2
-$files = @($env:GENTLE_SHELL_REMOVE_FILES -split "\`n" | Where-Object { $_ -ne '' })
+$files = @($env:TOMIDEV_REMOVE_FILES -split "\`n" | Where-Object { $_ -ne '' })
 foreach ($file in $files) {
   for ($try = 0; $try -lt 60; $try++) {
     try { if ([IO.File]::Exists($file)) { [IO.File]::Delete($file) }; break } catch { Start-Sleep -Milliseconds 500 }
   }
 }
-$last = $env:GENTLE_SHELL_REMOVE_LAST
+$last = $env:TOMIDEV_REMOVE_LAST
 if ($last -and @($files | Where-Object { Test-Path -LiteralPath $_ }).Count -eq 0) { try { [IO.File]::Delete($last) } catch {} }
-foreach ($folder in @($env:GENTLE_SHELL_REMOVE_DIRECTORIES -split "\`n" | Where-Object { $_ -ne '' })) {
+foreach ($folder in @($env:TOMIDEV_REMOVE_DIRECTORIES -split "\`n" | Where-Object { $_ -ne '' })) {
   try { [IO.Directory]::Delete($folder, $false) } catch {}
 }
 exit 0`;
@@ -1527,8 +1520,8 @@ export function scheduleWindowsRemoval({ pid, files, last, directories, env = {}
 	const child = start(win32.join(systemRoot, "System32", "cmd.exe"), ["/d", "/c", "start", "\"\"", "/min", powershell,
 		"-NoLogo", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", encoded], {
 		cwd: systemRoot, detached: true, stdio: "ignore", windowsHide: true,
-		env: { ...env, GENTLE_SHELL_REMOVE_AFTER_PID: String(pid), GENTLE_SHELL_REMOVE_FILES: files.join("\n"), GENTLE_SHELL_REMOVE_DIRECTORIES: directories.join("\n"),
-			GENTLE_SHELL_REMOVE_LAST: last ?? "" },
+		env: { ...env, TOMIDEV_REMOVE_AFTER_PID: String(pid), TOMIDEV_REMOVE_FILES: files.join("\n"), TOMIDEV_REMOVE_DIRECTORIES: directories.join("\n"),
+			TOMIDEV_REMOVE_LAST: last ?? "" },
 	});
 	child.unref();
 }

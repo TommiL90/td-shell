@@ -28,17 +28,17 @@ interface Harness {
 
 function makeHarness(): Harness {
 	const home = mkdtempSync(join(tmpdir(), "permission-allowlist-"));
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
 	const harness: Harness = {
 		home,
 		selectCalls: [],
 		confirmCalls: [],
 		pendingSelection: undefined as string | undefined,
 		selectWith(value: string | undefined) { harness.pendingSelection = value; },
-		setConfigHome() { process.env.GENTLE_PI_CONFIG_HOME = home; },
+		setConfigHome() { process.env.TOMIDEV_CONFIG_HOME = home; },
 		restoreConfigHome() {
-			if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-			else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
+			if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+			else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
 		},
 		ctx(sessionManager: object = { id: "manager" }) {
 			return {

@@ -1,10 +1,11 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { execFileSync } from "node:child_process";
 import { lstatSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-export const SESSION_WORKTREE_ENTRY = "gentle-pi.session-worktree/v1";
-export const SESSION_WORKTREE_CHANGED = "gentle-pi:session-worktree-changed";
+export const SESSION_WORKTREE_ENTRY = brandSchema("session-worktree", 1);
+export const SESSION_WORKTREE_CHANGED = "td:session-worktree-changed";
 export interface WorktreeIdentity { root: string; commonDir: string }
 export type WorktreeResolver = (path: string, cwd: string) => WorktreeIdentity | undefined;
 interface SessionReader {
@@ -172,7 +173,7 @@ export class SessionWorktreeRegistry {
 
 	private restore(): void {
 		for (const entry of this.session.getEntries()) {
-			if (entry.type !== "custom" || entry.customType !== SESSION_WORKTREE_ENTRY || !entry.data || typeof entry.data !== "object") continue;
+			if (entry.type !== "custom" || !isBrandSchema(entry.customType, "session-worktree", 1) || !entry.data || typeof entry.data !== "object") continue;
 			const data = entry.data as Partial<Registration>;
 			if (data.sessionId === this.sessionId && typeof data.root === "string" && typeof data.evidence === "string") this.recorded.add(data.root);
 		}

@@ -5,7 +5,7 @@ import { NOTIFICATION_EVENTS, type NotificationEvent } from "./notification-poli
 import type { NotificationOccurrence } from "./notification-scheduler.ts";
 
 /** Content-free bus; producers never depend on an audio player or UI. */
-export const NOTIFICATION_SOURCE_EVENT = "gentle-pi:notification:source";
+export const NOTIFICATION_SOURCE_EVENT = "td:notification:source";
 export const NOTIFICATION_ATTENTION_EVENT = "herdr:blocked";
 interface SourceOccurrence extends NotificationOccurrence { producerId: string }
 export type NotificationSourceEvent =

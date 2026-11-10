@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { resolveSessionWorktree, type WorktreeResolver } from "./session-worktree-registry.ts";
 import { SessionChanges, readChangeSnapshot, sameSnapshot, textSnapshot, isSessionChangeEvidence,
 	SESSION_CHANGE_ENTRY, SESSION_CHANGE_RELAY, type SessionChangeEvidence, type ChangeSnapshot } from "./session-changes.ts";
+import { ENV_AGENTS_CHILD } from "./brand.ts";
 
 const foreignPublishers = new WeakMap<ExtensionAPI, (sessionId: string, evidence: SessionChangeEvidence) => void>();
 /** Internal authenticated handoff from a successful child tool callback, never a model message or public event. */
@@ -19,10 +20,10 @@ const unknown = (): ChangeSnapshot => ({ kind: "unavailable", reason: "Tool snap
 
 /**
  * Observe explicit write/edit outcomes, never infer ownership from Git status or shell text.
- * The evidence feeds session statistics and names the roots /gentle:changes reads from Git.
+ * The evidence feeds session statistics and names the roots /td:changes reads from Git.
  */
 export function installSessionChangeCapture(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env, resolver: WorktreeResolver = resolveSessionWorktree): void {
-	const child = env.GENTLE_PI_AGENTS_CHILD === "1";
+	const child = env[ENV_AGENTS_CHILD] === "1";
 	const pending = new Map<string, Pending>();
 	let current: ExtensionContext | undefined;
 	let store: SessionChanges | undefined;

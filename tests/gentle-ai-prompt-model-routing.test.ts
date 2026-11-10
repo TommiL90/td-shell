@@ -31,8 +31,8 @@ before(() => {
 	writeFileSync(join(agentHome, "subagents.json"), JSON.stringify({ model_profiles: { "gentle-ai-worker": { model: "anthropic/opus" } } }));
 	Object.assign(fixtureEnvironment, {
 		HOME: home, USERPROFILE: home,
-		GENTLE_PI_CONFIG_HOME: join(home, "config"),
-		GENTLE_PI_AGENT_HOME: agentHome,
+		TOMIDEV_CONFIG_HOME: join(home, "config"),
+		TOMIDEV_AGENT_HOME: agentHome,
 		PI_CODING_AGENT_DIR: join(home, "pi"),
 		XDG_CONFIG_HOME: join(home, "xdg"),
 	});
@@ -61,7 +61,7 @@ function harness(): BeforeAgentStartHandler {
 	} as unknown as ExtensionAPI;
 	createGentleAiExtension({
 		nativeReviewCli: null,
-		processEnv: { ...fixtureEnvironment, GENTLE_PI_AGENTS_CHILD: "0", GENTLE_AI_TELEMETRY: "0" },
+		processEnv: { ...fixtureEnvironment, TOMIDEV_AGENTS_CHILD: "0", GENTLE_AI_TELEMETRY: "0" },
 		resolveTelemetryTriggerBinary: () => join(fixtureCwd, "never-executed"),
 		telemetryTriggerSpawn: () => assert.fail("Model routing fixtures must not spawn telemetry"),
 	})(pi);
@@ -96,9 +96,8 @@ function primaryEvent(overrides: Partial<MutableEvent> = {}): MutableEvent {
 }
 
 test("buildGentlePrompt renders no model routing fact", () => {
-	const rddLine = __testing.renderRddStatusLine(undefined);
-	assert.doesNotMatch(__testing.buildGentlePrompt("neutral", fixtureCwd, undefined, rddLine), /Model routing:|price ratio/);
-	assert.doesNotMatch(__testing.getOrchestratorPrompt(fixtureCwd, undefined, rddLine), /Model routing:/);
+	assert.doesNotMatch(__testing.buildGentlePrompt(fixtureCwd), /Model routing:|price ratio/);
+	assert.doesNotMatch(__testing.getOrchestratorPrompt(fixtureCwd), /Model routing:/);
 });
 
 test("before_agent_start never injects the price ratio for the primary session, even at 3x", async () => {

@@ -24,7 +24,7 @@ export interface SessionProfileBinding {
 	readonly modelProfiles: AgentModelConfig;
 }
 
-const bindingsRegistryKey = Symbol.for("gentle-pi:session-profile-bindings");
+const bindingsRegistryKey = Symbol.for("td:session-profile-bindings");
 
 /** The one process-wide binding store, shared across every extension entrypoint that imports this module. */
 function bindingsBySession(): Map<string, SessionProfileBinding> {

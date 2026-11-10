@@ -22,8 +22,8 @@ for (const code of ["ENOENT", "EMFILE"]) {
 			const home = join(root, "home");
 			process.env.HOME = home;
 			process.env.USERPROFILE = home;
-			delete process.env.GENTLE_PI_AGENTS_CHILD;
-			delete process.env.GENTLE_PI_NO_SKILL_REGISTRY;
+			delete process.env.TOMIDEV_AGENTS_CHILD;
+			delete process.env.TOMIDEV_NO_SKILL_REGISTRY;
 			const userRoot = join(home, ".codex", "skills");
 			const assets = join(userRoot, "imagegen", "assets");
 			const projectSkill = join(cwd, "skills", "local", "SKILL.md");

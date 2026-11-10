@@ -30,13 +30,13 @@ const user = (text: string) => ({ role: "user", content: [{ type: "text", text }
 const custom = (customType: string, content = "Subagent gentle-ai-worker (task x) finished. All checks pass.") => ({ role: "custom", customType, content, display: true, timestamp: 2 });
 const toolResult = () => ({ role: "toolResult", toolCallId: "t1", toolName: "read", content: [{ type: "text", text: "file text" }], isError: false, timestamp: 3 });
 const assistant = () => ({ role: "assistant", content: [{ type: "text", text: "Voy a revisar." }], timestamp: 4 });
-const WAKE = "[System-generated Gentle Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue.";
+const WAKE = "[System-generated Tomidev Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue.";
 
 test("S9: only human-typed input counts; extension-sent text, commands and empty input do not", () => {
 	assert.equal(isHumanInput("interactive", HUMAN), true);
 	assert.equal(isHumanInput("rpc", HUMAN), true);
 	assert.equal(isHumanInput("extension", HUMAN), false, "bridge wakes and resumes arrive with the extension source");
-	assert.equal(isHumanInput("interactive", "/gentle:profiles"), false);
+	assert.equal(isHumanInput("interactive", "/td:profiles"), false);
 	assert.equal(isHumanInput("interactive", "!git status"), false);
 	assert.equal(isHumanInput("interactive", "   "), false);
 });
@@ -100,7 +100,7 @@ function hookFixture(t: TestContext, child = false) {
 	} as unknown as ExtensionAPI;
 	createGentleAiExtension({
 		nativeReviewCli: null,
-		processEnv: { GENTLE_PI_CONFIG_HOME: join(cwd, "config"), GENTLE_PI_AGENTS_CHILD: child ? "1" : "0" },
+		processEnv: { TOMIDEV_CONFIG_HOME: join(cwd, "config"), TOMIDEV_AGENTS_CHILD: child ? "1" : "0" },
 		resolveTelemetryTriggerBinary: () => "/usr/bin/true", telemetryTriggerSpawn: (() => undefined) as never,
 	})(pi);
 	const ctx = { cwd, hasUI: false, mode: "interactive", ui: { notify() {} },

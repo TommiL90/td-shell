@@ -18,14 +18,14 @@ const plainTheme = { fg: (_color: string, text: string) => text };
 
 test("a running call card closes its own frame and a completed one leaves that to the result", () => {
 	const card = new GentleAiCallCard();
-	card.update("running", "review capture · reliability", plainTheme);
+	card.update("running", "capture · reliability", plainTheme);
 	const running = card.render(60).map(stripAnsi);
 	assert.equal(running.length, 2);
-	assert.match(running[0], /^╭─ 🌹 rdd running · capture · reliability ─*╮$/);
+	assert.match(running[0], /^╭─ 🌹 gentle-ai running · capture · reliability ─*╮$/);
 	assert.match(running[1], /^╰─+╯$/);
-	card.update("preparing", "review status", plainTheme, "$ gentle-ai review status");
+	card.update("preparing", "status", plainTheme, "$ gentle-ai status");
 	assert.match(card.render(60).map(stripAnsi)[2], /^╰─+╯$/);
-	card.update("completed", "review status", plainTheme, undefined, "ctrl+o to expand");
+	card.update("completed", "status", plainTheme, undefined, "ctrl+o to expand");
 	const completed = card.render(80).map(stripAnsi);
 	assert.equal(completed.length, 1);
 	assert.match(completed[0], /ctrl\+o to expand ╮$/);
@@ -33,15 +33,15 @@ test("a running call card closes its own frame and a completed one leaves that t
 });
 
 test("completed review cards fit Pi's default Box at terminal width 57", () => {
-	for (const operationPath of ["review inspect", "review status", "review capture · reliability", "review acknowledge approved"]) {
+	for (const operationPath of ["inspect", "status", "capture · reliability", "acknowledge approved"]) {
 		const card = new GentleAiCallCard();
 		card.update("completed", operationPath, plainTheme, undefined, "ctrl+o to expand");
 		const box = new Box(1, 1);
 		box.addChild(card);
 		const lines = box.render(57).map(stripAnsi);
 		for (const line of lines) assert.equal(visibleWidth(line), 57, `${operationPath}: ${JSON.stringify(line)}`);
-		if (operationPath === "review inspect") {
-			assert.equal(lines[1], " ╭─ 🌹 rdd inspect ────────────────── ctrl+o to expand ╮ ");
+		if (operationPath === "inspect") {
+			assert.equal(lines[1], " ╭─ 🌹 gentle-ai inspect ──────────── ctrl+o to expand ╮ ");
 		}
 	}
 });
@@ -52,8 +52,7 @@ test("review registrations own their shell", () => {
 		on() {}, registerCommand() {}, registerTool(tool: ToolDefinition) { tools.push(tool); },
 	} as unknown as ExtensionAPI);
 	const review = tools.filter((tool) => tool.name.startsWith("gentle_review"));
-	assert.equal(review.length, 4);
-	for (const tool of review) assert.equal(tool.renderShell, "self", tool.name);
+	assert.equal(review.length, 0);
 });
 
 test("review call and result cards have no passive background fill", (t) => {
@@ -67,7 +66,7 @@ test("review call and result cards have no passive background fill", (t) => {
 		{ expanded: true, isError: true }, { expanded: false, isError: true },
 	]) {
 		const call = new GentleAiCallCard();
-		call.update(options.isPartial ? "running" : "completed", "review capture", theme, "$ capture");
+		call.update(options.isPartial ? "running" : "completed", "capture", theme, "$ capture");
 		const lines = [...call.render(40), ...renderGentleAiResult({ content: [{ type: "text", text: "Result" }], details: {} }, options, theme).render(40)];
 		for (const [row, line] of lines.entries()) {
 			let bg = false, column = 0;
@@ -124,58 +123,58 @@ function statePendingTimer(rowState: Record<string, unknown>): unknown {
 
 test("a call card stamps its duration from first sight to terminal freeze", () => {
 	const rowState: Record<string, unknown> = {};
-	const running = renderGentleAiLifecycleCall("review capture · risk", plainTheme, { state: rowState, argsComplete: true, executionStarted: false } as never, undefined, 1_000);
+	const running = renderGentleAiLifecycleCall("capture · risk", plainTheme, { state: rowState, argsComplete: true, executionStarted: false } as never, undefined, 1_000);
 	const runningLines = running.render(100).map(stripAnsi);
-	assert.match(runningLines[0], /^╭─ 🌹 rdd running · capture · risk ─*╮$/);
+	assert.match(runningLines[0], /^╭─ 🌹 gentle-ai running · capture · risk ─*╮$/);
 	assert.match(runningLines[runningLines.length - 1], / 0s ╯$/, "the live duration ticks on the bottom rule");
 	assert.equal(stateStartedAt(rowState), 1_000);
-	const done = renderGentleAiLifecycleCall("review capture · risk", plainTheme, { state: rowState, executionStarted: true, isPartial: false } as never, undefined, 31_000);
+	const done = renderGentleAiLifecycleCall("capture · risk", plainTheme, { state: rowState, executionStarted: true, isPartial: false } as never, undefined, 31_000);
 	const doneLine = done.render(120).map(stripAnsi)[0];
-	assert.match(doneLine, /^╭─ 🌹 rdd capture · risk ─+\s+to expand ╮$/);
+	assert.match(doneLine, /^╭─ 🌹 gentle-ai capture · risk ─+\s+to expand ╮$/);
 	const doneResult = renderGentleAiResult({ content: [{ type: "text", text: "x" }] } as never, { expanded: false }, plainTheme, { state: rowState } as never).render(90).map(stripAnsi);
 	assert.match(doneResult[doneResult.length - 1], /─* 30s ╯$/, "the frozen duration closes the frame, right-aligned");
 	assert.equal(stateEndedAt(rowState), 31_000);
-	const frozen = renderGentleAiLifecycleCall("review capture · risk", plainTheme, { state: rowState, executionStarted: true, isPartial: false } as never, undefined, 99_000);
+	const frozen = renderGentleAiLifecycleCall("capture · risk", plainTheme, { state: rowState, executionStarted: true, isPartial: false } as never, undefined, 99_000);
 	const frozenResult = renderGentleAiResult({ content: [{ type: "text", text: "x" }] } as never, { expanded: false }, plainTheme, { state: rowState } as never).render(90).map(stripAnsi);
 	assert.match(frozenResult[frozenResult.length - 1], / 30s ╯$/, "a late re-render never grows the duration");
 });
 
 test("a replayed call shows its persisted duration; one without a start stays honest", () => {
 	const persistedRow: Record<string, unknown> = { gentleAiRender: { startedAt: 1_000, endedAt: 31_000, finished: true } };
-	const persisted = renderGentleAiLifecycleCall("review status", plainTheme, { state: persistedRow, executionStarted: false } as never, undefined, 90_000);
+	const persisted = renderGentleAiLifecycleCall("status", plainTheme, { state: persistedRow, executionStarted: false } as never, undefined, 90_000);
 	const persistedLines = persisted.render(90).map(stripAnsi);
-	assert.match(persistedLines[0], /^╭─ 🌹 rdd status ─+\s+to expand ╮$/);
+	assert.match(persistedLines[0], /^╭─ 🌹 gentle-ai status ─+\s+to expand ╮$/);
 	const persistedResult = renderGentleAiResult({ content: [{ type: "text", text: "x" }] } as never, { expanded: false }, plainTheme, { state: persistedRow } as never).render(90).map(stripAnsi);
 	assert.match(persistedResult[persistedResult.length - 1], /─* 30s ╯$/, "a replay with persisted stamps shows its frozen duration on the closing rule");
 	const promotedRow: Record<string, unknown> = { gentleAiRender: { finished: true } };
-	const promoted = renderGentleAiLifecycleCall("review status", plainTheme, { state: promotedRow, executionStarted: false } as never, undefined, 90_000);
+	const promoted = renderGentleAiLifecycleCall("status", plainTheme, { state: promotedRow, executionStarted: false } as never, undefined, 90_000);
 	const promotedLine = promoted.render(90).map(stripAnsi)[0];
-	assert.match(promotedLine, /^╭─ 🌹 rdd status ─*\s*to expand ╮$/, "a result-promoted replay shows only the expand key");
+	assert.match(promotedLine, /^╭─ 🌹 gentle-ai status ─*\s*to expand ╮$/, "a result-promoted replay shows only the expand key");
 	assert.doesNotMatch(promotedLine, /\d+s/);
 });
 
 test("a card with no render state stays honest about unknown duration", () => {
-	const card = renderGentleAiLifecycleCall("review capture", plainTheme, { executionStarted: true, isPartial: false } as never, undefined, 5_000);
+	const card = renderGentleAiLifecycleCall("capture", plainTheme, { executionStarted: true, isPartial: false } as never, undefined, 5_000);
 	const line = card.render(80).map(stripAnsi)[0];
-	assert.match(line, / rdd capture /);
+	assert.match(line, / gentle-ai capture /);
 	assert.doesNotMatch(line, /completed/);
 	assert.doesNotMatch(line, /\d+s/);
 });
 
 test("a historical replay never invents a duration: fresh state, preparing render, stored result, invalidation", async () => {
 	const rowState: Record<string, unknown> = {};
-	const initial = renderGentleAiLifecycleCall("review status", plainTheme, { state: rowState, executionStarted: false, argsComplete: false } as never, undefined, 90_000);
+	const initial = renderGentleAiLifecycleCall("status", plainTheme, { state: rowState, executionStarted: false, argsComplete: false } as never, undefined, 90_000);
 	const initialLines = initial.render(90).map(stripAnsi);
-	assert.match(initialLines[0], / rdd preparing · status /);
+	assert.match(initialLines[0], / gentle-ai preparing · status /);
 	assert.doesNotMatch(initialLines.join("\n"), /\d+s/);
 	assert.equal(stateStartedAt(rowState), undefined, "the preparing render of a replayed row must not invent a start");
 	const resultCard = renderGentleAiResult({ content: [{ type: "text", text: "x" }] } as never, { expanded: false }, plainTheme, { state: rowState, invalidate: () => {} } as never);
 	const resultLines = resultCard.render(90).map(stripAnsi);
 	assert.doesNotMatch(resultLines.join("\n"), /\d+s/, "no persisted stamps means no duration on the closing rule");
 	await new Promise((resolve) => queueMicrotask(() => resolve(undefined)));
-	const replayed = renderGentleAiLifecycleCall("review status", plainTheme, { state: rowState, executionStarted: false, argsComplete: false } as never, undefined, 90_040);
+	const replayed = renderGentleAiLifecycleCall("status", plainTheme, { state: rowState, executionStarted: false, argsComplete: false } as never, undefined, 90_040);
 	const replayedLine = replayed.render(90).map(stripAnsi)[0];
-	assert.match(replayedLine, / rdd status /);
+	assert.match(replayedLine, / gentle-ai status /);
 	assert.doesNotMatch(replayedLine, /\d+s/, "a replayed row with no persisted timestamps omits the unknown duration");
 	assert.equal(stateStartedAt(rowState), undefined);
 	assert.equal(stateEndedAt(rowState), undefined);
@@ -192,16 +191,16 @@ test("a replayed row restores its true frozen duration from durable session timi
 		argsComplete: false,
 		invalidate: () => {},
 	};
-	const initial = renderGentleAiLifecycleCall("review status", plainTheme, context as never, undefined, 90_000);
+	const initial = renderGentleAiLifecycleCall("status", plainTheme, context as never, undefined, 90_000);
 	assert.match(initial.render(90).map(stripAnsi).join("\n"), / 30s ╯$/, "the seeded preparing card shows the durable duration");
 	assert.equal(stateStartedAt(rowState), 1_000);
 	assert.equal(stateEndedAt(rowState), 31_000);
 	const resultCard = renderGentleAiResult({ content: [{ type: "text", text: "x" }] } as never, { expanded: false }, plainTheme, { state: rowState, invalidate: context.invalidate } as never);
 	assert.match(resultCard.render(90).map(stripAnsi).join("\n"), /─* 30s ╯$/, "the stored result closes the frame with the frozen duration");
 	await new Promise((resolve) => queueMicrotask(() => resolve(undefined)));
-	const replayed = renderGentleAiLifecycleCall("review status", plainTheme, { ...context } as never, undefined, 90_040);
+	const replayed = renderGentleAiLifecycleCall("status", plainTheme, { ...context } as never, undefined, 90_040);
 	const replayedLines = replayed.render(90).map(stripAnsi);
-	assert.match(replayedLines[0], / rdd status /);
+	assert.match(replayedLines[0], / gentle-ai status /);
 	assert.doesNotMatch(replayedLines[0], /90s|89s/, "the terminal re-render never grows the duration to the replay clock");
 	assert.equal(stateStartedAt(rowState), 1_000, "the durable start survives the replay");
 	assert.equal(stateEndedAt(rowState), 31_000, "the replayed row must not invent a new end");
@@ -219,12 +218,12 @@ test("a replayed row with a start-only durable record never invents an end", asy
 		argsComplete: false,
 		invalidate: () => {},
 	};
-	const initial = renderGentleAiLifecycleCall("review status", plainTheme, context as never, undefined, 90_000);
+	const initial = renderGentleAiLifecycleCall("status", plainTheme, context as never, undefined, 90_000);
 	assert.doesNotMatch(initial.render(90).map(stripAnsi).join("\n"), /\d+s/, "a start without a durable end shows no duration");
 	renderGentleAiResult({ content: [{ type: "text", text: "x" }] } as never, { expanded: false }, plainTheme, { state: rowState, invalidate: context.invalidate } as never);
 	await new Promise((resolve) => queueMicrotask(() => resolve(undefined)));
-	const replayed = renderGentleAiLifecycleCall("review status", plainTheme, { ...context } as never, undefined, 90_040);
-	assert.match(replayed.render(90).map(stripAnsi)[0], / rdd status /);
+	const replayed = renderGentleAiLifecycleCall("status", plainTheme, { ...context } as never, undefined, 90_040);
+	assert.match(replayed.render(90).map(stripAnsi)[0], / gentle-ai status /);
 	assert.equal(stateEndedAt(rowState), undefined, "a live-only end freeze must not fire on a replayed row");
 	const final = renderGentleAiResult({ content: [{ type: "text", text: "x" }] } as never, { expanded: false }, plainTheme, { state: rowState } as never);
 	assert.doesNotMatch(final.render(90).map(stripAnsi).join("\n"), /\d+s/);
@@ -235,20 +234,20 @@ test("running renders keep a single pending duration timer and the terminal rend
 	const rowState: Record<string, unknown> = {};
 	let invalidations = 0;
 	const context = { state: rowState, argsComplete: true, executionStarted: false, invalidate: () => { invalidations += 1; } };
-	renderGentleAiLifecycleCall("review capture", plainTheme, context as never, undefined, 1_000);
+	renderGentleAiLifecycleCall("capture", plainTheme, context as never, undefined, 1_000);
 	const firstTimer = statePendingTimer(rowState);
 	assert.ok(firstTimer, "a live running row keeps one pending duration timer");
-	renderGentleAiLifecycleCall("review capture", plainTheme, context as never, undefined, 1_500);
+	renderGentleAiLifecycleCall("capture", plainTheme, context as never, undefined, 1_500);
 	assert.notEqual(statePendingTimer(rowState), firstTimer, "a new render replaces the pending timer instead of stacking one");
 	t.mock.timers.tick(1_000);
 	assert.equal(invalidations, 1, "only the latest timer fires; the replaced one was cleared");
-	renderGentleAiLifecycleCall("review capture", plainTheme, { ...context, executionStarted: true, isPartial: false } as never, undefined, 31_000);
+	renderGentleAiLifecycleCall("capture", plainTheme, { ...context, executionStarted: true, isPartial: false } as never, undefined, 31_000);
 	assert.equal(statePendingTimer(rowState), undefined, "a terminal render clears the pending timer");
 	t.mock.timers.tick(60_000);
 	assert.equal(invalidations, 1, "no timer outlives the terminal render");
 });
 
-test("native review registration passes host failure context into the rose result", () => {
+test("native review registration passes host failure context into the rose result", { skip: "gentle_review removed in T1" }, () => {
 	const tools: ToolDefinition[] = [];
 	createGentleAiExtension({ nativeReviewCli: null } as never)({
 		on() {}, registerCommand() {}, registerTool(tool: ToolDefinition) { tools.push(tool); },
@@ -276,8 +275,8 @@ test("native context failures keep red useful previews and promote replay state"
 	assert.ok(roles.includes("error"));
 	assert.ok(!roles.includes("success"));
 	await Promise.resolve();
-	const call = renderGentleAiLifecycleCall("review status", theme, { state });
-	assert.match(call.render(100)[0], /🌹 rdd failed · status /);
+	const call = renderGentleAiLifecycleCall("status", theme, { state });
+	assert.match(call.render(100)[0], /🌹 gentle-ai failed · status /);
 	for (const width of [0, 1, 2, 3, 4, 5, 6, 7, 8, 24, 100]) {
 		const rows = collapsed.render(width);
 		assert.ok(rows.length <= 4);
@@ -304,9 +303,9 @@ test("a replayed row without argsComplete renders running but never fabricates a
 	const rowState: Record<string, unknown> = {};
 	let invalidations = 0;
 	const context = { state: rowState, executionStarted: false, invalidate: () => { invalidations += 1; } };
-	const replayed = renderGentleAiLifecycleCall("review status", plainTheme, context as never, undefined, 90_000);
+	const replayed = renderGentleAiLifecycleCall("status", plainTheme, context as never, undefined, 90_000);
 	const line = replayed.render(90).map(stripAnsi)[0];
-	assert.match(line, / rdd running · status /, "a replayed unfinished row computes to running (absent argsComplete)");
+	assert.match(line, / gentle-ai running · status /, "a replayed unfinished row computes to running (absent argsComplete)");
 	assert.doesNotMatch(line, /\d+s/, "a replayed running row without durable stamps shows no duration");
 	assert.equal(stateStartedAt(rowState), undefined, "an unexplained RUNNING on a replayed row must not stamp a start");
 	assert.equal(statePendingTimer(rowState), undefined, "no start means no ticking timer for a dead row");
@@ -323,7 +322,7 @@ test("a start-only durable record under an args-less replay stays honest", () =>
 		executionStarted: false,
 		invalidate: () => {},
 	};
-	const initial = renderGentleAiLifecycleCall("review status", plainTheme, context as never, undefined, 90_000);
+	const initial = renderGentleAiLifecycleCall("status", plainTheme, context as never, undefined, 90_000);
 	assert.doesNotMatch(initial.render(90).map(stripAnsi).join("\n"), /\d+s/, "a start-only record shows no duration");
 	assert.equal(stateStartedAt(rowState), undefined, "the start-only record is not seeded onto the replay");
 	assert.equal(statePendingTimer(rowState), undefined, "no fabricated start means the 1 Hz invalidate loop never arms");
@@ -332,9 +331,9 @@ test("a start-only durable record under an args-less replay stays honest", () =>
 test("a live running row still stamps its start and keeps one timer", () => {
 	const rowState: Record<string, unknown> = {};
 	const context = { state: rowState, argsComplete: true, executionStarted: false, invalidate: () => {} };
-	renderGentleAiLifecycleCall("review capture", plainTheme, context as never, undefined, 1_000);
+	renderGentleAiLifecycleCall("capture", plainTheme, context as never, undefined, 1_000);
 	assert.equal(stateStartedAt(rowState), 1_000, "live evidence (argsComplete true) still stamps the start");
-	assert.match(renderGentleAiLifecycleCall("review capture", plainTheme, { ...context } as never, undefined, 1_500).render(90).map(stripAnsi).join("\n"), /\d+s/);
+	assert.match(renderGentleAiLifecycleCall("capture", plainTheme, { ...context } as never, undefined, 1_500).render(90).map(stripAnsi).join("\n"), /\d+s/);
 	assert.ok(statePendingTimer(rowState), "the live row keeps its duration timer");
 });
 
@@ -348,7 +347,7 @@ test("a seeded replay with a frozen end arms no ticking timer", () => {
 		executionStarted: false,
 		invalidate: () => {},
 	};
-	renderGentleAiLifecycleCall("review status", plainTheme, context as never, undefined, 90_000);
+	renderGentleAiLifecycleCall("status", plainTheme, context as never, undefined, 90_000);
 	assert.equal(stateStartedAt(rowState), 1_000, "the durable start is seeded");
 	assert.equal(stateEndedAt(rowState), 31_000, "the durable end is seeded");
 	assert.equal(statePendingTimer(rowState), undefined, "a frozen duration needs no wake-up timer");
@@ -374,7 +373,7 @@ const inspectEnvelope = {
 };
 const assessEnvelope = {
 	operation: "assess",
-	schema: "gentle-pi.review-assessment-plan/v1",
+	schema: "tomidev.review-assessment-plan/v1",
 	risk: "unassessable",
 	reasons: [{ code: "non-zero", detail: "native review assess failed: Error: untracked files require an explicit declaration; pass intendedUntracked with the exact paths" }],
 	changedPaths: 0,
@@ -382,7 +381,7 @@ const assessEnvelope = {
 	candidate: null,
 	rddLine: "on",
 	nativeReviewOutcome: "unknown",
-	plan: { verifier: "independent", commands: ["gentle-ai review assess --cwd . --json"] },
+	plan: { verifier: "independent", commands: ["gentle-ai assess --cwd . --json"] },
 };
 
 function jsonResult(value: unknown, compact = true) {
@@ -474,19 +473,19 @@ test("JSON summaries stay bounded at every width", () => {
 // The rose call card reads like the quiet read card: glyph, a short name and
 // the operation as its argument, in one title span without a muted subtitle.
 
-test("rose call cards title the operation as rdd <op>, or gentle-ai <op> outside review", () => {
+test("rose call cards title the operation as gentle-ai <op>, with no retired review title", () => {
 	const title = (status: "preparing" | "running" | "completed" | "failed", operationPath: string) => {
 		const card = new GentleAiCallCard();
 		card.update(status, operationPath, plainTheme);
 		return stripAnsi(card.render(120)[0]).replace(/^╭─ /, "").replace(/ ─+╮$/, "");
 	};
-	assert.equal(title("completed", "review inspect"), "\u{1F339} rdd inspect");
-	assert.equal(title("completed", "review assess"), "\u{1F339} rdd assess");
-	assert.equal(title("running", "review start"), "\u{1F339} rdd running · start");
-	assert.equal(title("failed", "review capture · risk"), "\u{1F339} rdd failed · capture · risk");
-	assert.equal(title("preparing", "review mode enable"), "\u{1F339} rdd preparing · mode enable");
-	assert.equal(title("running", "review"), "\u{1F339} rdd running");
-	assert.equal(title("completed", "review"), "\u{1F339} rdd");
+	assert.equal(title("completed", "inspect"), "\u{1F339} gentle-ai inspect");
+	assert.equal(title("completed", "assess"), "\u{1F339} gentle-ai assess");
+	assert.equal(title("running", "start"), "\u{1F339} gentle-ai running · start");
+	assert.equal(title("failed", "capture · risk"), "\u{1F339} gentle-ai failed · capture · risk");
+	assert.equal(title("preparing", "mode enable"), "\u{1F339} gentle-ai preparing · mode enable");
+	assert.equal(title("running", ""), "\u{1F339} gentle-ai running");
+	assert.equal(title("completed", ""), "\u{1F339} gentle-ai");
 	assert.equal(title("completed", "version"), "\u{1F339} gentle-ai version");
 	assert.equal(title("running", "command"), "\u{1F339} gentle-ai running · command");
 });
@@ -494,17 +493,17 @@ test("rose call cards title the operation as rdd <op>, or gentle-ai <op> outside
 test("the rose is a colored emoji and the title is one span in the outcome tone", () => {
 	const theme = { fg: (role: string, text: string) => `<${role}>${text}</${role}>` };
 	const card = new GentleAiCallCard();
-	card.update("completed", "review inspect", theme, undefined, "ctrl+o to expand");
+	card.update("completed", "inspect", theme, undefined, "ctrl+o to expand");
 	const top = card.render(80)[0];
-	assert.match(top, /<success>\u{1F339} rdd inspect<\/success>/u);
+	assert.match(top, /<success>\u{1F339} gentle-ai inspect<\/success>/u);
 	assert.doesNotMatch(top, /\uFE0E|Gentle AI|<muted>/);
 	assert.equal(visibleWidth("\u{1F339}"), 2);
 });
 
 test("rose call cards stay exactly as wide as the terminal with the 2-cell emoji", () => {
 	for (const [status, operationPath, hint] of [
-		["completed", "review inspect", "ctrl+o to expand"],
-		["running", "review capture group · risk · resilience · readability · reliability", undefined],
+		["completed", "inspect", "ctrl+o to expand"],
+		["running", "capture group · risk · resilience · readability · reliability", undefined],
 		["failed", "version", "ctrl+o to expand"],
 	] as const) {
 		const card = new GentleAiCallCard();
@@ -537,7 +536,7 @@ const BLANK = /^ ▎ +$/;
 test("float rose cards join the call and the JSON summary into one panel", () => {
 	const rows = withFloatCards(() => {
 		const call = new GentleAiCallCard();
-		call.update("completed", "review inspect", floatTheme, "$ gentle-ai review inspect", "ctrl+o to expand");
+		call.update("completed", "inspect", floatTheme, "$ gentle-ai inspect", "ctrl+o to expand");
 		const envelope = JSON.stringify({ schema: "x/v1", status: "ready", risk: "medium" });
 		const result = renderGentleAiResult({ content: [{ type: "text", text: envelope }] } as never, { expanded: false }, floatTheme);
 		return [...call.render(70), ...result.render(70)];
@@ -549,8 +548,8 @@ test("float rose cards join the call and the JSON summary into one panel", () =>
 	}
 	assert.doesNotMatch(plain.join("\n"), /[╭╮╰╯│─]/);
 	assert.match(plain[0]!, BLANK);
-	assert.match(plain[1]!, /^ ▎ 🌹 rdd inspect +ctrl\+o to expand {4}$/);
-	assert.match(plain[2]!, /^ ▎ \$ gentle-ai review inspect +$/, "the command stays with the heading");
+	assert.match(plain[1]!, /^ ▎ 🌹 gentle-ai inspect +ctrl\+o to expand {4}$/);
+	assert.match(plain[2]!, /^ ▎ \$ gentle-ai inspect +$/, "the command stays with the heading");
 	assert.match(plain[3]!, BLANK);
 	assert.match(plain[4]!, /^ ▎ ready · medium +$/);
 	assert.match(plain[5]!, BLANK);
@@ -561,13 +560,13 @@ test("float rose cards join the call and the JSON summary into one panel", () =>
 test("float rose cards keep the elapsed time on the blank closing row and add no separator under a running call", () => {
 	const rows = withFloatCards(() => {
 		const call = new GentleAiCallCard();
-		call.update("running", "review status", floatTheme, undefined, undefined, "3s");
+		call.update("running", "status", floatTheme, undefined, undefined, "3s");
 		const partial = renderGentleAiResult({ content: [{ type: "text", text: "working" }] } as never, { isPartial: true }, floatTheme);
 		return [...call.render(40), ...partial.render(40)];
 	});
 	const plain = rows.map(stripAnsi);
 	assert.match(plain[0]!, BLANK);
-	assert.match(plain[1]!, /^ ▎ 🌹 rdd running · status +$/);
+	assert.match(plain[1]!, /^ ▎ 🌹 gentle-ai running · status +$/);
 	assert.match(plain[2]!, /^ ▎ +3s {3}$/);
 	assert.match(plain[3]!, /^ ▎ working +$/);
 	assert.equal(plain.length, 4);

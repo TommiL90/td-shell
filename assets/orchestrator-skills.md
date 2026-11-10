@@ -41,9 +41,13 @@ Common intent hints, not hard routing:
 
 | User intent                | Skill to check                         |
 | -------------------------- | -------------------------------------- |
-| PR review / GitHub PR URL  | project review skill, then `pr-review` |
+| PR review / diff review    | `requesting-code-review`               |
 | Post-ready review comments | `comment-writer`                       |
-| Create/open/prepare PR     | `gentle-ai-branch-pr`                  |
-| Split/stack/large PR       | `gentle-ai-chained-pr`                 |
+| Create/open/prepare PR     | `delivery`                             |
+| Spec Lean feature delivery | `tlc-spec-lean`                        |
+| Clean code & guard clauses | `clean-code`                           |
+| Software testing rules     | `testing`                              |
+| Consensus loop protocol    | `consensus`                            |
+| Tomidev harness & lanes    | `tomidev`                              |
 
 Keep this lightweight: loading a skill should improve the immediate task, not force extra ceremony.

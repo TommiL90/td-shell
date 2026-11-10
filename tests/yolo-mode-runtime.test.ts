@@ -16,7 +16,7 @@ import { createGentleAiExtension } from "../extensions/gentle-ai.ts";
 function isolatedEnv(t: test.TestContext): NodeJS.ProcessEnv {
 	const home = mkdtempSync(join(tmpdir(), "yolo-runtime-config-"));
 	t.after(() => rmSync(home, { recursive: true, force: true }));
-	return { GENTLE_PI_CONFIG_HOME: home };
+	return { TOMIDEV_CONFIG_HOME: home };
 }
 
 test("complete Gentle AI extension registers and executes YOLO through the actual SDK loader", async t => {
@@ -31,7 +31,7 @@ test("complete Gentle AI extension registers and executes YOLO through the actua
 	runner.bindCommandContext();
 	assert.equal(runner.getAllRegisteredTools().some(({ definition }) => definition.name.includes("yolo")), false);
 	assert.equal(runner.getCommand("yolo"), undefined, "bare yolo command is not registered");
-	const command = runner.getCommand("gentle:yolo"); assert.ok(command);
+	const command = runner.getCommand("td:yolo"); assert.ok(command);
 	await command.handler("enable", runner.createCommandContext());
 	assert.equal(statuses.get(YOLO_STATUS_KEY), YOLO_STATUS_TEXT);
 	await command.handler("disable", runner.createCommandContext());
@@ -73,7 +73,7 @@ test("SDK-loaded YOLO command resets across actual runner lifecycle dispatch and
 	};
 	let runner = await load();
 	const command = async (args: string) => {
-		const registered = runner.getCommand("gentle:yolo"); assert.ok(registered);
+		const registered = runner.getCommand("td:yolo"); assert.ok(registered);
 		await registered.handler(args, runner.createCommandContext());
 	};
 	await runner.emit({ type: "session_start", reason: "startup" });
@@ -99,7 +99,7 @@ for (const shellFirst of [false, true]) test(`SDK loads both extensions on one b
 	const home = mkdtempSync(join(tmpdir(), "yolo-sdk-menu-"));
 	t.after(() => rmSync(home, { recursive: true, force: true }));
 	const cwd = process.cwd(), runtime = createExtensionRuntime(), bus = createEventBus();
-	const env = { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" };
+	const env = { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" };
 	const ownerFactory = createGentleAiExtension({ nativeReviewCli: null, candidateViews: null, processEnv: env,
 		resolveTelemetryTriggerBinary: () => { throw new Error("disabled in test"); },
 	});
@@ -154,7 +154,7 @@ for (const shellFirst of [false, true]) test(`SDK loads both extensions on one b
 	// The compatibility SDK omits mode; annotate the transport we explicitly
 	// bound above. All other getters retain real SDK invalidation semantics.
 	if (ctx.mode === undefined) Object.defineProperty(ctx, "mode", { value: "tui" });
-	const command = runner.getCommand("gentle:yolo")!, customize = runner.getCommand("gentle:customize")!;
+	const command = runner.getCommand("td:yolo")!, customize = runner.getCommand("td:customize")!;
 	assert.ok(command); assert.ok(customize);
 	const menu = customize.handler("", ctx);
 	await ready; assert.ok(view);

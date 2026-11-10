@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gentlePiConfigHome } from "./agent-home.ts";
@@ -36,7 +37,7 @@ export interface LoadDoubleEscCancelOptions {
 	env?: Record<string, string | undefined>;
 }
 
-export const DOUBLE_ESC_CANCEL_SCHEMA = "gentle-pi.double-esc-cancel/v1";
+export const DOUBLE_ESC_CANCEL_SCHEMA = brandSchema("double-esc-cancel", 1);
 export const DOUBLE_ESC_CANCEL_FILE = "double-esc-cancel.json";
 
 // Pi's own idle double-Esc (empty editor -> /tree or /fork, interactive-mode.js
@@ -50,7 +51,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Strict decode of {"schema":"gentle-pi.double-esc-cancel/v1","policy":"on"|"off"}.
+ * Strict decode of {"schema":"tomidev.double-esc-cancel/v1","policy":"on"|"off"}.
  * Any malformed shape (bad JSON, wrong schema, unknown keys, invalid policy)
  * returns undefined so the caller fails closed to "off".
  */
@@ -62,7 +63,7 @@ export function parseDoubleEscCancelPolicyFile(raw: string): DoubleEscCancelPoli
 		return undefined;
 	}
 	if (!isRecord(parsed)) return undefined;
-	if (parsed.schema !== DOUBLE_ESC_CANCEL_SCHEMA) return undefined;
+	if (!isBrandSchema(parsed.schema, "double-esc-cancel", 1)) return undefined;
 	if (parsed.policy !== "on" && parsed.policy !== "off") return undefined;
 	if (Object.keys(parsed).length !== 2) return undefined;
 	return parsed.policy;
@@ -73,8 +74,8 @@ export function parseDoubleEscCancelPolicyFile(raw: string): DoubleEscCancelPoli
  *
  * Resolution order (first hit wins):
  *   1. Global file `${configHome}/double-esc-cancel.json`
- *      (configHome honors GENTLE_PI_CONFIG_HOME, default ~/.pi/gentle-ai)
- *   2. Env var GENTLE_PI_DOUBLE_ESC_CANCEL ("on" | "off")
+ *      (configHome honors TOMIDEV_CONFIG_HOME, default ~/.pi/gentle-ai)
+ *   2. Env var TOMIDEV_DOUBLE_ESC_CANCEL ("on" | "off")
  *   3. Default "off"
  *
  * A present-but-malformed file fails closed to "off" instead of falling
@@ -86,7 +87,7 @@ export function resolveDoubleEscCancelPolicy(
 	options: LoadDoubleEscCancelOptions = {},
 ): DoubleEscCancelResolution {
 	const env = options.env ?? process.env;
-	const envValue = env.GENTLE_PI_DOUBLE_ESC_CANCEL;
+	const envValue = env.TOMIDEV_DOUBLE_ESC_CANCEL;
 	let globalFile = "";
 	try {
 		const configHome = options.gentlePiConfigHome ?? gentlePiConfigHome(env);
@@ -124,7 +125,7 @@ export function loadDoubleEscCancelPolicy(options: LoadDoubleEscCancelOptions = 
 
 /**
  * Write the global policy file, creating the config home when needed.
- * Used by both `/gentle:double-esc-cancel enable` and `... disable`.
+ * Used by both `/td:double-esc-cancel enable` and `... disable`.
  */
 export function writeDoubleEscCancelPolicy(
 	policy: DoubleEscCancelPolicy,

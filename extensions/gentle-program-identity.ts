@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ProgramStatus, Terminal } from "@earendil-works/pi-tui";
+import { BRAND_NAME, ENV_AGENTS_CHILD } from "../lib/brand.ts";
 
-const WIDGET_KEY = "gentle-shell:program-identity";
+const WIDGET_KEY = "td:program-identity";
 const STATES = new Set(["idle", "working", "blocked", "done", "error", "clear"]);
 
 function installIdentity(terminal: Terminal): () => void {
@@ -12,7 +13,7 @@ function installIdentity(terminal: Terminal): () => void {
 	const wrapped = (status: ProgramStatus) => {
 		if (!active) return original.call(terminal, status);
 		latest = { ...status };
-		original.call(terminal, status.state === "clear" ? status : { ...status, app: "gentle-shell" });
+		original.call(terminal, status.state === "clear" ? status : { ...status, app: BRAND_NAME });
 	};
 	terminal.setProgramStatus = wrapped;
 
@@ -38,7 +39,7 @@ function installIdentity(terminal: Terminal): () => void {
 
 export function createProgramIdentityExtension(env: NodeJS.ProcessEnv = process.env) {
 	return (pi: ExtensionAPI): void => {
-		if (env.PI_PROGRAM_STATUS_APP !== "gentle-shell" || env.GENTLE_PI_AGENTS_CHILD === "1") return;
+		if (env.PI_PROGRAM_STATUS_APP !== BRAND_NAME || env[ENV_AGENTS_CHILD] === "1") return;
 		let dispose: (() => void) | undefined;
 		pi.on("session_start", (_event, ctx) => {
 			dispose?.(); dispose = undefined;

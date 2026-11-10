@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { assertNotRealHome } from "./support/isolated-home.ts";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,8 +27,7 @@ import {
 } from "../lib/gentle-shell-bundled.ts";
 import { artifactFor, engramPinVersion } from "../scripts/installer-downloads.mjs";
 import { bundledNpmCommand, prefixLayout } from "../scripts/bundled-install.mjs";
-import { gentlePiConfigHome } from "../lib/agent-home.ts";
-import { resolveBackgroundSubagentsPolicy } from "../lib/background-subagents-policy.ts";
+import { SETUP_VERSION } from "../lib/gentle-shell-launcher.ts";
 
 // A fake filesystem keyed by exact paths, so every platform's paths are plain
 // strings on every runner: realpath maps a link to its target, and any other
@@ -44,15 +44,15 @@ function fakeFs({ real = {}, files = {}, links = {} }: { real?: Record<string, s
 }
 
 const ID = "4.1.0-1.2.0";
-const POSIX_ROOT = "/home/ana/.gentle-shell";
+const POSIX_ROOT = "/home/ana/.tomidev";
 const POSIX_VERSION = posix.join(POSIX_ROOT, "versions", ID);
-const POSIX_PACKAGE = posix.join(POSIX_VERSION, "node_modules", ".pnpm", "gentle-pi@4.1.0", "node_modules", "gentle-pi");
+const POSIX_PACKAGE = posix.join(POSIX_VERSION, "node_modules", ".pnpm", "tomidev@4.1.0", "node_modules", "tomidev");
 const PI_PACKAGE = (version: string, path = posix) => path.join(version, "node_modules", "@earendil-works", "pi-coding-agent");
 
 function posixInstall(overrides: { current?: string; marker?: string; link?: string } = {}) {
 	return fakeFs({
-		real: { [posix.join(POSIX_VERSION, "node_modules", "gentle-pi")]: overrides.link ?? POSIX_PACKAGE },
-		files: { [posix.join(POSIX_VERSION, ".gentle-shell-version")]: overrides.marker ?? `${ID}\n`, [posix.join(POSIX_PACKAGE, "package.json")]: "{}" },
+		real: { [posix.join(POSIX_VERSION, "node_modules", "tomidev")]: overrides.link ?? POSIX_PACKAGE },
+		files: { [posix.join(POSIX_VERSION, ".tomidev-version")]: overrides.marker ?? `${ID}\n`, [posix.join(POSIX_PACKAGE, "package.json")]: "{}" },
 		links: { [posix.join(POSIX_ROOT, "current")]: overrides.current ?? `versions/${ID}` },
 	});
 }
@@ -74,9 +74,9 @@ test("resolveBundledInstall is off unless current names this marked version and 
 		assert.equal(resolveBundledInstall({ packageRoot, platform: "linux", fs: posixInstall() }), undefined, packageRoot);
 	}
 	// An id the bundled install never writes.
-	const unsafe = posix.join(POSIX_ROOT, "versions", "-x", "node_modules", "gentle-pi");
+	const unsafe = posix.join(POSIX_ROOT, "versions", "-x", "node_modules", "tomidev");
 	assert.equal(resolveBundledInstall({ packageRoot: unsafe, platform: "linux", fs: fakeFs({
-		files: { [posix.join(POSIX_ROOT, "versions", "-x", ".gentle-shell-version")]: "-x\n" }, links: { [posix.join(POSIX_ROOT, "current")]: "versions/-x" } }) }), undefined);
+		files: { [posix.join(POSIX_ROOT, "versions", "-x", ".tomidev-version")]: "-x\n" }, links: { [posix.join(POSIX_ROOT, "current")]: "versions/-x" } }) }), undefined);
 });
 
 test("resolveBundledInstall treats only the version being verified as current, for that check", () => {
@@ -88,20 +88,20 @@ test("resolveBundledInstall treats only the version being verified as current, f
 });
 
 test("resolveBundledInstall on Windows reads the current pointer file, never a link", () => {
-	const root = "C:\\Users\\Ana\\AppData\\Local\\gentle-shell";
+	const root = "C:\\Users\\Ana\\AppData\\Local\\tomidev";
 	const version = win32.join(root, "versions", ID);
-	const packageRoot = win32.join(version, "node_modules", ".pnpm", "gentle-pi@4.1.0", "node_modules", "gentle-pi");
-	const files = { [win32.join(version, ".gentle-shell-version")]: `${ID}\n`, [win32.join(root, "current")]: `${ID}\n` };
-	const real = { [win32.join(version, "node_modules", "gentle-pi")]: packageRoot };
+	const packageRoot = win32.join(version, "node_modules", ".pnpm", "tomidev@4.1.0", "node_modules", "tomidev");
+	const files = { [win32.join(version, ".tomidev-version")]: `${ID}\n`, [win32.join(root, "current")]: `${ID}\n` };
+	const real = { [win32.join(version, "node_modules", "tomidev")]: packageRoot };
 	assert.deepEqual(resolveBundledInstall({ packageRoot, platform: "win32", fs: fakeFs({ real, files }) }), { root, id: ID, versionDir: version });
-	const linked = fakeFs({ real, files: { [win32.join(version, ".gentle-shell-version")]: `${ID}\n` }, links: { [win32.join(root, "current")]: `versions/${ID}` } });
+	const linked = fakeFs({ real, files: { [win32.join(version, ".tomidev-version")]: `${ID}\n` }, links: { [win32.join(root, "current")]: `versions/${ID}` } });
 	assert.equal(resolveBundledInstall({ packageRoot, platform: "win32", fs: linked }), undefined);
 });
 
 function piFiles(pinned: string, installed: string, path = posix, version = POSIX_VERSION) {
 	const pi = PI_PACKAGE(version, path);
 	return {
-		[path.join(version, "package.json")]: JSON.stringify({ dependencies: { "gentle-pi": "4.1.0", "@earendil-works/pi-coding-agent": pinned } }),
+		[path.join(version, "package.json")]: JSON.stringify({ dependencies: { "tomidev": "4.1.0", "@earendil-works/pi-coding-agent": pinned } }),
 		[path.join(pi, "package.json")]: JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: installed, bin: { pi: "dist/bundle/cli.js" } }),
 		[path.join(pi, "dist", "bundle", "cli.js")]: "",
 	};
@@ -118,7 +118,7 @@ test("bundledPi returns only the Pi the version pins, inside the version folder"
 });
 
 test("bundledPi fails with the version, the pinned Pi and the way to repair it", () => {
-	const repair = /Gentle Shell 4\.1\.0-1\.2\.0 .*Pi 1\.2\.0.*gentle-shell upgrade.*installer/s;
+	const repair = /Tomidev Shell 4\.1\.0-1\.2\.0 .*Pi 1\.2\.0.*tomidev upgrade.*installer/s;
 	const mismatch = bundledPi(install, { platform: "linux", fs: fakeFs({ files: piFiles("1.2.0", "1.0.0") }) });
 	assert.equal(mismatch.ok, false);
 	assert.match(messageOf(mismatch), repair);
@@ -136,19 +136,19 @@ const ISOLATION = { prefix: "/g", engram: "/g/runtime/engram-3.5.2/engram" };
 
 test("bundledChildEnv keeps the user's environment and adds only the bundled Pi, the prefix and Engram, no Pi override and no Pi update check", () => {
 	const user = { PATH: "/home/ana/.nvm/bin:/usr/bin", NODE_OPTIONS: "--max-old-space-size=4096", npm_config_registry: "https://npm.example", npm_config_prefix: "/home/ana/.npm-global",
-		GENTLE_SHELL_PI: "/usr/local/bin/pi", GENTLE_PI_AGENTS_PI: "pi", [BUNDLED_VERIFY_ENV]: ID, GENTLE_PI_CONFIG_HOME: "/home/ana/.pi/gentle-ai" };
+		TOMIDEV_PI: "/usr/local/bin/pi", TOMIDEV_AGENTS_PI: "pi", [BUNDLED_VERIFY_ENV]: ID, TOMIDEV_CONFIG_HOME: "/home/ana/.pi/gentle-ai" };
 	const env = bundledChildEnv(user, { node: "/g/node", cli: "/g/cli.js", ...ISOLATION });
 	// S9: Gentle AI's own variables never reach Pi (its shell would pass them to
 	// a gentle-ai the user runs); gentle-pi adds them to its own gentle-ai runs.
-	// GENTLE_PI_CONFIG_HOME stays the user's: gentle-pi derives its bundled config
+	// TOMIDEV_CONFIG_HOME stays the user's: gentle-pi derives its bundled config
 	// folder from the prefix, and Gentle AI 4.0.0 reads that variable as a parent.
 	assert.deepEqual(env, { PATH: user.PATH, NODE_OPTIONS: user.NODE_OPTIONS, npm_config_registry: user.npm_config_registry, npm_config_prefix: user.npm_config_prefix,
-		GENTLE_PI_CONFIG_HOME: user.GENTLE_PI_CONFIG_HOME, GENTLE_PI_AGENTS_PI: "/g/node /g/cli.js", PI_SKIP_VERSION_CHECK: "1", GENTLE_SHELL_PREFIX: "/g",
+		TOMIDEV_CONFIG_HOME: user.TOMIDEV_CONFIG_HOME, TOMIDEV_AGENTS_PI: "/g/node /g/cli.js", PI_SKIP_VERSION_CHECK: "1", TOMIDEV_PREFIX: "/g",
 		ENGRAM_BIN: "/g/runtime/engram-3.5.2/engram" });
 	// The subagent runner splits that variable on whitespace: a spaced path falls
 	// back to its own default, the running node and cli.js.
-	const spaced = bundledChildEnv({ GENTLE_PI_AGENTS_PI: "pi" }, { node: "C:\\Users\\Ana Li\\node.exe", cli: "C:\\cli.js", ...ISOLATION });
-	assert.equal("GENTLE_PI_AGENTS_PI" in spaced, false);
+	const spaced = bundledChildEnv({ TOMIDEV_AGENTS_PI: "pi" }, { node: "C:\\Users\\Ana Li\\node.exe", cli: "C:\\cli.js", ...ISOLATION });
+	assert.equal("TOMIDEV_AGENTS_PI" in spaced, false);
 	// gentle-engram reads ENGRAM_BIN: the user's own choice is kept, and an
 	// Engram that is not published is never named.
 	assert.equal(bundledChildEnv({ ENGRAM_BIN: "/opt/engram" }, { node: "/g/node", cli: "/g/cli.js", ...ISOLATION }).ENGRAM_BIN, "/opt/engram");
@@ -217,7 +217,7 @@ test("withoutMissingBundledNpmCommand never drops a user's npmCommand, even with
 	// The posix form the launcher sees on this platform is dropped. The Windows
 	// form is covered by isBundledNpmCommand: the launcher's isAbsolute is
 	// platform-specific, so a C:\ path is only absolute on Windows.
-	const posix = "/home/ana/.gentle-shell";
+	const posix = "/home/ana/.tomidev";
 	const flags = (root: string, sep: string) => [`--userconfig=${root}${sep}pnpm${sep}config${sep}npmrc`, `--globalconfig=${root}${sep}npm${sep}npmrc`, `--cache=${root}${sep}npm${sep}cache`];
 	const bundledForm = [`${posix}/runtime/node-24.21.0/bin/node`, `${posix}/runtime/node-24.21.0/lib/node_modules/npm/bin/npm-cli.js`, ...flags(posix, "/"), `--prefix=${posix}/npm/prefix`, "--update-notifier=false"];
 	{
@@ -230,7 +230,7 @@ test("withoutMissingBundledNpmCommand never drops a user's npmCommand, even with
 	const userCommands: unknown[][] = [
 		["npm"],
 		["C:\\tools\\node.exe", "C:\\tools\\npm-cli.js"],
-		["C:\\Users\\ana\\AppData\\Local\\gentle-shell\\runtime\\node-24.21.0\\node.exe", "npm-cli.js"],
+		["C:\\Users\\ana\\AppData\\Local\\tomidev\\runtime\\node-24.21.0\\node.exe", "npm-cli.js"],
 		["/opt/runtime/node-20.0.0/bin/node", "/opt/npm-cli.js", "--update-notifier=false"],
 	];
 	for (const command of userCommands) {
@@ -240,13 +240,13 @@ test("withoutMissingBundledNpmCommand never drops a user's npmCommand, even with
 });
 
 test("isBundledNpmCommand recognizes only the npmCommand a bundled install writes, in every released form", () => {
-	const win = "C:\\Users\\ana\\AppData\\Local\\gentle-shell";
-	const posix = "/home/ana/.gentle-shell";
+	const win = "C:\\Users\\ana\\AppData\\Local\\tomidev";
+	const posix = "/home/ana/.tomidev";
 	const flags = (root: string, sep: string) => [`--userconfig=${root}${sep}pnpm${sep}config${sep}npmrc`, `--globalconfig=${root}${sep}npm${sep}npmrc`, `--cache=${root}${sep}npm${sep}cache`];
 	// What the installer writes today on each platform, and its two released forms.
 	assert.equal(isBundledNpmCommand(bundledNpmCommand(prefixLayout({ platform: "win32", home: "C:\\Users\\ana", root: win }))), true);
 	assert.equal(isBundledNpmCommand(bundledNpmCommand(prefixLayout({ platform: "darwin", home: "/home/ana" }))), true);
-	assert.equal(isBundledNpmCommand([`${win}\\runtime\\node-24.21.0\\node.exe`, `${win}\\runtime\\node-24.21.0\\gentle-shell\\npm`, ...flags(win, "\\"), "--update-notifier=false"]), true);
+	assert.equal(isBundledNpmCommand([`${win}\\runtime\\node-24.21.0\\node.exe`, `${win}\\runtime\\node-24.21.0\\tomidev\\npm`, ...flags(win, "\\"), "--update-notifier=false"]), true);
 	assert.equal(isBundledNpmCommand([`${posix}/runtime/node-24.21.0/bin/node`, `${posix}/runtime/node-24.21.0/lib/node_modules/npm/bin/npm-cli.js`, ...flags(posix, "/"), `--prefix=${posix}/npm/prefix`, "--update-notifier=false"]), true);
 	// What a user writes is never ours, even with a missing program.
 	for (const command of [["npm"], ["C:\\tools\\node.exe", "C:\\tools\\npm-cli.js"], [`${win}\\runtime\\node-24.21.0\\node.exe`, "npm-cli.js"],
@@ -326,6 +326,11 @@ const FIXTURE_ID = `${SHELL}-1.2.0`;
 const FAKE_PI = [
 	"import {mkdirSync, readFileSync, writeFileSync} from 'node:fs'; import {join, dirname} from 'node:path';",
 	"const args = process.argv.slice(2);",
+	"if (args[0] === 'install') {",
+	" if (process.env.FIXTURE_PACKAGE_LOG) { const {appendFileSync} = await import('node:fs'); appendFileSync(process.env.FIXTURE_PACKAGE_LOG, JSON.stringify({args, env:process.env}) + '\\n'); }",
+	" if (process.env.FIXTURE_NEWER_STORE === '1') { const db=join(process.env.HOME,'.engram','engram.db'); mkdirSync(dirname(db),{recursive:true}); const header=Buffer.alloc(4096); header.write('SQLite format 3\\0',0,'latin1'); header.writeUInt16BE(4096,16); header[18]=2; header[19]=2; header.writeUInt32BE(2,60); writeFileSync(db,header); }",
+	" if (args[1] !== 'npm:gentle-engram') { const path=join(process.env.PI_CODING_AGENT_DIR,'settings.json'); let settings={}; try { settings=JSON.parse(readFileSync(path,'utf8')); } catch {} settings.packages=[...(settings.packages ?? []),args[1]]; writeFileSync(path,JSON.stringify(settings)); }",
+	"}",
 	"if (args[0] === 'install' && args[1] === 'npm:gentle-engram' && process.env.FIXTURE_INSTALL_CAPABILITY !== '0') {",
 	" const home = process.env.PI_CODING_AGENT_DIR; const metadata = join(home, 'npm/node_modules/gentle-engram/package.json'); mkdirSync(dirname(metadata), {recursive:true});",
 	" writeFileSync(metadata, JSON.stringify({name:'gentle-engram',version:'0.4.2',engram:{startupPolicy:1}}));",
@@ -334,8 +339,8 @@ const FAKE_PI = [
 	" if (index < 0) packages.push(args[1]); else packages[index] = typeof packages[index] === 'string' ? args[1] : {...packages[index], source:args[1]}; settings.packages = packages; writeFileSync(path, JSON.stringify(settings)); }",
 	"}",
 	"if (args.includes('--version')) { console.log('1.2.0'); process.exit(0); }",
-	"const pick = ['PATH', 'GENTLE_SHELL_PI', 'GENTLE_PI_AGENTS_PI', 'PI_SKIP_VERSION_CHECK', 'npm_config_prefix', 'npm_config_registry', 'NODE_OPTIONS', 'PI_CODING_AGENT_DIR',",
-	"\t'GENTLE_SHELL_PREFIX', 'GENTLE_PI_CONFIG_HOME', 'ENGRAM_BIN', 'ENGRAM_URL', 'ENGRAM_SERVER_MODE', 'ENGRAM_SOCKET', 'ENGRAM_STARTUP_POLICY', 'ENGRAM_STARTUP_NOTICE', 'GENTLE_AI_HOME', 'GENTLE_AI_PI_CONFIG_DIR', 'GENTLE_AI_ENGRAM_BIN', 'GENTLE_AI_NO_SELF_UPDATE', 'GH_TOKEN', 'ENGRAM_NO_UPDATE_CHECK'];",
+	"const pick = ['PATH', 'TOMIDEV_PI', 'TOMIDEV_AGENTS_PI', 'PI_SKIP_VERSION_CHECK', 'npm_config_prefix', 'npm_config_registry', 'NODE_OPTIONS', 'PI_CODING_AGENT_DIR',",
+	"\t'TOMIDEV_PREFIX', 'TOMIDEV_CONFIG_HOME', 'ENGRAM_BIN', 'ENGRAM_URL', 'ENGRAM_SERVER_MODE', 'ENGRAM_SOCKET', 'ENGRAM_STARTUP_POLICY', 'ENGRAM_STARTUP_NOTICE', 'GENTLE_AI_HOME', 'GENTLE_AI_PI_CONFIG_DIR', 'GENTLE_AI_ENGRAM_BIN', 'GENTLE_AI_NO_SELF_UPDATE', 'GH_TOKEN', 'ENGRAM_NO_UPDATE_CHECK'];",
 	"console.log(JSON.stringify({ cli: process.argv[1], args, env: Object.fromEntries(pick.map((k) => [k, process.env[k]])) }));",
 ].join("\n");
 const READY_COMPATIBILITY = { revision: 1, source: "active", status: "ready", offline_automatic_opening_authorized: false, active_reuse_authorized: true,
@@ -375,12 +380,12 @@ function bundledPrefix(t: TestContext, { pi = "1.2.0", core = true } = {}) {
 		rmSync(base, { recursive: true, force: true });
 	});
 	const home = join(base, "home");
-	const root = join(home, ".gentle-shell");
+	const root = join(home, ".tomidev");
 	const version = join(root, "versions", FIXTURE_ID);
 	const modules = join(version, "node_modules");
-	const shell = join(modules, ".pnpm", `gentle-pi@${SHELL}`, "node_modules", "gentle-pi");
+	const shell = join(modules, ".pnpm", `tomidev@${SHELL}`, "node_modules", "tomidev");
 	mkdirSync(join(shell, "bin"), { recursive: true });
-	writeFileSync(join(shell, "bin", "gentle-shell.mjs"), readFileSync(join(repository, "bin", "gentle-shell.mjs")));
+	writeFileSync(join(shell, "bin", "tomidev.mjs"), readFileSync(join(repository, "bin", "tomidev.mjs")));
 	const guard = join(shell, "bin", "engram-guard");
 	if (existsSync(join(repository, "bin", "engram-guard"))) {
 		copyFileSync(join(repository, "bin", "engram-guard"), guard);
@@ -388,13 +393,13 @@ function bundledPrefix(t: TestContext, { pi = "1.2.0", core = true } = {}) {
 	}
 	writeFileSync(join(shell, "package.json"), readFileSync(join(repository, "package.json")));
 	for (const dir of ["runtime", "scripts"]) symlinkSync(join(repository, dir), join(shell, dir));
-	symlinkSync(shell, join(modules, "gentle-pi"));
+	symlinkSync(shell, join(modules, "tomidev"));
 	const piDir = join(modules, "@earendil-works", "pi-coding-agent");
 	mkdirSync(join(piDir, "dist", "bundle"), { recursive: true });
 	writeFileSync(join(piDir, "package.json"), JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: pi, bin: { pi: "dist/bundle/cli.js" } }));
 	writeFileSync(join(piDir, "dist", "bundle", "cli.js"), FAKE_PI);
-	writeFileSync(join(version, "package.json"), JSON.stringify({ dependencies: { "gentle-pi": SHELL, "@earendil-works/pi-coding-agent": "1.2.0" } }));
-	writeFileSync(join(version, ".gentle-shell-version"), `${FIXTURE_ID}\n`);
+	writeFileSync(join(version, "package.json"), JSON.stringify({ dependencies: { "tomidev": SHELL, "@earendil-works/pi-coding-agent": "1.2.0" } }));
+	writeFileSync(join(version, ".tomidev-version"), `${FIXTURE_ID}\n`);
 	symlinkSync(`versions/${FIXTURE_ID}`, join(root, "current"));
 	// The bundled npm the npmCommand entry loads.
 	const npmCli = join(root, "runtime", "node-24.21.0", "lib", "node_modules", "npm", "bin", "npm-cli.js");
@@ -407,7 +412,7 @@ function bundledPrefix(t: TestContext, { pi = "1.2.0", core = true } = {}) {
 	if (core) {
 		mkdirSync(engramDir, { recursive: true });
 		writeFileSync(engram, FIXTURE_CORE, { mode: 0o700 });
-		writeFileSync(join(engramDir, ".gentle-shell-runtime"), `${artifactFor("engram", process.platform, process.arch).url}\n`);
+		writeFileSync(join(engramDir, ".tomidev-runtime"), `${artifactFor("engram", process.platform, process.arch).url}\n`);
 	}
 	// The launcher's ensureEngram never downloads here: a module hook gives it a
 	// stand-in that publishes the same files and marker a verified download would.
@@ -425,19 +430,19 @@ function bundledPrefix(t: TestContext, { pi = "1.2.0", core = true } = {}) {
 			if (existsSync(layout.engram)) return false;
 			mkdirSync(layout.engramDir, { recursive: true });
 			writeFileSync(layout.engram, ${JSON.stringify(FIXTURE_CORE)}, { mode: 0o700 });
-			writeFileSync(layout.engramDir + '/.gentle-shell-runtime', artifactFor('engram', platform, arch).url + '\\n');
+			writeFileSync(layout.engramDir + '/.tomidev-runtime', artifactFor('engram', platform, arch).url + '\\n');
 			return true;
 		}`);
 	const hooks = join(base, "engram-hooks.mjs");
 	writeFileSync(hooks, `export async function resolve(specifier, context, next) {
-		if (specifier.endsWith('scripts/bundled-install.mjs') && context.parentURL?.endsWith('/bin/gentle-shell.mjs')) {
+		if (specifier.endsWith('scripts/bundled-install.mjs') && context.parentURL?.endsWith('/bin/tomidev.mjs')) {
 			return { url: ${JSON.stringify(pathToFileURL(publisher).href)}, shortCircuit: true };
 		}
 		return next(specifier, context);
 	}`);
 	const registerHooks = join(base, "engram-register.mjs");
 	writeFileSync(registerHooks, `import { register } from 'node:module'; register(${JSON.stringify(pathToFileURL(hooks).href)});`);
-	// A Pi on PATH and in GENTLE_SHELL_PI that must never run.
+	// A Pi on PATH and in TOMIDEV_PI that must never run.
 	const userBin = join(base, "user-bin");
 	mkdirSync(userBin);
 	writeFileSync(join(userBin, "pi"), "#!/bin/sh\necho 9.9.9\n", { mode: 0o755 });
@@ -458,15 +463,15 @@ function bundledPrefix(t: TestContext, { pi = "1.2.0", core = true } = {}) {
 			return original({ ...options, port: Number(process.env.FIXTURE_ENGRAM_PORT || served() || closed) }, ...rest);
 		};
 		syncBuiltinESMExports();`);
-	const metadata = join(home, ".gentle-shell", "agent", "npm", "node_modules", "gentle-engram", "package.json");
+	const metadata = join(home, ".tomidev", "agent", "npm", "node_modules", "gentle-engram", "package.json");
 	mkdirSync(dirname(metadata), { recursive: true });
 	writeFileSync(metadata, JSON.stringify({ name: "gentle-engram", version: "0.4.2", engram: { startupPolicy: 1 } }));
-	const env = { HOME: home, PATH: `${userBin}:/usr/bin:/bin`, GENTLE_SHELL_PI: join(userBin, "pi"), GENTLE_SHELL_NO_AUTO_SETUP: "1",
+	const env = { HOME: home, PATH: `${userBin}:/usr/bin:/bin`, TOMIDEV_PI: join(userBin, "pi"), TOMIDEV_NO_AUTO_SETUP: "1",
 		NODE_OPTIONS: `--no-warnings --import=${network} --import=${registerHooks}`, npm_config_registry: "https://npm.example",
-		FIXTURE_SERVE_LOG: serveLog, FIXTURE_ENGRAM_PORT_FILE: portFile };
-	const entry = join(root, "current", "node_modules", "gentle-pi", "bin", "gentle-shell.mjs");
-	const run = (args: string[], extra: Record<string, string> = {}) => spawnSync(process.execPath, [entry, ...args], { env: { ...env, ...extra }, encoding: "utf8", input: "" });
-	return { root, home, userBin, version, piDir, npmCli, engram, metadata, network, guard, run, env, serves, portFile, entry: join(shell, "bin", "gentle-shell.mjs") };
+		FIXTURE_SERVE_LOG: serveLog, FIXTURE_ENGRAM_PORT_FILE: portFile, FIXTURE_PACKAGE_LOG: join(home, "package-calls.log") };
+	const entry = join(root, "current", "node_modules", "tomidev", "bin", "tomidev.mjs");
+	const run = (args: string[], extra: Record<string, string> = {}) => spawnSync(process.execPath, [entry, ...args], { env: assertNotRealHome({ ...env, ...extra }), encoding: "utf8", input: "" });
+	return { root, home, userBin, version, piDir, npmCli, engram, metadata, network, guard, run, env, serves, portFile, entry: join(shell, "bin", "tomidev.mjs") };
 }
 
 const STORE_ID = "0123456789abcdef0123456789abcdef";
@@ -571,7 +576,7 @@ test("a mixed local and npm companion selection is preserved and memory still us
 	const local = join(prefix.home, "legacy-companion");
 	mkdirSync(local);
 	writeFileSync(join(local, "package.json"), JSON.stringify({ name: "gentle-engram", engram: { startupPolicy: 1 } }));
-	const settings = join(prefix.home, ".gentle-shell", "agent", "settings.json");
+	const settings = join(prefix.home, ".tomidev", "agent", "settings.json");
 	const selected = JSON.stringify({ packages: [local, "npm:gentle-engram@0.4.2"] });
 	writeFileSync(settings, selected);
 	const result = prefix.run([]);
@@ -661,7 +666,7 @@ test("memory migrate rejects missing confirmation and malformed flags without in
 		const result = prefix.run(args, { FIXTURE_NO_PROBE: "1" });
 		assert.equal(result.status, 2, result.stderr);
 		assert.equal(result.stdout, "");
-		assert.equal(result.stderr, "Usage: gentle-shell memory migrate --confirm-quiescent\nStop every Engram client before running this command.\n");
+		assert.equal(result.stderr, "Usage: tomidev memory migrate --confirm-quiescent\nStop every Engram client before running this command.\n");
 		assert.equal(existsSync(prefix.invocation), false);
 		assert.equal(readFileSync(provenancePath(prefix), "utf8"), prefix.originalRecord);
 		assert.deepEqual(readFileSync(join(prefix.source, "engram.db")), prefix.sourceBytes);
@@ -685,7 +690,7 @@ test("memory migrate refuses provider failure and mismatched evidence without ch
 		const result = prefix.run(["memory", "migrate", "--confirm-quiescent"], { FIXTURE_NO_PROBE: "1" });
 		assert.equal(result.status, 1, result.stderr);
 		assert.equal(result.stdout, "");
-		assert.match(result.stderr, /^gentle-shell: memory migration failed:/);
+		assert.match(result.stderr, /^tomidev: memory migration failed:/);
 		assert.equal(readFileSync(provenancePath(prefix), "utf8"), prefix.originalRecord);
 		assert.deepEqual(readFileSync(join(prefix.source, "engram.db")), prefix.sourceBytes);
 		assert.equal(existsSync(join(prefix.root, "config", "engram-migration.json")), false);
@@ -768,7 +773,7 @@ test("--version and forwarded Pi version or help flags never probe or start Engr
 	writeFileSync(prefix.metadata, '{"name":"gentle-engram","version":"0.4.1"}');
 	mkdirSync(join(prefix.home, ".engram"));
 	assert.equal(prefix.run([], { FIXTURE_INSTALL_CAPABILITY: "0" }).status, 0);
-	const settings = join(prefix.home, ".gentle-shell", "agent", "settings.json");
+	const settings = join(prefix.home, ".tomidev", "agent", "settings.json");
 	const before = readFileSync(settings, "utf8");
 	for (const args of [["--version"], ["--", "--version"], ["--", "-v"], ["--", "--help"], ["--", "explain this", "-h"]]) {
 		const result = prefix.run(args, { FIXTURE_NO_PROBE: "1" });
@@ -803,20 +808,17 @@ test("a missing bundled core uses the guard, never an engram on PATH", { skip: p
 	assert.equal(existsSync(marker), false);
 });
 
-// A Gentle AI stand-in for setup: counts its runs and changes nothing else.
-function countingGentleAi(prefix: ReturnType<typeof bundledPrefix>) {
-	const log = join(prefix.home, "installer-runs");
-	const bin = join(prefix.userBin, "gentle-ai");
-	writeFileSync(bin, `#!/bin/sh\necho run >> '${log}'\n`, { mode: 0o755 });
-	return { bin, runs: () => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean).length : 0) };
+// Observe native package commands without invoking an external installer.
+function nativeInstalls(prefix: ReturnType<typeof bundledPrefix>): Array<{ args: string[]; env: Record<string, string> }> {
+	const log = prefix.env.FIXTURE_PACKAGE_LOG;
+	return existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 }
 
 test("setup on a fresh machine publishes the bundled core; the next launch starts the shared server and later launches reuse it", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t, { core: false });
-	const installer = countingGentleAi(prefix);
-	const setup = prefix.run(["setup"], { GENTLE_SHELL_GENTLE_AI_BIN: installer.bin });
+	const setup = prefix.run(["setup"]);
 	assert.equal(setup.status, 0, setup.stderr);
-	assert.equal(installer.runs(), 1);
+	assert.deepEqual(nativeInstalls(prefix).map(({ args }) => args), [["install", "npm:gentle-engram"], ["install", "npm:pi-web-access"], ["install", "npm:pi-btw"]]);
 	assert.equal(existsSync(prefix.engram), true);
 	// Setup itself never starts a server.
 	assert.deepEqual(prefix.serves(), []);
@@ -846,10 +848,9 @@ test("a failed companion check after setup is a warning, not a setup failure", {
 	const data = join(prefix.home, ".engram");
 	mkdirSync(data);
 	writeFileSync(join(data, "engram.db"), "untouched database sentinel");
-	const installer = countingGentleAi(prefix);
-	const setup = prefix.run(["setup"], { GENTLE_SHELL_GENTLE_AI_BIN: installer.bin, FIXTURE_INSTALL_CAPABILITY: "0" });
+	const setup = prefix.run(["setup"], { FIXTURE_INSTALL_CAPABILITY: "0" });
 	assert.equal(setup.status, 0, setup.stderr);
-	assert.equal(installer.runs(), 1);
+	assert.ok(nativeInstalls(prefix).some(({ args }) => args[1] === "npm:gentle-engram"));
 	assert.match(setup.stderr, /startupPolicy/);
 	// The guard, not the companion check, protects memory: the shared server is still reused.
 	assert.deepEqual(memoryOf(prefix.run([], { FIXTURE_INSTALL_CAPABILITY: "0" })), ["allow", prefix.guard, DEFAULT_URL]);
@@ -857,23 +858,22 @@ test("a failed companion check after setup is a warning, not a setup failure", {
 	assert.equal(readFileSync(join(data, "engram.db"), "utf8"), "untouched database sentinel");
 });
 
-test("setup with an existing store runs the installer like the baseline and the launch reuses the shared server behind the guard", { skip: posixHost }, (t) => {
+test("setup with an existing store installs native companions and the launch reuses the shared server behind the guard", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t, { core: false });
 	const data = join(prefix.home, ".engram");
 	mkdirSync(data);
 	writeFileSync(join(data, "engram.db"), "untouched database sentinel");
-	const installer = countingGentleAi(prefix);
-	const setup = prefix.run(["setup"], { GENTLE_SHELL_GENTLE_AI_BIN: installer.bin });
+	const setup = prefix.run(["setup"]);
 	assert.equal(setup.status, 0, setup.stderr);
-	assert.equal(installer.runs(), 1);
+	assert.equal(nativeInstalls(prefix).length, 3);
 	assert.equal(existsSync(prefix.engram), true);
 	assert.doesNotMatch(setup.stderr, /memory disabled|deferred/);
 	const guarded = prefix.run([]);
 	assert.equal(guarded.status, 0, guarded.stderr);
 	const env = lastLaunch(guarded).env;
 	assert.deepEqual([env.ENGRAM_STARTUP_POLICY, env.ENGRAM_BIN, env.ENGRAM_URL], ["allow", prefix.guard, DEFAULT_URL]);
-	// Subagents receive the same environment (GENTLE_PI_AGENTS_PI runs the same Pi with it).
-	assert.equal(env.GENTLE_PI_AGENTS_PI.endsWith(join("dist", "bundle", "cli.js")), true);
+	// Subagents receive the same environment (TOMIDEV_AGENTS_PI runs the same Pi with it).
+	assert.equal(env.TOMIDEV_AGENTS_PI.endsWith(join("dist", "bundle", "cli.js")), true);
 	const provider = spawnSync(env.ENGRAM_BIN, ["instance-id"], { env: { ...prefix.env, ...env }, encoding: "utf8" });
 	assert.notEqual(provider.status, 0);
 	assert.match(provider.stderr, /Back up/);
@@ -886,26 +886,30 @@ test("setup with an existing store runs the installer like the baseline and the 
 	assert.equal(existsSync(provenancePath(prefix)), false);
 });
 
-test("a gentle-pi version change reruns setup once and keeps memory on the shared server", { skip: posixHost }, (t) => {
+test("a setupVersion change reruns setup once and keeps memory on the shared server", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t, { core: false });
-	const installer = countingGentleAi(prefix);
-	const auto = { GENTLE_SHELL_NO_AUTO_SETUP: "", GENTLE_SHELL_GENTLE_AI_BIN: installer.bin };
+	const auto = { TOMIDEV_NO_AUTO_SETUP: "" };
 	const first = prefix.run([], auto);
 	assert.equal(first.status, 0, first.stderr);
-	assert.equal(installer.runs(), 1);
+	assert.equal(nativeInstalls(prefix).length, 3);
 	assert.deepEqual(memoryOf(first), ["allow", prefix.guard, DEFAULT_URL]);
-	assert.equal(prefix.run([], auto).status, 0);
-	assert.equal(installer.runs(), 1);
-	const manifest = join(dirname(dirname(prefix.entry)), "package.json");
-	writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version: "999.0.0" }));
+	const configPath = join(prefix.root, "config.json");
+	const config = JSON.parse(readFileSync(configPath, "utf8"));
+	const homeKey = realpathSync(join(prefix.root, "agent"));
+	config.provisioned[homeKey].setupVersion = SETUP_VERSION - 1;
+	writeFileSync(configPath, JSON.stringify(config));
 	const changed = prefix.run([], auto);
 	assert.equal(changed.status, 0, changed.stderr);
-	assert.equal(installer.runs(), 2);
+	assert.match(changed.stderr, /setup version changed/);
+	assert.match(changed.stderr, /provisioning .* with the companion packages/);
+	assert.equal(JSON.parse(readFileSync(configPath, "utf8")).provisioned[homeKey].setupVersion, SETUP_VERSION);
 	assert.doesNotMatch(changed.stderr, /automatic setup failed|deferred/);
 	assert.deepEqual(memoryOf(changed), ["allow", prefix.guard, DEFAULT_URL]);
 	assert.equal(prefix.serves().length, 1);
-	assert.equal(prefix.run([], auto).status, 0);
-	assert.equal(installer.runs(), 2);
+	const again = prefix.run([], auto);
+	assert.equal(again.status, 0, again.stderr);
+	assert.doesNotMatch(again.stderr, /provisioning|setup version changed/);
+	assert.equal(nativeInstalls(prefix).length, 3, "already declared companions are not reinstalled");
 });
 
 test("a missing companion is registered through Pi configuration; a failed readback warns and the guard still protects memory", { skip: posixHost }, (t) => {
@@ -929,7 +933,7 @@ test("capability readback also requires Pi to declare the selected companion", {
 
 test("a user-selected companion pin preserves filters and unrelated settings and is not reinstalled", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t);
-	const settings = join(prefix.home, ".gentle-shell", "agent", "settings.json");
+	const settings = join(prefix.home, ".tomidev", "agent", "settings.json");
 	const other = { source: "npm:unrelated", extensions: ["keep.ts"] };
 	writeFileSync(settings, JSON.stringify({ theme: "chosen", packages: [other, { source: "npm:gentle-engram@0.4.1", autoload: false, extensions: [] }] }));
 	const first = prefix.run([]);
@@ -943,12 +947,9 @@ test("a user-selected companion pin preserves filters and unrelated settings and
 
 test("final startup rechecks a store a newer Engram migrated during automatic setup and never starts a server on it", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t);
-	const fake = join(prefix.userBin, "gentle-ai");
 	const db = join(prefix.home, ".engram", "engram.db");
-	writeFileSync(fake, `#!${process.execPath}\nconst { mkdirSync, writeFileSync } = require('node:fs');\nmkdirSync(${JSON.stringify(dirname(db))}, { recursive: true });\n` +
-		`const header = Buffer.alloc(4096); header.write('SQLite format 3\\0', 0, 'latin1'); header.writeUInt16BE(4096, 16); header[18] = 2; header[19] = 2; header.writeUInt32BE(2, 60);\n` +
-		`writeFileSync(${JSON.stringify(db)}, header);\n`, { mode: 0o755 });
-	const result = prefix.run([], { GENTLE_SHELL_NO_AUTO_SETUP: "", GENTLE_SHELL_GENTLE_AI_BIN: fake });
+	// Model a concurrent newer client during the native package operation.
+	const result = prefix.run([], { TOMIDEV_NO_AUTO_SETUP: "", FIXTURE_NEWER_STORE: "1" });
 	assert.equal(result.status, 0, result.stderr);
 	assert.equal(existsSync(db), true);
 	assert.deepEqual(memoryOf(result), ["disabled", prefix.guard, undefined]);
@@ -970,70 +971,19 @@ test("explicit endpoints and invalid policies never trigger availability probes 
 	assert.deepEqual(prefix.serves(), []);
 });
 
-test("startup offer precedes Pi, not-now preserves config and omit suppresses just that release", { skip: posixHost }, (t) => {
-	const prefix = bundledPrefix(t);
-	const config = join(prefix.root, "config.json");
-	writeFileSync(config, '{"other":"preserved"}\n');
-	const preload = (latest: string) => `
-		Object.defineProperty(process.stdin, 'isTTY', {value:true});
-		Object.defineProperty(process.stdout, 'isTTY', {value:true});
-		process.stdin.setRawMode = (raw) => { process.stdin.isRaw = raw; };
-		globalThis.fetch = async () => new Response(JSON.stringify({version:${JSON.stringify(latest)}}));
-	`;
-	const run = (latest: string, input: string, args: string[] = []) => spawnSync(process.execPath, [prefix.entry, ...args], {
-		env: { ...prefix.env, NODE_OPTIONS: `${prefix.env.NODE_OPTIONS} --import=data:text/javascript,${encodeURIComponent(preload(latest))}` },
-		encoding: "utf8", input, timeout: 10000,
-	});
-	// A recorded lookup answers the next launch without the network, so these
-	// runs simulate later days by aging the cache back past the TTL; the live
-	// lookup then records its own answer again.
-	const ageCache = () => {
-		const parsed = JSON.parse(readFileSync(config, "utf8"));
-		const latest = typeof parsed.startupReleaseCheck?.latest === "string" ? parsed.startupReleaseCheck.latest : "999.0.0";
-		parsed.startupReleaseCheck = { checkedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(), latest };
-		writeFileSync(config, `${JSON.stringify(parsed, null, 2)}\n`);
-	};
-	const skipped = run("999.0.0", "2\r");
-	assert.equal(skipped.status, 0, skipped.stderr);
-	assert.match(skipped.stdout, /Gentle Shell update available/);
-	assert.ok(skipped.stdout.indexOf("Gentle Shell update available") < skipped.stdout.indexOf('"cli":'));
-	// A not-now choice still records no decision, but the live lookup it paid
-	// for lands in the config as the cache tomorrow's launch reuses.
-	const afterSkipped = JSON.parse(readFileSync(config, "utf8"));
-	assert.equal(afterSkipped.other, "preserved");
-	assert.equal(afterSkipped.skippedStartupRelease, undefined);
-	assert.equal(afterSkipped.startupReleaseCheck.latest, "999.0.0");
-	assert.ok(!Number.isNaN(Date.parse(afterSkipped.startupReleaseCheck.checkedAt)));
-	ageCache();
-	const omitted = run("999.0.0", "3\r");
-	assert.equal(omitted.status, 0, omitted.stderr);
-	const afterOmit = JSON.parse(readFileSync(config, "utf8"));
-	assert.equal(afterOmit.other, "preserved");
-	assert.equal(afterOmit.skippedStartupRelease, "999.0.0");
-	assert.equal(afterOmit.startupReleaseCheck.latest, "999.0.0");
-	ageCache();
-	assert.doesNotMatch(run("999.0.0", "").stdout, /Gentle Shell update available/);
-	ageCache();
-	assert.match(run("999.0.1", "2\r").stdout, /Gentle Shell update available/);
-	const command = run("999.0.1", "", ["list"]);
-	assert.equal(command.status, 0, command.stderr);
-	assert.doesNotMatch(command.stdout, /Gentle Shell update available/);
-	assert.deepEqual(JSON.parse(command.stdout.trim().split("\n").at(-1)).args, ["list"]);
-});
-
 test("the bundled launcher runs only its version's Pi, with the user's environment and the bundled npm in its own home", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t);
 	const version = prefix.run(["--version"]);
 	assert.equal(version.status, 0, version.stderr);
-	assert.match(version.stdout, new RegExp(`^gentle-shell ${SHELL.replaceAll(".", "\\.")}\npi 1\\.2\\.0\n`));
+	assert.match(version.stdout, new RegExp(`^tomidev ${SHELL.replaceAll(".", "\\.")}\npi 1\\.2\\.0\n`));
 	const launched = prefix.run(["list"]);
 	assert.equal(launched.status, 0, launched.stderr);
 	const seen = JSON.parse(launched.stdout.trim().split("\n").at(-1) ?? "{}");
 	assert.equal(seen.cli, join(realpathSync(prefix.piDir), "dist", "bundle", "cli.js"));
 	assert.deepEqual(seen.args, ["list"]);
-	assert.equal(seen.env.GENTLE_SHELL_PI, undefined);
+	assert.equal(seen.env.TOMIDEV_PI, undefined);
 	assert.equal(seen.env.PI_SKIP_VERSION_CHECK, "1");
-	assert.equal(seen.env.GENTLE_PI_AGENTS_PI, `${process.execPath} ${seen.cli}`);
+	assert.equal(seen.env.TOMIDEV_AGENTS_PI, `${process.execPath} ${seen.cli}`);
 	// S9: what the agent runs in the user's projects sees the user's tools and settings.
 	assert.equal(seen.env.PATH, prefix.env.PATH);
 	assert.equal(seen.env.NODE_OPTIONS, prefix.env.NODE_OPTIONS);
@@ -1042,14 +992,14 @@ test("the bundled launcher runs only its version's Pi, with the user's environme
 	// S9: gentle-pi's config folder inside the prefix, the shared server's URL
 	// behind the guard for gentle-engram, and none of Gentle AI's own variables.
 	// A Pi subcommand never starts the server.
-	assert.equal(seen.env.GENTLE_SHELL_PREFIX, prefix.root);
-	assert.equal(seen.env.GENTLE_PI_CONFIG_HOME, undefined);
+	assert.equal(seen.env.TOMIDEV_PREFIX, prefix.root);
+	assert.equal(seen.env.TOMIDEV_CONFIG_HOME, undefined);
 	assert.deepEqual([seen.env.ENGRAM_BIN, seen.env.ENGRAM_URL], [prefix.guard, DEFAULT_URL]);
 	assert.deepEqual(prefix.serves(), []);
 	for (const name of ["GENTLE_AI_HOME", "GENTLE_AI_PI_CONFIG_DIR", "GENTLE_AI_ENGRAM_BIN", "GENTLE_AI_NO_SELF_UPDATE"]) assert.equal(seen.env[name], undefined, name);
 	// Pi's own npm is ours, configured only from the prefix, through the isolated home's settings.
-	const settings = JSON.parse(readFileSync(join(prefix.home, ".gentle-shell", "agent", "settings.json"), "utf8"));
-	const shim = join(prefix.root, "runtime", "node-24.21.0", "gentle-shell", "npm");
+	const settings = JSON.parse(readFileSync(join(prefix.home, ".tomidev", "agent", "settings.json"), "utf8"));
+	const shim = join(prefix.root, "runtime", "node-24.21.0", "tomidev", "npm");
 	assert.deepEqual(settings.npmCommand.slice(0, 2), [join(prefix.root, "runtime", "node-24.21.0", "bin", "node"), shim]);
 	// The entry named npm exists before Pi is given it, and runs our npm.
 	assert.equal(spawnSync(process.execPath, [shim, "--version"], { encoding: "utf8" }).stdout, "11.19.0\n");
@@ -1063,58 +1013,28 @@ test("the bundled launcher runs only its version's Pi, with the user's environme
 	assert.equal(readFileSync(join(linked, "settings.json"), "utf8"), "{}\n");
 });
 
-// S9: `gentle-shell setup` gives the pinned Gentle AI the prefix's state folder,
-// gentle-pi config folder and Engram, and no self-update; the personas and the
-// managed-asset record it may rewrite are put back.
-test("bundled setup runs Gentle AI with the prefix's isolation variables and keeps both personas", { skip: posixHost }, (t) => {
+test("bundled native setup gives Pi the prefix environment and leaves personas and shared state untouched", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t);
-	const probe = join(prefix.home, "gentle-ai-env.txt");
-	const fakeGentleAi = join(prefix.userBin, "gentle-ai");
-	// Writes what a Gentle AI with and without #5462 would: the prefix persona and the user's.
-	// Without the variable (a launcher that does not set it) it writes inside the temporary HOME, never elsewhere.
-	writeFileSync(fakeGentleAi, ["#!/bin/sh", `env > "${probe}"`, 'config="${GENTLE_AI_PI_CONFIG_DIR:-$HOME/no-config-dir}"', 'mkdir -p "$config" "$HOME/.pi/gentle-ai"',
-		'echo rewritten > "$config/persona.json"', 'echo rewritten > "$HOME/.pi/gentle-ai/persona.json"', ""].join("\n"), { mode: 0o755 });
-	const userPersona = join(prefix.home, ".pi", "gentle-ai", "persona.json");
-	const prefixPersona = join(prefix.root, "config", "gentle-ai", "persona.json");
-	for (const path of [userPersona, prefixPersona]) {
+	const preserved = [join(prefix.home, ".pi", "gentle-ai", "persona.json"), join(prefix.root, "config", "gentle-ai", "persona.json"), join(prefix.home, ".gentle-ai", "state.json")];
+	for (const path of preserved) {
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, "{\"mode\":\"chosen\"}\n");
+		writeFileSync(path, "{\"chosen\":true}\n");
 	}
-	const result = prefix.run(["setup"], { GENTLE_SHELL_GENTLE_AI_BIN: fakeGentleAi, ENGRAM_BIN: "", GENTLE_AI_HOME: "/home/ana/.gentle-ai" });
+	const result = prefix.run(["setup"]);
 	assert.equal(result.status, 0, result.stderr);
-	const seen = Object.fromEntries(readFileSync(probe, "utf8").trim().split("\n").map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
-	assert.equal(seen.GENTLE_AI_HOME, join(prefix.root, "gentle-ai"));
-	assert.equal(seen.GENTLE_AI_PI_CONFIG_DIR, join(prefix.root, "config", "gentle-ai"));
-	assert.equal(seen.GENTLE_AI_ENGRAM_BIN, prefix.engram);
-	// #2105: the pinned Engram is the first `engram` on Gentle AI's PATH, so no `brew` is needed.
-	assert.equal(seen.PATH.split(":")[0], dirname(prefix.engram));
-	assert.equal(seen.GENTLE_AI_NO_SELF_UPDATE, "1");
-	assert.equal(seen.PI_CODING_AGENT_DIR, join(prefix.home, ".gentle-shell", "agent"));
-	// Only setup's Gentle AI gets it, as the parent Gentle AI 4.0.0 reads it as.
-	assert.equal(seen.GENTLE_PI_CONFIG_HOME, join(prefix.root, "config"));
-	for (const path of [userPersona, prefixPersona]) assert.equal(readFileSync(path, "utf8"), "{\"mode\":\"chosen\"}\n", path);
-});
-
-// B2a: a Gentle AI that knows no GENTLE_AI_PI_CONFIG_DIR (the pinned 4.0.0,
-// internal/cli/pi_background.go piBackgroundPolicyPath) writes the managed
-// background-subagents policy to <GENTLE_PI_CONFIG_HOME>/gentle-ai, else to
-// ~/.pi/gentle-ai. Bundled setup makes that the bundled gentle-pi's own config
-// folder, and the user's ~/.pi/gentle-ai stays untouched.
-test("bundled setup puts Gentle AI 4.0.0's background-subagents policy where the bundled gentle-pi reads it", { skip: posixHost }, async (t) => {
-	const prefix = bundledPrefix(t);
-	const fakeGentleAi = join(prefix.userBin, "gentle-ai");
-	writeFileSync(fakeGentleAi, ["#!/bin/sh", 'base="${GENTLE_PI_CONFIG_HOME:-$HOME/.pi}"', 'mkdir -p "$base/gentle-ai"',
-		`printf '%s' '{"schema":"gentle-pi.background-subagents/v1","policy":"on"}' > "$base/gentle-ai/background-subagents.json"`, ""].join("\n"), { mode: 0o755 });
-	const result = prefix.run(["setup"], { GENTLE_SHELL_GENTLE_AI_BIN: fakeGentleAi });
-	assert.equal(result.status, 0, result.stderr);
-	assert.equal(existsSync(join(prefix.home, ".pi", "gentle-ai")), false, "the user's config folder is untouched");
-	// The bundled gentle-pi's own reading: its config home is derived from the prefix.
-	setBundledInstallForTesting({ root: prefix.root });
-	t.after(() => setBundledInstallForTesting(undefined));
-	const env = { GENTLE_SHELL_PREFIX: prefix.root };
-	const resolution = resolveBackgroundSubagentsPolicy(prefix.home, { env, gentlePiConfigHome: gentlePiConfigHome(env) });
-	assert.deepEqual([resolution.policy, resolution.source], ["on", "global_file"]);
-	assert.equal(resolution.globalFile, join(prefix.root, "config", "gentle-ai", "background-subagents.json"));
+	const installs = nativeInstalls(prefix);
+	assert.equal(installs.length, 3);
+	for (const { env } of installs) {
+		assert.equal(env.PI_CODING_AGENT_DIR, join(prefix.root, "agent"));
+		assert.equal(env.TOMIDEV_PREFIX, prefix.root);
+		assert.equal(env.GENTLE_AI_PI_CONFIG_DIR, undefined);
+		assert.equal(env.GENTLE_AI_HOME, undefined);
+		assert.equal(env.GENTLE_AI_NO_SELF_UPDATE, undefined);
+		assert.equal(env.PATH.split(":")[0], dirname(process.execPath));
+		assert.equal(env.ENGRAM_BIN, prefix.guard);
+	}
+	for (const path of preserved) assert.equal(readFileSync(path, "utf8"), "{\"chosen\":true}\n", path);
+	assert.equal(existsSync(join(prefix.root, "config", "gentle-ai", "background-subagents.json")), false);
 });
 
 test("a home holding the npmCommand written before the npm entry existed gets only that key updated", { skip: posixHost }, (t) => {
@@ -1124,12 +1044,12 @@ test("a home holding the npmCommand written before the npm entry existed gets on
 		`--cache=${join(prefix.root, "npm", "cache")}`, "--update-notifier=false"];
 	// The value written before N1: npm-cli.js directly, and a --prefix flag.
 	const previous = [join(node, "bin", "node"), prefix.npmCli, ...flags.slice(0, 3), `--prefix=${join(prefix.root, "npm", "prefix")}`, flags[3]];
-	const agent = join(prefix.home, ".gentle-shell", "agent");
+	const agent = join(prefix.home, ".tomidev", "agent");
 	mkdirSync(agent, { recursive: true });
 	writeFileSync(join(agent, "settings.json"), `${JSON.stringify({ theme: "gentle", npmCommand: previous, packages: ["npm:x"] }, null, 2)}\n`);
 	assert.equal(prefix.run(["list"]).status, 0);
 	const settings = JSON.parse(readFileSync(join(agent, "settings.json"), "utf8"));
-	assert.deepEqual(settings, { theme: "gentle", npmCommand: [join(node, "bin", "node"), join(node, "gentle-shell", "npm"), ...flags], packages: ["npm:x"] });
+	assert.deepEqual(settings, { theme: "gentle", npmCommand: [join(node, "bin", "node"), join(node, "tomidev", "npm"), ...flags], packages: ["npm:x"] });
 });
 
 test("a runtime without our npm gives Pi no npmCommand and says so", { skip: posixHost }, (t) => {
@@ -1138,7 +1058,7 @@ test("a runtime without our npm gives Pi no npmCommand and says so", { skip: pos
 	const result = prefix.run(["list"]);
 	assert.equal(result.status, 0, result.stderr);
 	assert.match(result.stderr, /could not give Pi the bundled npm.*Bundled npm missing/);
-	const settings = join(prefix.home, ".gentle-shell", "agent", "settings.json");
+	const settings = join(prefix.home, ".tomidev", "agent", "settings.json");
 	assert.equal(existsSync(settings) && "npmCommand" in JSON.parse(readFileSync(settings, "utf8")), false);
 });
 
@@ -1146,7 +1066,7 @@ test("the version check before activation runs that version in bundled mode, nev
 	const prefix = bundledPrefix(t);
 	const other = join(prefix.root, "versions", "0.0.1-1.0.0");
 	mkdirSync(other);
-	writeFileSync(join(other, ".gentle-shell-version"), "0.0.1-1.0.0\n");
+	writeFileSync(join(other, ".tomidev-version"), "0.0.1-1.0.0\n");
 	rmSync(join(prefix.root, "current"));
 	symlinkSync("versions/0.0.1-1.0.0", join(prefix.root, "current"));
 	const verify = (env: Record<string, string>) => spawnSync(process.execPath, [prefix.entry, "--version"], { env: { HOME: prefix.home, PATH: `${prefix.userBin}:/usr/bin:/bin`, ...env },
@@ -1164,14 +1084,14 @@ test("the version check before activation runs that version in bundled mode, nev
 	assert.match(verify({}).stdout, /\npi 1\.2\.0\n/);
 	// Only --version honors it.
 	const list = spawnSync(process.execPath, [prefix.entry, "list"], { env: { HOME: prefix.home, PATH: `${prefix.userBin}:/usr/bin:/bin`, [BUNDLED_VERIFY_ENV]: FIXTURE_ID,
-		GENTLE_SHELL_NO_AUTO_SETUP: "1" }, encoding: "utf8", input: "" });
+		TOMIDEV_NO_AUTO_SETUP: "1" }, encoding: "utf8", input: "" });
 	assert.equal(list.stdout, "1.2.0\n");
 });
 
 test("the bundled launcher refuses a Pi that is not the pinned one", { skip: posixHost }, (t) => {
 	const result = bundledPrefix(t, { pi: "1.0.0" }).run(["--version"]);
 	assert.equal(result.status, 1);
-	assert.match(result.stderr, new RegExp(`Gentle Shell ${FIXTURE_ID.replaceAll(".", "\\.")} .*gentle-shell upgrade`, "s"));
+	assert.match(result.stderr, new RegExp(`Tomidev Shell ${FIXTURE_ID.replaceAll(".", "\\.")} .*tomidev upgrade`, "s"));
 	assert.doesNotMatch(result.stdout, /9\.9\.9/);
 });
 
@@ -1184,7 +1104,7 @@ function nativeCompanionFixture(t: TestContext) {
 	const interactive = pathToFileURL(join(piDist, "modes", "interactive", "interactive-mode.js")).href;
 	const theme = pathToFileURL(join(piDist, "modes", "interactive", "theme", "theme.js")).href;
 	const commands = pathToFileURL(join(piDist, "package-manager-cli.js")).href;
-	const agent = join(prefix.home, ".gentle-shell", "agent");
+	const agent = join(prefix.home, ".tomidev", "agent");
 	const settings = join(agent, "settings.json");
 	const calls = join(prefix.home, "npm-calls.jsonl");
 	const node = join(prefix.root, "runtime", "node-24.21.0", "bin", "node");
@@ -1349,7 +1269,7 @@ test("bundled all forwards extensions and reports a failed Pi update", { skip: p
 	const prefix = bundledPrefix(t);
 	const result = prefix.run(["update", "pi", "--extensions"], { FIXTURE_PI_UPDATE_FAIL: "1" });
 	assert.equal(result.status, 1);
-	assert.equal(result.stderr.split("\n")[0], "gentle-shell update: fixture Pi installation failed");
+	assert.equal(result.stderr.split("\n")[0], "tomidev update: fixture Pi installation failed");
 	assert.match(result.stderr, /latest Pi update did not complete; updating the extensions anyway/);
 	const seen = JSON.parse(result.stdout.trim().split("\n").at(-1) ?? "{}");
 	assert.deepEqual(seen.args, ["update", "--extensions"]);
@@ -1359,7 +1279,7 @@ test("bundled all forwards extensions and reports a failed Pi update", { skip: p
 test("bundled update rejects unsupported force without changing the active version", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t);
 	const result = prefix.run(["update", "--force"]);
-	assert.deepEqual([result.status, result.stdout, result.stderr], [2, "", "gentle-shell update: --force is not supported for managed Pi updates.\n"]);
+	assert.deepEqual([result.status, result.stdout, result.stderr], [2, "", "tomidev update: --force is not supported for managed Pi updates.\n"]);
 	assert.equal(readlinkSync(join(prefix.root, "current")), `versions/${FIXTURE_ID}`);
 });
 
@@ -1378,11 +1298,11 @@ test("a kept version that current does not name keeps the ordinary Pi override a
 	const prefix = bundledPrefix(t);
 	const other = join(prefix.root, "versions", "0.0.1-1.0.0");
 	mkdirSync(other);
-	writeFileSync(join(other, ".gentle-shell-version"), "0.0.1-1.0.0\n");
+	writeFileSync(join(other, ".tomidev-version"), "0.0.1-1.0.0\n");
 	rmSync(join(prefix.root, "current"));
 	symlinkSync("versions/0.0.1-1.0.0", join(prefix.root, "current"));
 	const options = { env: { HOME: dirname(prefix.root), PATH: "/usr/bin:/bin",
-		GENTLE_SHELL_PI: join(dirname(dirname(prefix.root)), "user-bin", "pi"), GENTLE_SHELL_NO_AUTO_SETUP: "1" }, encoding: "utf8" as const, input: "" };
+		TOMIDEV_PI: join(dirname(dirname(prefix.root)), "user-bin", "pi"), TOMIDEV_NO_AUTO_SETUP: "1" }, encoding: "utf8" as const, input: "" };
 	const version = spawnSync(process.execPath, [prefix.entry, "--version"], options);
 	assert.equal(version.status, 0, version.stderr);
 	assert.match(version.stdout, /pi 9\.9\.9/);
@@ -1393,27 +1313,27 @@ test("a kept version that current does not name keeps the ordinary Pi override a
 	assert.match(update.stderr, /ownership selected executable is not a Pi entry or shim.*No installation changed\./);
 });
 
-test("gentle-shell upgrade in a bundled install refuses the main channel and rolls back to the kept version", { skip: posixHost }, (t) => {
+test("tomidev upgrade in a bundled install refuses the main channel and rolls back to the kept version", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t);
 	const main = prefix.run(["upgrade", "--channel", "main"]);
 	assert.equal(main.status, 1);
 	assert.match(main.stderr, /release channel only/);
 	const none = prefix.run(["upgrade", "--rollback"]);
 	assert.equal(none.status, 1);
-	assert.match(none.stderr, /No previous Gentle Shell version/);
+	assert.match(none.stderr, /No previous Tomidev Shell version/);
 	assert.equal(readlinkSync(join(prefix.root, "current")), `versions/${FIXTURE_ID}`);
 });
 
 // T6 (S6, S7): the bundled launcher's self-uninstall, end to end through the real bin.
-test("gentle-shell self-uninstall in a bundled install removes the recorded PATH line and the prefix's own folders, and keeps the Gentle Shell home", { skip: posixHost }, (t) => {
+test("tomidev self-uninstall in a bundled install removes the recorded PATH line and the prefix's own folders, and keeps the Tomidev Shell home", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t);
 	const zshrc = join(prefix.home, ".zshrc");
-	const line = `export PATH="${join(prefix.root, "bin")}:$PATH" # gentle-shell bundled install`;
+	const line = `export PATH="${join(prefix.root, "bin")}:$PATH" # tomidev bundled install`;
 	writeFileSync(zshrc, `alias ll='ls -l'\n${line}\n`);
 	writeFileSync(join(prefix.root, "path-entry.json"), JSON.stringify({ schema: 1, kind: "profile", path: zshrc, line, create: false, separator: false }));
 	mkdirSync(join(prefix.root, "bin"));
 	writeFileSync(join(prefix.root, "bin", "gentle-shell"), "#!/bin/sh\n");
-	const agent = join(prefix.home, ".gentle-shell", "agent");
+	const agent = join(prefix.home, ".tomidev", "agent");
 	mkdirSync(agent, { recursive: true });
 	writeFileSync(join(agent, "auth.json"), "{}");
 	const dry = prefix.run(["self-uninstall", "--dry-run"]);
@@ -1423,7 +1343,7 @@ test("gentle-shell self-uninstall in a bundled install removes the recorded PATH
 	assert.equal(readFileSync(zshrc, "utf8"), `alias ll='ls -l'\n${line}\n`);
 	const result = prefix.run(["self-uninstall", "--yes"]);
 	assert.equal(result.status, 0, result.stderr);
-	assert.match(result.stdout, /Gentle Shell was removed\./);
+	assert.match(result.stdout, /Tomidev Shell was removed\./);
 	assert.equal(readFileSync(zshrc, "utf8"), "alias ll='ls -l'\n");
 	assert.deepEqual(readdirSync(prefix.root), ["agent"]);
 	assert.equal(readFileSync(join(agent, "auth.json"), "utf8"), "{}");
@@ -1433,9 +1353,9 @@ test("gentle-shell self-uninstall in a bundled install removes the recorded PATH
 });
 
 // A1 (T6 verifier): a receipt naming a file the PATH plan never edits is not acted on.
-test("gentle-shell self-uninstall in a bundled install never edits or deletes a file a forged PATH receipt names, and says to remove the entry by hand", { skip: posixHost }, (t) => {
+test("tomidev self-uninstall in a bundled install never edits or deletes a file a forged PATH receipt names, and says to remove the entry by hand", { skip: posixHost }, (t) => {
 	const prefix = bundledPrefix(t);
-	const line = `export PATH="${join(prefix.root, "bin")}:$PATH" # gentle-shell bundled install`;
+	const line = `export PATH="${join(prefix.root, "bin")}:$PATH" # tomidev bundled install`;
 	const dotfile = join(prefix.home, "dotfiles", "path.sh");
 	mkdirSync(dirname(dotfile), { recursive: true });
 	writeFileSync(dotfile, `${line}\n`);

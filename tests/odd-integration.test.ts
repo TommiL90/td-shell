@@ -7,9 +7,9 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 
 test("ODD continuity persists the task file and complete Engram mirror across resume", () => {
 	const memory = read("assets/orchestrator-memory.md");
-	assert.match(memory, /one feature document, not a separate plan file or topic/);
-	assert.match(memory, /odd\/tasks\/<feature-name>\.md/);
-	assert.match(memory, /odd\/<feature-name>\/tasks/);
+	assert.match(memory, /one feature (?:directory|document), not a separate plan file or topic/);
+	assert.match(memory, /(?:\.agents\/designs\/features\/|odd\/tasks\/<feature-name>\.md)/);
+	assert.match(memory, /(?:features\/<feature-name>\/state|odd\/<feature-name>\/tasks)/);
 	assert.match(memory, /Mirror the full current document and repository-relative file locator/);
 	assert.match(memory, /Read back both writes; they are not atomic/);
 	assert.match(memory, /mirror pending/);
@@ -51,7 +51,7 @@ test("retired SDD routes and assets are absent while ODD entry and generic worke
 	// S11 T3: deduplicated. The core's "ODD (Default Workflow, harness section
 	// above) is mandatory on every request" restated the harness; the mandatory
 	// ODD entry is stated once, in the harness that renders above the core.
-	assert.match(read("extensions/gentle-ai.ts"), /Default workflow: Organic Driven Development \(MANDATORY\)\nOrganic Driven Development \(ODD\) is the predefined workflow of this orchestrator\. Every request enters it/);
+	assert.match(read("extensions/gentle-ai.ts"), /Default workflow: Organic Driven Development \(fallback\)\nUse these useful defaults only for aspects the project leaves undefined/);
 	assert.doesNotMatch(core, /ODD \(Default Workflow, harness section above\)/);
 	assert.match(delegation, /generic writer chain is unavailable/);
 	for (const path of [

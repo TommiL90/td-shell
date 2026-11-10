@@ -5,11 +5,11 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { CHILD_PACKAGE_INJECTION_ENV, encodeChildPackageInjection, parseChildPackageInjection } from "../lib/child-package-injection.ts";
 import { bundledChildEnv } from "../lib/gentle-shell-bundled.ts";
+import { assertNotRealHome } from "./support/isolated-home.ts";
 import {
-	GENTLE_AI_PI_EXCLUDE_PACKAGES_ENV,
 	MIN_PI_VERSION,
-	withLauncherPackagesExcluded,
-	MIN_SETUP_GENTLE_AI_VERSION,
+	SETUP_VERSION,
+	missingSetupCompanions,
 	PI_SUBCOMMANDS,
 	buildPiInvocation,
 	checkPeerVersionPin,
@@ -21,7 +21,6 @@ import {
 	forceJsonFieldIfAbsentInOriginal,
 	helpText,
 	homeSelectorFlags,
-	isSetupCapablePin,
 	launcherConfigPath,
 	type LooseExtensionFsEntry,
 	missingPiMessage,
@@ -83,7 +82,7 @@ test("parseLauncherArgs reserves explicit memory recovery without consuming prio
 		assert.deepEqual(parsed.commandArgs, ["--help"]);
 	}
 	assert.deepEqual(parseLauncherArgs(["--", "memory"]).passthrough, ["memory"]);
-	assert.match(helpText(), /gentle-shell memory migrate --confirm-quiescent/);
+	assert.match(helpText(), /tomidev memory migrate --confirm-quiescent/);
 });
 
 test("parseLauncherArgs captures a --package-root value from the next argument", () => {
@@ -199,22 +198,22 @@ test("parseLauncherArgs keeps uninstall as pi's own alias for remove", () => {
 	assert.deepEqual(parsed.passthrough, ["uninstall", "npm:x"]);
 });
 
-test("help text documents gentle-shell self-uninstall and its flags", () => {
+test("help text documents tomidev self-uninstall and its flags", () => {
 	const text = helpText();
-	assert.ok(text.includes("       gentle-shell self-uninstall [--dry-run] [--yes] [--include-shared]"));
-	assert.ok(text.includes("  self-uninstall   Remove Gentle Shell: its own data, the isolated home and the gentle-pi"));
-	assert.match(text, /'gentle-shell uninstall <source>' is pi's own alias for 'remove'/);
+	assert.ok(text.includes("       tomidev self-uninstall [--dry-run] [--yes] [--include-shared]"));
+	assert.ok(text.includes("  self-uninstall   Remove Tomidev Shell: its own data, the isolated home and the tomidev"));
+	assert.match(text, /'tomidev uninstall <source>' is pi's own alias for 'remove'/);
 });
 
-test("help text documents gentle-shell upgrade and its channels", () => {
+test("help text documents tomidev upgrade and its channels", () => {
 	const text = helpText();
-	assert.ok(text.includes("       gentle-shell upgrade [--channel release|main]"));
-	assert.ok(text.includes("  upgrade          Update Gentle Shell along its channel: the latest release, or the latest"));
+	assert.ok(text.includes("       tomidev upgrade [--channel release|main]"));
+	assert.ok(text.includes("  upgrade          Update Tomidev Shell along its channel: the latest release, or the latest"));
 });
 
 test("help text documents the bundled upgrade, its rollback and the pinned Pi update", () => {
 	const text = helpText();
-	assert.ok(text.includes("       gentle-shell upgrade --rollback"));
+	assert.ok(text.includes("       tomidev upgrade --rollback"));
 	assert.match(text, /bundled install.*release channel only.*--rollback switches back to the previous kept version/s);
 	assert.match(text, /In a bundled install 'update' installs the newest stable Pi\n\s+without the release's verified lockfile; --latest is an alias\./);
 	assert.match(text, /--all also updates extensions; explicit package pins remain pinned\./);
@@ -245,20 +244,20 @@ test("parseLauncherArgs accepts home selectors ahead of home import-pi only", ()
 	assert.deepEqual(parseLauncherArgs(["-p", "home", "import-pi"]).passthrough, ["-p", "home", "import-pi"]);
 });
 
-test("help text documents gentle-shell home import-pi", () => {
+test("help text documents tomidev home import-pi", () => {
 	const text = helpText();
-	assert.ok(text.includes("       gentle-shell [home selectors] home import-pi [--dry-run]"));
+	assert.ok(text.includes("       tomidev [home selectors] home import-pi [--dry-run]"));
 	assert.match(text, /import-pi\s+Copy your pi sign-ins \(auth\.json\) and MCP servers \(mcp\.json\)/);
 });
 
 test("separateHomeHint mentions home import-pi only when the user's pi home has sign-ins", () => {
-	const isolated: ResolvedHome = { mode: "isolated", dir: "/h/.gentle-shell/agent", source: "default" };
+	const isolated: ResolvedHome = { mode: "isolated", dir: "/h/.tomidev/agent", source: "default" };
 	const without = separateHomeHint(isolated, { piSignIns: false });
-	assert.equal(without, "gentle-shell: using a separate home at /h/.gentle-shell/agent. Run 'gentle-shell --link' to reuse your pi sign-ins and chats.");
+	assert.equal(without, "tomidev: using a separate home at /h/.tomidev/agent. Run 'tomidev --link' to reuse your pi sign-ins and chats.");
 	const withSignIns = separateHomeHint(isolated, { piSignIns: true });
-	assert.match(withSignIns, /Run 'gentle-shell --link' to reuse your pi sign-ins and chats, or 'gentle-shell home import-pi' to copy your sign-ins and MCP servers into this home\.$/);
+	assert.match(withSignIns, /Run 'tomidev --link' to reuse your pi sign-ins and chats, or 'tomidev home import-pi' to copy your sign-ins and MCP servers into this home\.$/);
 	const path = separateHomeHint({ mode: "path", dir: "/custom", source: "flag" }, { piSignIns: true });
-	assert.match(path, /'gentle-shell --home \/custom home import-pi'/);
+	assert.match(path, /'tomidev --home \/custom home import-pi'/);
 });
 
 // --- setup subcommand ----------------------------------------------------
@@ -425,7 +424,7 @@ test("resolveHome falls back to <homedir>/.pi/agent for --link with no override"
 });
 
 test("--link inside an isolated session resolves the preserved original Pi home (#2015)", () => {
-	const nestedEnv = { PI_CODING_AGENT_DIR: "/home/alan/.gentle-shell/agent", GENTLE_SHELL_USER_PI_HOME: "/custom/pi" };
+	const nestedEnv = { PI_CODING_AGENT_DIR: "/home/alan/.tomidev/agent", TOMIDEV_USER_PI_HOME: "/custom/pi" };
 	// Nested: the inherited isolated home must not be re-selected.
 	assert.deepEqual(
 		resolveHome({ args: args({ link: true }), env: nestedEnv, homedir: "/home/alan", config: undefined }),
@@ -440,19 +439,19 @@ test("--link inside an isolated session resolves the preserved original Pi home 
 	assert.equal(resolveHome({ args: args({ link: true }), env: {}, homedir: "/home/alan", config: undefined }).dir, join("/home/alan", ".pi", "agent"));
 });
 
-test("resolveHome honours --isolated and reads GENTLE_SHELL_HOME", () => {
+test("resolveHome honours --isolated and reads TOMIDEV_HOME", () => {
 	const resolved = resolveHome({
 		args: args({ isolated: true }),
-		env: { GENTLE_SHELL_HOME: "/custom/isolated" },
+		env: { TOMIDEV_HOME: "/custom/isolated" },
 		homedir: "/home/alan",
 		config: undefined,
 	});
 	assert.deepEqual(resolved, { mode: "isolated", dir: "/custom/isolated", source: "flag" });
 });
 
-test("resolveHome falls back to <homedir>/.gentle-shell/agent for --isolated with no override", () => {
+test("resolveHome falls back to <homedir>/.tomidev/agent for --isolated with no override", () => {
 	const resolved = resolveHome({ args: args({ isolated: true }), env: {}, homedir: "/home/alan", config: undefined });
-	assert.deepEqual(resolved, { mode: "isolated", dir: join("/home/alan", ".gentle-shell", "agent"), source: "flag" });
+	assert.deepEqual(resolved, { mode: "isolated", dir: join("/home/alan", ".tomidev", "agent"), source: "flag" });
 });
 
 test("resolveHome uses the --home value verbatim", () => {
@@ -467,7 +466,7 @@ test("resolveHome falls back to a persisted link config", () => {
 
 test("resolveHome falls back to a persisted isolated config", () => {
 	const resolved = resolveHome({ args: args(), env: {}, homedir: "/home/alan", config: { mode: "isolated" } });
-	assert.deepEqual(resolved, { mode: "isolated", dir: join("/home/alan", ".gentle-shell", "agent"), source: "config" });
+	assert.deepEqual(resolved, { mode: "isolated", dir: join("/home/alan", ".tomidev", "agent"), source: "config" });
 });
 
 test("resolveHome falls back to a persisted path config", () => {
@@ -477,7 +476,7 @@ test("resolveHome falls back to a persisted path config", () => {
 
 test("resolveHome defaults to isolated when neither a flag nor a config is present", () => {
 	const resolved = resolveHome({ args: args(), env: {}, homedir: "/home/alan", config: undefined });
-	assert.deepEqual(resolved, { mode: "isolated", dir: join("/home/alan", ".gentle-shell", "agent"), source: "default" });
+	assert.deepEqual(resolved, { mode: "isolated", dir: join("/home/alan", ".tomidev", "agent"), source: "default" });
 });
 
 test("resolveHome lets a flag override a persisted config", () => {
@@ -497,13 +496,13 @@ test("homeSelectorFlags reproduces --home <dir> for a path home", () => {
 });
 
 test("homeSelectorFlags is empty for the isolated default (no flags needed)", () => {
-	assert.deepEqual(homeSelectorFlags({ mode: "isolated", dir: "/home/alan/.gentle-shell/agent", source: "default" }), []);
+	assert.deepEqual(homeSelectorFlags({ mode: "isolated", dir: "/home/alan/.tomidev/agent", source: "default" }), []);
 });
 
 // --- launcherConfigPath / parseLauncherConfig -----------------------------
 
-test("launcherConfigPath points at <homedir>/.gentle-shell/config.json", () => {
-	assert.equal(launcherConfigPath("/home/alan"), join("/home/alan", ".gentle-shell", "config.json"));
+test("launcherConfigPath points at <homedir>/.tomidev/config.json", () => {
+	assert.equal(launcherConfigPath("/home/alan"), join("/home/alan", ".tomidev", "config.json"));
 });
 
 test("parseLauncherConfig accepts a link config", () => {
@@ -568,7 +567,7 @@ test("parseRawLauncherConfig preserves every key, not just home", () => {
 });
 
 test("provisionedEntry is undefined for a home with no marker", () => {
-	assert.equal(provisionedEntry({}, "/home/alan/.gentle-shell/agent"), undefined);
+	assert.equal(provisionedEntry({}, "/home/alan/.tomidev/agent"), undefined);
 });
 
 test("provisionedEntry returns the stored record for a matching home", () => {
@@ -582,44 +581,41 @@ test("provisionedEntry tolerates a malformed provisioned map (non-object, missin
 });
 
 test("needsProvisioning is true for a home with no marker", () => {
-	assert.equal(needsProvisioning({}, "/a", "3.6.0", "3.5.1"), true);
+	assert.equal(needsProvisioning({}, "/a", SETUP_VERSION, "3.5.1"), true);
 });
 
-test("needsProvisioning is true when the marker's pin differs from the current pin", () => {
+test("needsProvisioning is true for legacy gentleAi records", () => {
 	const config: RawLauncherConfig = { provisioned: { "/a": { gentleAi: "3.6.0", gentlePi: "3.5.1", at: "2026-09-22T00:00:00.000Z" } } };
-	assert.equal(needsProvisioning(config, "/a", "3.6.1", "3.5.1"), true);
+	assert.equal(needsProvisioning(config, "/a", SETUP_VERSION, "3.5.1"), true);
 });
 
-test("needsProvisioning is false when the marker's pin and gentle-pi version both match the current ones", () => {
-	const config: RawLauncherConfig = { provisioned: { "/a": { gentleAi: "3.6.0", gentlePi: "3.5.1", at: "2026-09-22T00:00:00.000Z" } } };
-	assert.equal(needsProvisioning(config, "/a", "3.6.0", "3.5.1"), false);
+test("needsProvisioning is false when setup and launcher versions match", () => {
+	const config = recordProvisioned({}, "/a", SETUP_VERSION, "3.5.1", "2026-09-22T00:00:00.000Z");
+	assert.equal(needsProvisioning(config, "/a", SETUP_VERSION, "3.5.1"), false);
 });
 
-// A marker written before gentle-pi version tracking existed (S8) has no
-// `gentlePi` field at all; that omission must never equal a real running
-// version, so it always counts as needing provisioning even though the
-// gentle-ai pin itself still matches.
-test("needsProvisioning is true when the marker predates gentle-pi version tracking (no gentlePi field)", () => {
-	const config: RawLauncherConfig = { provisioned: { "/a": { gentleAi: "3.6.0", at: "2026-09-22T00:00:00.000Z" } } };
-	assert.equal(needsProvisioning(config, "/a", "3.6.0", "3.5.1"), true);
+test("needsProvisioning is true when the marker predates launcher version tracking", () => {
+	const config: RawLauncherConfig = { provisioned: { "/a": { setupVersion: SETUP_VERSION, at: "2026-09-22T00:00:00.000Z" } } };
+	assert.equal(needsProvisioning(config, "/a", SETUP_VERSION, "3.5.1"), true);
 });
 
-test("needsProvisioning is true when the marker's gentle-pi version differs from the running one, even though the pin matches", () => {
-	const config: RawLauncherConfig = { provisioned: { "/a": { gentleAi: "3.6.0", gentlePi: "3.5.0", at: "2026-09-22T00:00:00.000Z" } } };
-	assert.equal(needsProvisioning(config, "/a", "3.6.0", "3.5.1"), true);
+test("needsProvisioning is true when either setup or launcher version changes", () => {
+	const config = recordProvisioned({}, "/a", SETUP_VERSION, "3.5.1", "2026-09-22T00:00:00.000Z");
+	assert.equal(needsProvisioning(config, "/a", SETUP_VERSION + 1, "3.5.1"), true);
+	assert.equal(needsProvisioning(config, "/a", SETUP_VERSION, "3.5.2"), true);
 });
 
-test("recordProvisioned adds a marker (gentleAi, gentlePi, at) and preserves every other key, including other homes", () => {
+test("recordProvisioned adds a marker (setupVersion, gentlePi, at) and preserves every other key, including other homes", () => {
 	const config: RawLauncherConfig = {
 		home: "isolated",
 		provisioned: { "/other": { gentleAi: "3.5.0", gentlePi: "3.4.0", at: "2026-01-01T00:00:00.000Z" } },
 	};
-	const updated = recordProvisioned(config, "/a", "3.6.0", "3.5.1", "2026-09-22T00:00:00.000Z");
+	const updated = recordProvisioned(config, "/a", SETUP_VERSION, "3.5.1", "2026-09-22T00:00:00.000Z");
 	assert.deepEqual(updated, {
 		home: "isolated",
 		provisioned: {
 			"/other": { gentleAi: "3.5.0", gentlePi: "3.4.0", at: "2026-01-01T00:00:00.000Z" },
-			"/a": { gentleAi: "3.6.0", gentlePi: "3.5.1", at: "2026-09-22T00:00:00.000Z" },
+			"/a": { setupVersion: SETUP_VERSION, gentlePi: "3.5.1", at: "2026-09-22T00:00:00.000Z" },
 		},
 	});
 	// Returns a new object; never mutates the input.
@@ -631,15 +627,15 @@ test("recordProvisioned adds a marker (gentleAi, gentlePi, at) and preserves eve
 
 test("recordProvisioned overwrites an existing marker for the same home", () => {
 	const config: RawLauncherConfig = { provisioned: { "/a": { gentleAi: "3.6.0", gentlePi: "3.5.0", at: "2026-01-01T00:00:00.000Z" } } };
-	const updated = recordProvisioned(config, "/a", "3.6.1", "3.5.1", "2026-09-22T00:00:00.000Z");
-	assert.deepEqual(updated, { provisioned: { "/a": { gentleAi: "3.6.1", gentlePi: "3.5.1", at: "2026-09-22T00:00:00.000Z" } } });
+	const updated = recordProvisioned(config, "/a", SETUP_VERSION, "3.5.1", "2026-09-22T00:00:00.000Z");
+	assert.deepEqual(updated, { provisioned: { "/a": { setupVersion: SETUP_VERSION, gentlePi: "3.5.1", at: "2026-09-22T00:00:00.000Z" } } });
 });
 
 // --- resolvePiRuntime ------------------------------------------------------
 
-test("resolvePiRuntime prefers GENTLE_SHELL_PI over every other source", () => {
+test("resolvePiRuntime prefers TOMIDEV_PI over every other source", () => {
 	const runtime = resolvePiRuntime({
-		env: { GENTLE_SHELL_PI: "/opt/pi/pi" },
+		env: { TOMIDEV_PI: "/opt/pi/pi" },
 		resolveBundledCli: () => ({ path: "/bundled/cli.js", version: "1.2.3" }),
 		findOnPath: () => "/usr/bin/pi",
 		nodeExecPath: "/usr/bin/node",
@@ -677,9 +673,9 @@ test("resolvePiRuntime returns undefined when no source resolves", () => {
 	assert.equal(runtime, undefined);
 });
 
-test("resolvePiRuntime treats an empty GENTLE_SHELL_PI as unset", () => {
+test("resolvePiRuntime treats an empty TOMIDEV_PI as unset", () => {
 	const runtime = resolvePiRuntime({
-		env: { GENTLE_SHELL_PI: "" },
+		env: { TOMIDEV_PI: "" },
 		resolveBundledCli: () => ({ path: "/bundled/cli.js", version: "1.2.3" }),
 		findOnPath: () => undefined,
 		nodeExecPath: "/usr/bin/node",
@@ -689,7 +685,7 @@ test("resolvePiRuntime treats an empty GENTLE_SHELL_PI as unset", () => {
 
 test("missingPiMessage names the three resolution options", () => {
 	const message = missingPiMessage();
-	assert.match(message, /GENTLE_SHELL_PI/);
+	assert.match(message, /TOMIDEV_PI/);
 	assert.match(message, /@earendil-works\/pi-coding-agent/);
 	assert.match(message, /PATH/);
 });
@@ -819,42 +815,15 @@ test("checkPiVersion accepts a custom minimum", () => {
 	assert.equal(checkPiVersion("1.2.0", "1.1.0").ok, true);
 });
 
-// --- isSetupCapablePin -------------------------------------------------------
-// `gentle-shell setup` provisions a home through the package-local pinned
-// gentle-ai binary by pointing PI_CODING_AGENT_DIR at that home; only
-// gentle-ai >= 3.6.0 honors that variable in its own `install --agent pi`
-// provisioning. An older pin would silently provision the caller's real
-// ~/.pi/agent instead, so setup must refuse to spawn it.
-
-test("MIN_SETUP_GENTLE_AI_VERSION is 3.6.0", () => {
-	assert.equal(MIN_SETUP_GENTLE_AI_VERSION, "3.6.0");
+test("missingSetupCompanions returns the launcher-owned list for a fresh home", () => {
+	assert.equal(SETUP_VERSION, 1);
+	assert.deepEqual(missingSetupCompanions(undefined), ["npm:gentle-engram", "npm:pi-web-access", "npm:pi-btw"]);
 });
 
-test("isSetupCapablePin accepts a version equal to the minimum", () => {
-	assert.equal(isSetupCapablePin("3.6.0"), true);
-});
-
-test("isSetupCapablePin accepts a version above the minimum", () => {
-	assert.equal(isSetupCapablePin("3.6.1"), true);
-	assert.equal(isSetupCapablePin("4.0.0"), true);
-});
-
-test("isSetupCapablePin rejects a version below the minimum", () => {
-	assert.equal(isSetupCapablePin("3.5.1"), false);
-	assert.equal(isSetupCapablePin("3.5.9"), false);
-});
-
-test("isSetupCapablePin accepts a v-prefixed version", () => {
-	assert.equal(isSetupCapablePin("v3.6.0"), true);
-});
-
-test("isSetupCapablePin rejects unparsable input", () => {
-	assert.equal(isSetupCapablePin("not a version"), false);
-});
-
-test("isSetupCapablePin accepts a custom minimum", () => {
-	assert.equal(isSetupCapablePin("2.0.0", "2.1.0"), false);
-	assert.equal(isSetupCapablePin("2.1.0", "2.1.0"), true);
+test("missingSetupCompanions matches string and object declarations by exact npm identity", () => {
+	assert.deepEqual(missingSetupCompanions(JSON.stringify({ packages: [
+		{ source: "npm:gentle-engram@0.4.2", extensions: [] }, "npm:pi-btw@latest", "npm:pi-web-access-extra",
+	] })), ["npm:pi-web-access"]);
 });
 
 // --- settingsDeclareGentlePi ------------------------------------------------
@@ -871,20 +840,20 @@ test("settingsDeclareGentlePi is false when packages is absent", () => {
 	assert.equal(settingsDeclareGentlePi("{}"), false);
 });
 
-test("settingsDeclareGentlePi detects a bare npm:gentle-pi string entry", () => {
-	assert.equal(settingsDeclareGentlePi('{"packages":["npm:gentle-pi"]}'), true);
+test("settingsDeclareGentlePi detects a bare npm:tomidev string entry", () => {
+	assert.equal(settingsDeclareGentlePi('{"packages":["npm:tomidev"]}'), true);
 });
 
-test("settingsDeclareGentlePi detects a versioned npm:gentle-pi string entry", () => {
-	assert.equal(settingsDeclareGentlePi('{"packages":["npm:gentle-pi@3.3.0"]}'), true);
+test("settingsDeclareGentlePi detects a versioned npm:tomidev string entry", () => {
+	assert.equal(settingsDeclareGentlePi('{"packages":["npm:tomidev@3.3.0"]}'), true);
 });
 
-test("settingsDeclareGentlePi detects a bare npm:gentle-pi object source entry", () => {
-	assert.equal(settingsDeclareGentlePi('{"packages":[{"source":"npm:gentle-pi"}]}'), true);
+test("settingsDeclareGentlePi detects a bare npm:tomidev object source entry", () => {
+	assert.equal(settingsDeclareGentlePi('{"packages":[{"source":"npm:tomidev"}]}'), true);
 });
 
-test("settingsDeclareGentlePi detects a versioned npm:gentle-pi object source entry", () => {
-	assert.equal(settingsDeclareGentlePi('{"packages":[{"source":"npm:gentle-pi@3.3.0"}]}'), true);
+test("settingsDeclareGentlePi detects a versioned npm:tomidev object source entry", () => {
+	assert.equal(settingsDeclareGentlePi('{"packages":[{"source":"npm:tomidev@3.3.0"}]}'), true);
 });
 
 test("settingsDeclareGentlePi is false when packages lists unrelated entries", () => {
@@ -907,7 +876,7 @@ test("settingsDeclareGentlePi is false for a path package entry, even one that r
 // itself, which must never stay in the home's settings.json: this launcher
 // always loads its own gentle-pi, so leaving that declaration in place would
 // let the home drift onto whatever gentle-pi npm installed instead. This
-// pure helper tells `gentle-shell setup` which declared packages it must
+// pure helper tells `tomidev setup` which declared packages it must
 // remove after provisioning a home, for either reason.
 
 test("postInstallRemovals is empty when settings text is undefined", () => {
@@ -971,18 +940,18 @@ test("findGentlePiDeclaration is undefined when packages is absent", () => {
 	assert.equal(findGentlePiDeclaration("{}", { agentDir: "/agent", readPackageName: () => undefined }), undefined);
 });
 
-test("findGentlePiDeclaration detects a bare npm:gentle-pi string entry", () => {
-	const result = findGentlePiDeclaration('{"packages":["npm:gentle-pi"]}', { agentDir: "/agent", readPackageName: () => undefined });
+test("findGentlePiDeclaration detects a bare npm:tomidev string entry", () => {
+	const result = findGentlePiDeclaration('{"packages":["npm:tomidev"]}', { agentDir: "/agent", readPackageName: () => undefined });
 	assert.deepEqual(result, { kind: "npm" });
 });
 
-test("findGentlePiDeclaration detects a versioned npm:gentle-pi string entry", () => {
-	const result = findGentlePiDeclaration('{"packages":["npm:gentle-pi@3.3.0"]}', { agentDir: "/agent", readPackageName: () => undefined });
+test("findGentlePiDeclaration detects a versioned npm:tomidev string entry", () => {
+	const result = findGentlePiDeclaration('{"packages":["npm:tomidev@3.3.0"]}', { agentDir: "/agent", readPackageName: () => undefined });
 	assert.deepEqual(result, { kind: "npm" });
 });
 
-test("findGentlePiDeclaration detects a bare npm:gentle-pi object source entry", () => {
-	const result = findGentlePiDeclaration('{"packages":[{"source":"npm:gentle-pi"}]}', { agentDir: "/agent", readPackageName: () => undefined });
+test("findGentlePiDeclaration detects a bare npm:tomidev object source entry", () => {
+	const result = findGentlePiDeclaration('{"packages":[{"source":"npm:tomidev"}]}', { agentDir: "/agent", readPackageName: () => undefined });
 	assert.deepEqual(result, { kind: "npm" });
 });
 
@@ -990,7 +959,7 @@ test("findGentlePiDeclaration recognises a relative path entry whose package.jso
 	const resolvedDir = resolve("/agent", "..", "..", "work", "gentle-pi");
 	const result = findGentlePiDeclaration('{"packages":["../../work/gentle-pi"]}', {
 		agentDir: "/agent",
-		readPackageName: readPackageNameStub({ [resolvedDir]: "gentle-pi" }),
+		readPackageName: readPackageNameStub({ [resolvedDir]: "tomidev" }),
 	});
 	assert.deepEqual(result, { kind: "path", dir: resolvedDir });
 });
@@ -998,7 +967,7 @@ test("findGentlePiDeclaration recognises a relative path entry whose package.jso
 test("findGentlePiDeclaration recognises an absolute path entry whose package.json name is gentle-pi", () => {
 	const result = findGentlePiDeclaration('{"packages":["/checkouts/gentle-pi"]}', {
 		agentDir: "/agent",
-		readPackageName: readPackageNameStub({ [resolve("/checkouts/gentle-pi")]: "gentle-pi" }),
+		readPackageName: readPackageNameStub({ [resolve("/checkouts/gentle-pi")]: "tomidev" }),
 	});
 	assert.deepEqual(result, { kind: "path", dir: resolve("/checkouts/gentle-pi") });
 });
@@ -1006,7 +975,7 @@ test("findGentlePiDeclaration recognises an absolute path entry whose package.js
 test("findGentlePiDeclaration recognises a path object source entry whose package.json name is gentle-pi", () => {
 	const result = findGentlePiDeclaration('{"packages":[{"source":"../gentle-pi","extensions":[]}]}', {
 		agentDir: "/agent",
-		readPackageName: readPackageNameStub({ [resolve("/agent", "..", "gentle-pi")]: "gentle-pi" }),
+		readPackageName: readPackageNameStub({ [resolve("/agent", "..", "gentle-pi")]: "tomidev" }),
 	});
 	assert.deepEqual(result, { kind: "path", dir: resolve("/agent", "..", "gentle-pi") });
 });
@@ -1028,7 +997,7 @@ test("findGentlePiDeclaration is undefined for a path entry with no readable pac
 test("findGentlePiDeclaration ignores git and URL entries when looking for a path declaration", () => {
 	const result = findGentlePiDeclaration('{"packages":["git:github.com/foo/gentle-pi","https://github.com/foo/gentle-pi"]}', {
 		agentDir: "/agent",
-		readPackageName: () => "gentle-pi",
+		readPackageName: () => "tomidev",
 	});
 	assert.equal(result, undefined);
 });
@@ -1039,9 +1008,9 @@ test("findGentlePiDeclaration is undefined when packages lists unrelated entries
 });
 
 test("findGentlePiDeclaration returns the first matching declaration, path or npm, in list order", () => {
-	const result = findGentlePiDeclaration('{"packages":["../gentle-pi","npm:gentle-pi"]}', {
+	const result = findGentlePiDeclaration('{"packages":["../gentle-pi","npm:tomidev"]}', {
 		agentDir: "/agent",
-		readPackageName: readPackageNameStub({ [resolve("/agent", "..", "gentle-pi")]: "gentle-pi" }),
+		readPackageName: readPackageNameStub({ [resolve("/agent", "..", "gentle-pi")]: "tomidev" }),
 	});
 	assert.deepEqual(result, { kind: "path", dir: resolve("/agent", "..", "gentle-pi") });
 });
@@ -1104,7 +1073,7 @@ test("decideTakeOver is true when --package-root is explicitly requested and the
 
 test("otherPackageInjections resolves an npm entry to <agentDir>/npm/node_modules/<name>", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":["npm:some-other","npm:gentle-pi"]}',
+		settingsText: '{"packages":["npm:some-other","npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 	});
@@ -1114,7 +1083,7 @@ test("otherPackageInjections resolves an npm entry to <agentDir>/npm/node_module
 
 test("otherPackageInjections extracts a scoped and versioned npm package name", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":["npm:@scope/pkg@1.2.3","npm:gentle-pi"]}',
+		settingsText: '{"packages":["npm:@scope/pkg@1.2.3","npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 	});
@@ -1123,7 +1092,7 @@ test("otherPackageInjections extracts a scoped and versioned npm package name", 
 
 test("otherPackageInjections resolves a path entry relative to agentDir", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":["../../work/pi-qwen-ambassador","npm:gentle-pi"]}',
+		settingsText: '{"packages":["../../work/pi-qwen-ambassador","npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 	});
@@ -1132,7 +1101,7 @@ test("otherPackageInjections resolves a path entry relative to agentDir", () => 
 
 test("otherPackageInjections skips a git entry and warns", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":["git:github.com/foo/bar","npm:gentle-pi"]}',
+		settingsText: '{"packages":["git:github.com/foo/bar","npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 	});
@@ -1143,7 +1112,7 @@ test("otherPackageInjections skips a git entry and warns", () => {
 
 test("otherPackageInjections warns for an object entry with extensions or autoload filters but still includes it", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":[{"source":"npm:filtered","extensions":["a.ts"]},"npm:gentle-pi"]}',
+		settingsText: '{"packages":[{"source":"npm:filtered","extensions":["a.ts"]},"npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 	});
@@ -1171,10 +1140,10 @@ test("otherPackageInjections skips every gentle-pi entry, not only the one match
 	const declaredDir = resolve("/agent", "..", "..", "work", "gentle-pi");
 	const result = otherPackageInjections({
 		// The declaration being taken over is the path entry, but settings
-		// also carries a second, unrelated npm:gentle-pi entry: both must be
+		// also carries a second, unrelated npm:tomidev entry: both must be
 		// excluded, not just the one matching skip.kind, or the npm entry
 		// would get re-injected as an "other package" and double-load gentle-pi.
-		settingsText: '{"packages":["npm:some-other","../../work/gentle-pi","npm:gentle-pi"]}',
+		settingsText: '{"packages":["npm:some-other","../../work/gentle-pi","npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "path", dir: declaredDir },
 	});
@@ -1182,9 +1151,9 @@ test("otherPackageInjections skips every gentle-pi entry, not only the one match
 	assert.deepEqual(result.warnings, []);
 });
 
-test("otherPackageInjections skips a duplicate npm:gentle-pi entry when the declaration being taken over is itself npm", () => {
+test("otherPackageInjections skips a duplicate npm:tomidev entry when the declaration being taken over is itself npm", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":["npm:some-other","npm:gentle-pi","npm:gentle-pi@1.2.3"]}',
+		settingsText: '{"packages":["npm:some-other","npm:tomidev","npm:tomidev@1.2.3"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 	});
@@ -1199,7 +1168,7 @@ test("otherPackageInjections skips a duplicate npm:gentle-pi entry when the decl
 
 test("otherPackageInjections omits a declared package directory that isDirectory reports missing, and warns", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":["npm:missing-pkg","npm:gentle-pi"]}',
+		settingsText: '{"packages":["npm:missing-pkg","npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 		isDirectory: () => false,
@@ -1213,7 +1182,7 @@ test("otherPackageInjections omits a declared package directory that isDirectory
 
 test("otherPackageInjections keeps a declared package directory that isDirectory reports present", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":["npm:installed-pkg","npm:gentle-pi"]}',
+		settingsText: '{"packages":["npm:installed-pkg","npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 		isDirectory: (dir) => dir === join("/agent", "npm", "node_modules", "installed-pkg"),
@@ -1247,7 +1216,7 @@ test("otherPackageInjections keeps comparing raw strings when no realpath resolv
 
 test("otherPackageInjections defaults to including every declared package when isDirectory is not provided (existing callers keep pure string resolution)", () => {
 	const result = otherPackageInjections({
-		settingsText: '{"packages":["npm:some-other","npm:gentle-pi"]}',
+		settingsText: '{"packages":["npm:some-other","npm:tomidev"]}',
 		agentDir: "/agent",
 		skip: { kind: "npm" },
 	});
@@ -1286,7 +1255,7 @@ test("buildPiInvocation activates program identity only in its child environment
 			packageRoot: "/pkg", declaration: { kind: "npm" }, takeOver: false,
 			otherPackagePaths: [], passthrough: [], baseEnv, homedir: "/home/u", cwd: "/work",
 		});
-		assert.equal(built.env.PI_PROGRAM_STATUS_APP, "gentle-shell");
+		assert.equal(built.env.PI_PROGRAM_STATUS_APP, "tomidev");
 		assert.equal(built.env.PI_PROGRAM_STATUS, "0");
 		assert.equal(built.env.PI_CODING_AGENT_DIR, home.dir);
 		assert.deepEqual(baseEnv, { PATH: "/usr/bin", PI_PROGRAM_STATUS_APP: "pi", PI_PROGRAM_STATUS: "0" });
@@ -1306,7 +1275,7 @@ test("buildPiInvocation injects the launcher env into baseEnv", () => {
 		homedir: "/home/u",
 		cwd: "/work",
 	});
-	assert.deepEqual(built.env, { ...NON_INTERACTIVE_GIT_ENV, PATH: "/usr/bin", PI_CODING_AGENT_DIR: "/pi/agent", PI_PROGRAM_STATUS_APP: "gentle-shell", GENTLE_PI_AGENT_HOME: "/pi/agent", GENTLE_SHELL_USER_PI_HOME: join("/home/u", ".pi", "agent") });
+	assert.deepEqual(built.env, { ...NON_INTERACTIVE_GIT_ENV, PATH: "/usr/bin", PI_CODING_AGENT_DIR: "/pi/agent", PI_PROGRAM_STATUS_APP: "tomidev", TOMIDEV_AGENT_HOME: "/pi/agent", TOMIDEV_USER_PI_HOME: join("/home/u", ".pi", "agent") });
 });
 
 // An editor git opens from Pi's bash tool has no terminal anyone can reach, so
@@ -1445,9 +1414,9 @@ test("buildPiInvocation still injects the launcher env for a pi subcommand", () 
 		...NON_INTERACTIVE_GIT_ENV,
 		PATH: "/usr/bin",
 		PI_CODING_AGENT_DIR: "/gentle-shell/agent",
-		PI_PROGRAM_STATUS_APP: "gentle-shell",
-		GENTLE_PI_AGENT_HOME: "/gentle-shell/agent",
-		GENTLE_SHELL_USER_PI_HOME: join("/home/u", ".pi", "agent"),
+		PI_PROGRAM_STATUS_APP: "tomidev",
+		TOMIDEV_AGENT_HOME: "/gentle-shell/agent",
+		TOMIDEV_USER_PI_HOME: join("/home/u", ".pi", "agent"),
 	});
 });
 
@@ -1467,12 +1436,12 @@ test("buildPiInvocation in link mode with a pi subcommand is exactly pi <subcomm
 	});
 	assert.equal(built.command, "/usr/bin/pi");
 	assert.deepEqual(built.args, ["auth", "status"]);
-	assert.deepEqual(built.env, { ...NON_INTERACTIVE_GIT_ENV, PI_CODING_AGENT_DIR: "/pi/agent", PI_PROGRAM_STATUS_APP: "gentle-shell", GENTLE_PI_AGENT_HOME: "/pi/agent", GENTLE_SHELL_USER_PI_HOME: "/pi/agent" });
+	assert.deepEqual(built.env, { ...NON_INTERACTIVE_GIT_ENV, PI_CODING_AGENT_DIR: "/pi/agent", PI_PROGRAM_STATUS_APP: "tomidev", TOMIDEV_AGENT_HOME: "/pi/agent", TOMIDEV_USER_PI_HOME: "/pi/agent" });
 });
 
 // The isolated home overrides PI_CODING_AGENT_DIR for the session, so the
 // user's own Pi home travels separately for read-only features such as
-// /gentle:stats. Isolation itself is unchanged.
+// /td:stats. Isolation itself is unchanged.
 test("buildPiInvocation carries the user's original Pi home without weakening isolation", () => {
 	const build = (baseEnv: Record<string, string | undefined>, home: ResolvedHome = isolatedHomeResolved) => buildPiInvocation({
 		runtime: { kind: "path", command: "/usr/bin/pi", args: [] },
@@ -1488,24 +1457,24 @@ test("buildPiInvocation carries the user's original Pi home without weakening is
 	}).env;
 	const conventional = build({});
 	assert.equal(conventional.PI_CODING_AGENT_DIR, "/gentle-shell/agent");
-	assert.equal(conventional.GENTLE_PI_AGENT_HOME, "/gentle-shell/agent");
-	assert.equal(conventional.GENTLE_SHELL_USER_PI_HOME, join("/home/u", ".pi", "agent"));
+	assert.equal(conventional.TOMIDEV_AGENT_HOME, "/gentle-shell/agent");
+	assert.equal(conventional.TOMIDEV_USER_PI_HOME, join("/home/u", ".pi", "agent"));
 	// A custom Pi home is preserved; an empty value falls through like Pi itself.
 	const custom = build({ PI_CODING_AGENT_DIR: "/custom/pi" });
 	assert.equal(custom.PI_CODING_AGENT_DIR, "/gentle-shell/agent");
-	assert.equal(custom.GENTLE_SHELL_USER_PI_HOME, "/custom/pi");
-	assert.equal(build({ PI_CODING_AGENT_DIR: "" }).GENTLE_SHELL_USER_PI_HOME, join("/home/u", ".pi", "agent"));
+	assert.equal(custom.TOMIDEV_USER_PI_HOME, "/custom/pi");
+	assert.equal(build({ PI_CODING_AGENT_DIR: "" }).TOMIDEV_USER_PI_HOME, join("/home/u", ".pi", "agent"));
 	// A nested launch inherits the outer isolated PI_CODING_AGENT_DIR; the
 	// original home the outer launcher recorded must win over it.
-	const nested = build({ PI_CODING_AGENT_DIR: "/gentle-shell/agent", GENTLE_SHELL_USER_PI_HOME: "/custom/pi" });
+	const nested = build({ PI_CODING_AGENT_DIR: "/gentle-shell/agent", TOMIDEV_USER_PI_HOME: "/custom/pi" });
 	assert.equal(nested.PI_CODING_AGENT_DIR, "/gentle-shell/agent");
-	assert.equal(nested.GENTLE_SHELL_USER_PI_HOME, "/custom/pi");
+	assert.equal(nested.TOMIDEV_USER_PI_HOME, "/custom/pi");
 	// --link: the active and original homes are the same directory.
 	const linked = build({ PI_CODING_AGENT_DIR: "/pi/agent" }, linkHome);
 	assert.equal(linked.PI_CODING_AGENT_DIR, "/pi/agent");
-	assert.equal(linked.GENTLE_SHELL_USER_PI_HOME, "/pi/agent");
-	assert.equal(USER_PI_HOME_ENV, "GENTLE_SHELL_USER_PI_HOME");
-	assert.equal(userPiHome({ GENTLE_SHELL_USER_PI_HOME: "/kept" }, "/home/u"), "/kept");
+	assert.equal(linked.TOMIDEV_USER_PI_HOME, "/pi/agent");
+	assert.equal(USER_PI_HOME_ENV, "TOMIDEV_USER_PI_HOME");
+	assert.equal(userPiHome({ TOMIDEV_USER_PI_HOME: "/kept" }, "/home/u"), "/kept");
 });
 
 test("buildPiInvocation keeps the runtime's own args ahead of the injection and passthrough", () => {
@@ -2070,7 +2039,7 @@ test("restoreJsonField matches compact formatting (no indent, no trailing newlin
 // --- forceJsonFieldIfAbsentInOriginal ------------------------------------------
 //
 // Pure JSON merge used by bin/gentle-shell.mjs's setup flow to make sure a
-// home gentle-shell provisions ends up with the default Gentle Shell theme
+// home gentle-shell provisions ends up with the default Tomidev Shell theme
 // unless the home (or the user) already had an opinion about it — even when
 // gentle-ai's own managed install wrote a *different* default theme into
 // settings.json. Unlike restoreJsonField above (which restores a field back
@@ -2133,7 +2102,7 @@ test("forceJsonFieldIfAbsentInOriginal matches the current text's own indentatio
 // copy-pasted (gentle-shell #1277 follow-up).
 
 test("shellQuote leaves a plain token unchanged", () => {
-	assert.equal(shellQuote("/Users/alan/.gentle-shell/agent"), "/Users/alan/.gentle-shell/agent");
+	assert.equal(shellQuote("/Users/alan/.tomidev/agent"), "/Users/alan/.tomidev/agent");
 });
 
 test("shellQuote single-quotes a token containing a space", () => {
@@ -2148,12 +2117,12 @@ test("shellQuote escapes an embedded single quote as '\\''", () => {
 
 test("describeVersion formats the three-line report with a found pi version", () => {
 	const text = describeVersion({ gentlePiVersion: "3.3.0", piVersion: "0.85.1", home: linkHome });
-	assert.equal(text, "gentle-shell 3.3.0\npi 0.85.1\nhome link /pi/agent");
+	assert.equal(text, "tomidev 3.3.0\npi 0.85.1\nhome link /pi/agent");
 });
 
 test("describeVersion reports pi as not found when no pi version is available", () => {
 	const text = describeVersion({ gentlePiVersion: "3.3.0", piVersion: undefined, home: isolatedHomeResolved });
-	assert.equal(text, "gentle-shell 3.3.0\npi not found\nhome isolated /gentle-shell/agent");
+	assert.equal(text, "tomidev 3.3.0\npi not found\nhome isolated /gentle-shell/agent");
 });
 
 test("helpText documents the launcher flags, the home subcommand, the env vars, and passthrough forwarding", () => {
@@ -2163,8 +2132,8 @@ test("helpText documents the launcher flags, the home subcommand, the env vars, 
 	assert.match(text, /--home/);
 	assert.match(text, /--package-root/);
 	assert.match(text, /\bhome\b/);
-	assert.match(text, /GENTLE_SHELL_PI/);
-	assert.match(text, /GENTLE_SHELL_HOME/);
+	assert.match(text, /TOMIDEV_PI/);
+	assert.match(text, /TOMIDEV_HOME/);
 	assert.match(text, /PI_CODING_AGENT_DIR/);
 	assert.match(text, /forward/i);
 });
@@ -2185,9 +2154,9 @@ test("helpText documents pi's own package-management subcommands", () => {
 	assert.match(text, /\bauth\b/);
 });
 
-// T3 B3: the isolated-home bootstrap creates ~/.gentle-shell private (0700) even under
+// T3 B3: the isolated-home bootstrap creates ~/.tomidev private (0700) even under
 // umask 002, so the bundled prefix claim (which refuses group/other-writable folders) accepts it.
-test("the isolated-home bootstrap creates ~/.gentle-shell as 0700 under umask 002", { skip: process.platform === "win32" ? "POSIX modes" : false }, async () => {
+test("the isolated-home bootstrap creates ~/.tomidev as 0700 under umask 002", { skip: process.platform === "win32" ? "POSIX modes" : false }, async () => {
 	const { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } = await import("node:fs");
 	const { spawnSync } = await import("node:child_process");
 	const { tmpdir } = await import("node:os");
@@ -2196,28 +2165,14 @@ test("the isolated-home bootstrap creates ~/.gentle-shell as 0700 under umask 00
 		const piScript = join(root, "fake-pi.mjs");
 		writeFileSync(piScript, "#!/usr/bin/env node\nif (process.argv.includes('--version')) console.log('1.2.0');\n");
 		chmodSync(piScript, 0o755);
-		const binPath = fileURLToPath(new URL("../bin/gentle-shell.mjs", import.meta.url));
-		const env = { HOME: root, USERPROFILE: root, PATH: process.env.PATH ?? "/usr/bin:/bin", GENTLE_SHELL_PI: piScript, GENTLE_SHELL_NO_AUTO_SETUP: "1" };
-		const result = spawnSync("/bin/sh", ["-c", 'umask 002; exec "$0" "$@"', process.execPath, binPath, "hello"], { env, encoding: "utf8", input: "" });
+		const binPath = fileURLToPath(new URL("../bin/tomidev.mjs", import.meta.url));
+		const env = { HOME: root, USERPROFILE: root, PATH: process.env.PATH ?? "/usr/bin:/bin", TOMIDEV_PI: piScript, TOMIDEV_NO_AUTO_SETUP: "1" };
+		const result = spawnSync("/bin/sh", ["-c", 'umask 002; exec "$0" "$@"', process.execPath, binPath, "hello"], { env: assertNotRealHome(env), encoding: "utf8", input: "" });
 		assert.equal(result.status, 0, result.stderr);
-		assert.equal(statSync(join(root, ".gentle-shell")).mode & 0o777, 0o700);
-		assert.equal(statSync(join(root, ".gentle-shell", "agent")).mode & 0o777, 0o700);
+		assert.equal(statSync(join(root, ".tomidev")).mode & 0o777, 0o700);
+		assert.equal(statSync(join(root, ".tomidev", "agent")).mode & 0o777, 0o700);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
-});
-
-// #2143: Gentle AI installs npm:gentle-pi into the home only for the launcher
-// to remove it again; a Gentle AI with package exclusion (gentle-ai#5503)
-// skips it, and an older one ignores the variable.
-test("withLauncherPackagesExcluded asks Gentle AI to skip npm:gentle-pi, keeping a caller's own exclusions", () => {
-	assert.equal(GENTLE_AI_PI_EXCLUDE_PACKAGES_ENV, "GENTLE_AI_PI_EXCLUDE_PACKAGES");
-	assert.equal(withLauncherPackagesExcluded({ PATH: "/bin" }).GENTLE_AI_PI_EXCLUDE_PACKAGES, "npm:gentle-pi");
-	assert.equal(withLauncherPackagesExcluded({ GENTLE_AI_PI_EXCLUDE_PACKAGES: "" }).GENTLE_AI_PI_EXCLUDE_PACKAGES, "npm:gentle-pi");
-	assert.equal(withLauncherPackagesExcluded({ GENTLE_AI_PI_EXCLUDE_PACKAGES: "npm:pi-btw" }).GENTLE_AI_PI_EXCLUDE_PACKAGES, "npm:pi-btw,npm:gentle-pi");
-	assert.equal(withLauncherPackagesExcluded({ GENTLE_AI_PI_EXCLUDE_PACKAGES: "npm:gentle-pi, npm:pi-btw" }).GENTLE_AI_PI_EXCLUDE_PACKAGES, "npm:gentle-pi,npm:pi-btw");
-	const input = { PATH: "/bin" };
-	assert.equal(withLauncherPackagesExcluded(input).PATH, "/bin");
-	assert.deepEqual(input, { PATH: "/bin" }, "the caller's env is not mutated");
 });
 

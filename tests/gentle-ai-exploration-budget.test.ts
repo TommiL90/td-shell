@@ -22,7 +22,7 @@ function fixture(t: TestContext, child = false, extraEnv: Record<string, string>
 	createGentleAiExtension({
 		nativeReviewCli: null,
 		contextBackstopMeasure: { minIntervalMs: 0 },
-		processEnv: { GENTLE_PI_CONFIG_HOME: join(cwd, "config"), GENTLE_PI_AGENTS_CHILD: child ? "1" : "0", ...extraEnv },
+		processEnv: { TOMIDEV_CONFIG_HOME: join(cwd, "config"), TOMIDEV_AGENTS_CHILD: child ? "1" : "0", ...extraEnv },
 		resolveTelemetryTriggerBinary: () => "/usr/bin/true", telemetryTriggerSpawn: (() => undefined) as never,
 	})(pi);
 	const ctx = { cwd, hasUI: false, mode: "interactive", ui: { notify() {} },
@@ -51,7 +51,7 @@ test("primary result notice preserves the payload and survives turns but resets 
 	await f.call("3");
 	assert.equal(await f.result("3"), undefined, "the threshold result has no patch");
 	assert.equal(f.messages.length, 1);
-	assert.equal(f.messages[0].message.customType, "gentle-pi.exploration-budget");
+	assert.equal(f.messages[0].message.customType, "tomidev.exploration-budget");
 	assert.deepEqual(f.messages[0].message.details, { lookups: 4, textBytes: 32 });
 	assert.match(f.messages[0].message.content, /Exploration budget:/);
 	assert.match(f.messages[0].message.content, /runtime context.*not a new user request/i);
@@ -137,7 +137,7 @@ test("child sessions and stale calls cannot contribute to a new primary request"
 // full-delegation-mode-conflicts S5: the hook hands both notices the session's mode, so a full delegation session is
 // never told to keep a write inline. The organic texts are pinned by the tests above.
 test("S5: in full delegation mode both notices drop their inline wording through the real hook", async (t) => {
-	const f = fixture(t, false, { GENTLE_PI_ORCHESTRATOR_MODE: "full-delegation" });
+	const f = fixture(t, false, { TOMIDEV_ORCHESTRATOR_MODE: "full-delegation" });
 	await f.start();
 	for (let i = 0; i < 3; i++) { await f.call(String(i)); await f.result(String(i)); }
 	(f.ctx as any).getContextUsage = () => ({ tokens: 160_000, contextWindow: 1_000_000 });

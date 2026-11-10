@@ -1,3 +1,4 @@
+import { brandCommand, ENV_AGENTS_CHILD } from "../lib/brand.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir, VERSION } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
@@ -22,45 +23,94 @@ export const DEFAULT_BANNER_CONFIG: BannerConfig = {
 };
 export const BANNER_COLORS: BannerColor[] = ["pink", "cyan", "yellow", "green"];
 const BANNER_PALETTES: Record<BannerColor, { rose: [number, number, number]; label: [number, number, number]; value: [number, number, number]; logoFresh: [number, number, number]; logoDim: [number, number, number] }> = {
-  pink: { rose: [255, 118, 195], label: [200, 100, 160], value: [255, 140, 210], logoFresh: [255, 138, 206], logoDim: [95, 30, 60] },
-  cyan: { rose: [95, 210, 255], label: [85, 170, 205], value: [130, 225, 255], logoFresh: [105, 220, 255], logoDim: [25, 80, 100] },
-  yellow: { rose: [255, 210, 95], label: [210, 165, 65], value: [255, 225, 135], logoFresh: [255, 215, 105], logoDim: [105, 75, 25] },
-  green: { rose: [110, 220, 145], label: [85, 175, 115], value: [145, 240, 170], logoFresh: [120, 230, 150], logoDim: [30, 95, 50] },
+  pink: { rose: [255, 121, 198], label: [204, 97, 158], value: [255, 141, 207], logoFresh: [255, 121, 198], logoDim: [97, 46, 75] },
+  cyan: { rose: [120, 209, 225], label: [96, 167, 180], value: [140, 216, 230], logoFresh: [120, 209, 225], logoDim: [46, 79, 86] },
+  yellow: { rose: [231, 222, 121], label: [185, 178, 97], value: [235, 227, 141], logoFresh: [231, 222, 121], logoDim: [88, 84, 46] },
+  green: { rose: [103, 228, 128], label: [82, 182, 102], value: [126, 232, 147], logoFresh: [103, 228, 128], logoDim: [39, 87, 49] },
 };
 
 const TEXT_LOGO = [
-  "                  ▄▄▄▀▀▀▀▀██                                ▄▄▀▄▄          ▄▄█▀▀▀██   ▄▄▀██               ▄▄▀▄▄   ▄▄▀▄▄",
-  "              ▄▄█▀▀▒▒▒▒▒▄▄█▀▒                   ▄██     ▄▄█▀█▄█▀▒▒       ▄█▀▀▒▒▒▄█▀▒ ▄██▄█▀▒           ▄▄█▀█▄█▀▄▄█▀█▄█▀▒",
-  "          ▄▄██▀▒▒▒▒▒▄▄▄▀▀▒▒▒▒        ▄▄▄  ▀▀▀▀██▀▀▀▀▀███▀█▄▀▀▒▒▒▒      ██▄▄▒▒▒▒▒▒▒ ▄██▀▀▒▒▒          ▄██▀█▄▀▀▄██▀█▄▀▀▒▒▒",
-  "        ▄██▀▒▒▒▒     ▒▒▄▄█ ▄▄▄▀██ ▄▄▄▀▀▀▄  ▄██▀▒▒▒▒▄██▀▀▀▒▄▄███         ▀▀▀██▄▄  ▄██▀▒▄▄▀██   ▄▄▀▀██ ██▀▀▀▒▒▒██▀▀▀▒▒▒",
-  "       ██▀▒▒▒     ▄▄▄███▀▄██▀▀▀▄▄██▀▀▄█▀▄▄██▀▒▒▒▄▄██▀▒▒▄██▀▀▀▄▄      ▄▄     ▀██▄▄██▀▄██▀██▒  ▄██▄▄▀▒ █▀▒▒▒   █▀▒▒▒",
-  "       ▀█▄▄▄▄▄▀▀▀█▄▄███▄▒▀▀▀▀▀▀▒▀▀▒▒▀▀▀▀▒██▄▄▀▀▀ ▀█▄▀▀▀ ▀▀▀▀▀▒▒      ▀█▄▄▄▄█▀▀▒▒▀▀▒▒▀▀▒ ██▄▄▀▀█▄▄▄▄▀▀█▄▄▀▀▀▄▄▀█▄▄▀▀▀",
-  "        ▒▄▄▄█▀▀▀█▄█▀▀▒▒▒▒ ▒▒▒▒▒▒ ▒▒  ▒▒▒▒ ▒▒▒▒▒▒▒ ▒▒▒▒▒▒ ▒▒▒▒▒        ▒▀▀▀▀▒▒▒▒  ▒▒▒▒▒▒ ▒▒▒▒▒ ▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
-  "     ▄▄▀▀ ▒▒▒▒▄██▀▒▒▒▒",
-  "   ▄█ ▒▒▒▄▄██▀▀▒▒▒▒",
-  "    ▀▀▀▀▀▀▒▒▒▒▒▒",
-  "     ▒▒▒▒▒▒",
+  " ▄▄▄▀▀▀▀▀██                                      ▄▄▀▄▄                        ▄▄█▀▀▀██   ▄▄▀██               ▄▄▀▄▄   ▄▄▀▄▄",
+  " ▀▀▀▒▒▄▄█▀▀▒                  ▄██            ▄▄█▀█▄█▀▒▒                     ▄█▀▀▒▒▒▄█▀▒ ▄██▄█▀▒           ▄▄█▀█▄█▀▄▄█▀█▄█▀▒",
+  "     ███                      ▀▀█▀▀▀▀       ███▀█▄▀▀▒▒▒▒        ▄▄▄       ██▄▄▒▒▒▒▒▒▒ ▄██▀▀▒▒▒          ▄██▀█▄▀▀▄██▀█▄▀▀▒▒▒",
+  "     ███        ▄▄▄▀▀▄  ▄▄▀▀█▄▄  ██  ▄▄▄▀▀▄  ▀██▀▀▀▒▄▄███ ▄▄▄▀▀▀▄ ▀▄ ▄▀    ▀▀▀██▄▄  ▄██▀▒▄▄▀██   ▄▄▀▀██ ██▀▀▀▒▒▒██▀▀▀▒▒▒",
+  "     ███       ██▀▒▒▄██ ██▀▄█▀▄████ ██▀▒▒▄██  ██▒▒▄██▀▀▀▄▄██▀▒▒▄▄  █▄█  ▄▄     ▀██▄▄██▀▄██▀██▒  ▄██▄▄▀▒ █▀▒▒▒   █▀▒▒▒",
+  "    ▄███▄▄▄▄▀  ▀█▄▄▄█▀▒ ██▒▀▀ ▀█▒██ ██▄▀█▄▄▄█▀▀█▄▀▀▀ ▀▀▀▀▀▒▀█▄▄▄█▀   █  ▀█▄▄▄▄█▀▀▒▒▀▀▒▒▀▀▒ ██▄▄▀▀█▄▄▄▄▀▀█▄▄▀▀▀▄▄▀█▄▄▀▀▀",
+  "    ▒▒▒▒▒▒▒▒    ▒▒▒▒▒   ▒▒▒▒   ▒▒▒▒▒ ▒▒▒ ▒▒▒▒  ▒▒▒▒▒▒ ▒▒▒▒▒  ▒▒▒▒▒       ▒▀▀▀▀▒▒▒▒  ▒▒▒▒▒▒ ▒▒▒▒▒ ▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
+  "   ▄▄▀▀ ▒▒▒▒",
+  " ▄█ ▒▒▒▄▄▀▀",
+  "  ▀▀▀▀▀▒▒▒▒",
+  "   ▒▒▒▒▒▒",
 ];
 
-const ROSE_LARGE_RAW = [
-  "             ⣠⣾⣷⣶⣦⣤⣤⣄⣠⣄⣀  ⢀⣀⣀",
-  "          ⢀⣴⣿⣿⠿⣋⣭⣭⣯⣭⣍⣭⣿⣟⠛⠛⠿⣿⣷⣄",
-  "      ⢀⣴⣾⡟⢻⣿⡟⠁⣼⣿⠏⣵⢻⣿⣻⣿⣿⢿⡻⣿⣿⣶⡌⢿⣿⣷⣦⣤⡄",
-  "   ⣤⣶⣾⣿⣿⠏ ⠈⢿⣄ ⢹⣏⠠⠟⣾⣿⣿⣿⣿⣿⠷⣏⣼⠟⢡⣿⡟⠋⢻⣿⣿⡄",
-  "   ⠈⣿⣿⣿⣿⡆   ⣽⢧⡘⠈⠳⣦⣍⠛⠛⢦⣉⣴⣛⣫⣭⣴⡟⠋  ⣾⣿⣿⡿",
-  "   ⢀⠹⣿⣿⣿⣷⣤⡄ ⠋ ⠙⢆ ⣠⠴⠟⠛⣛⣛⣛⠟⠋⠁⠺⡇ ⣀⣴⣿⣿⡟⠁",
-  "   ⠈⣀⠈⠛⠷⠿⣿⣿⣷⣤⣀ ⢠⠋   ⠈⠉⠉    ⣠⣴⣥⠾⠛⠉⣰⣿⣷",
-  "          ⠹⣯⣝⠛⠛⠷⢶⣤⣤⣀   ⢀⡠⠖⠋⠉⢉⣀⣀⣴⣾⣿⠿⠟⠃",
-  "             ⠘⠻⢿⣦⣄⡀  ⠉⠛⢦⠠⢊⠤⠴⢒⣛⣛⣩⣽⡿⠟⠁",
-  "        ⠶⢶⣤⣄⡀⠨⠭⠽⠟⣓⢦⣀⠈⢇⡥⠖⠛⠋⠉⠉",
-  "           ⠈⢷ ⠐⠂⢤⣽⣄ ⠰⡎⠙⠳⣄⡀ ⠈⢣⠘⢦⠋",
-  "            ⠈⢳⣀⡒⠉⠉⣉⠙⡲⣽⣄ ⣏⠳⡄ ⠘⡇ ⡾⠁",
-  "              ⠛⠻⢦⣄⣉⡁⣀⣀⣈⣙⣺⣌⡇⢠⢀⡇⡾",
-  "                   ⠈⠉    ⠈⠳⡄⣸⢱⠇",
-  "                           ⡷⠡⡯⢖⠉",
-  "                        ⢀⡴⢪⠔⣉⠔⠋",
-  "                           ⠐⠈",
+type CellType =
+  | "banner"
+  | "logo-tip"
+  | "logo-fresh"
+  | "logo-ink"
+  | "rose"
+  | "label"
+  | "value"
+  | "dim"
+  | "accent"
+  | "none";
+
+type LayoutCell = {
+  char: string;
+  type: CellType;
+  fg?: [number, number, number] | null;
+  bg?: [number, number, number] | null;
+};
+
+const ARCANINE_PALETTE: ReadonlyArray<readonly [number, number, number]> = [
+  [0, 0, 0],         // 0: black
+  [65, 65, 65],     // 1: dark grey
+  [82, 90, 106],    // 2: slate blue / shadow
+  [131, 115, 90],   // 3: dark cream shadow
+  [148, 90, 49],    // 4: deep rust orange
+  [197, 148, 82],   // 5: shaded orange
+  [255, 164, 82],   // 6: bright orange
+  [205, 164, 131],  // 7: shaded cream
+  [255, 230, 180],  // 8: bright cream mane
+  [255, 255, 255],  // 9: white teeth / fangs
 ];
+
+const ARCANINE_SPRITE_ENCODED: readonly string[] = [
+  " .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..▄0.▄0.▀08▀08▄0. 0. 0. 0. 0. 0. 0.",
+  " .. .. .. .. .. .. .. ..▄0.▀08▄0. 0. 0. 0.▄0. 0. 0. 0. 0. 0. 0. 0. 0.▄0.▄0.▀08▀88▀88▀82▀07▄0. 0. 0. 0. 0. 0. 0.",
+  " .. .. .. .. ..▄0.▀07▀01▀88▀88▀88▀08▄0.▀08▀88▀00 .. .. .. .. ..▄0.▀08▀88▀88▀88▀88▀88▀78▀78▀18▀07▄0. 0. 0. 0. 0.",
+  " .. .. .. ..▀00▀77▀78▀88▀88▀88▀88▀88▀88▀88▀88▀83▀07▄0. 0. 0.▀00▀88▀88▀88▀88▀88▀88▀88▀88▀88▀88▀88▀88▀08▄0. 0. 0.",
+  " ..▄0.▄0.▀08▀88▀78▀88▀88▀88▀88▀88▀88▀88▀88▀78▀78▀77▀17▀07▀01▀88▀88▀88▀88▀88▀88▀88▀88▀88▀88▀88▀88▀88▀87▀07▄0. 0.",
+  "▀0.▀50▀35▀83▀88▀88▀88▀88▀88▀88▀88▀88▀88▀88▀81▀71▀71▀71▀17▀71▀77▀87▀88▀88▀88▀88▀88▀87▀78▀87▀78▀81▀37▀77▀77▀07▄0.",
+  " ..▀0.▀50▀38▀88▀88▀88▀88▀88▀88▀88▀88▀81▀16▀65▀68▀68▀68▀16▀71▀17▀17▀71▀77▀87▀87▀77▀87▀77▀87▀77▀11▀77▀77▀77▀07▄0.",
+  " .. ..▀0.▀80▀88▀88▀88▀89▀80▀19▀19▀53▀66▀56▀86▀86▀86▀61▀17▀77▀71▀11▀77▀77▀77▀77▀77▀77▀77▀77▀10▀70▀70▀70▀0.▀0. 0.",
+  " .. ..▄0.▀08▀58▀58▀85▀06▀36▀96▀96▀36▀65▀18▀18▀18▀18▀78▀78▀77▀71▀71▀16▀16▀71▀77▀77▀77▀70▀0. 0. 0. 0. 0. 0. 0. 0.",
+  " ..▀00▀18▀18▀88▀88▀88▀58▀58▀58▀58▀58▀88▀88▀88▀88▀88▀88▀38▀18▀61▀66▀66▀66▀66▀12▀70▀0.▄0.▄0. 0.▄0. 0. 0. 0. 0. 0.",
+  " .. ..▀0.▀80▀83▀83▀83▀79▀37▀37▀73▀88▀88▀88▀88▀87▀37▀31▀15▀15▀26▀26▀66▀66▀22▀26▀55▀01▀18▀88▀08▀88▀00 .. .. .. ..",
+  " .. .. .. ..▀00▀78▀77▀77▀78▀78▀88▀88▀88▀88▀83▀73▀37▀77▀17▀21▀52▀65▀61▀66▀65▀52▀22▀11▀88▀88▀88▀08▄0. 0. 0. 0. 0.",
+  " .. .. .. .. ..▀00▀37▀83▀87▀88▀87▀37▀83▀37▀77▀77▀71▀12▀12▀25▀20▀10▀55▀55▀25▀25▀52▀11▀77▀87▀70▀0. 0. 0. 0. 0. 0.",
+  " .. .. .. .. .. ..▀0.▀70▀71▀77▀77▀77▀77▀77▀77▀77▀71▀15▀25▀01▄0. 0.▀00▀17▀51▀11▀17▀77▀77▀70▀0. 0. 0. 0. 0. 0. 0.",
+  " .. .. .. .. .. ..▄0.▀05▀22▀12▀71▀77▀70▀77▀71▀12▀56▀52▀22▀28▀88▀00 ..▀0.▀71▀71▀71▀71▀00 .. .. .. .. .. .. .. ..",
+  " .. .. .. .. ..▄0.▀05▀54▀55▀55▀55▀00 ..▀0.▀00▀26▀22▀26▀66▀88▀00 .. ..▄0.▀04▀55▀54▀55▀55▀00 .. .. .. .. .. .. ..",
+  " .. .. .. .. ..▀0.▀10▀50▀50▀50▀0. 0. 0.▄0.▀06▀66▀66▀66▀66▀00 .. .. ..▀0.▀10▀50▀40▀50▀0. 0. 0. 0. 0. 0. 0. 0. 0.",
+  " .. .. .. .. .. .. .. .. .. .. .. .. ..▀0.▀50▀44▀65▀44▀50▀0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.",
+  " .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..▀0.▀0.▀0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.",
+];
+
+const ROSE_LARGE_CELLS: LayoutCell[][] = ARCANINE_SPRITE_ENCODED.map((enc) => {
+  const row: LayoutCell[] = [];
+  for (let i = 0; i < enc.length; i += 3) {
+    const char = enc[i];
+    const fIdx = enc[i + 1] === "." ? null : Number(enc[i + 1]);
+    const bIdx = enc[i + 2] === "." ? null : Number(enc[i + 2]);
+    const fg = fIdx !== null ? ([...ARCANINE_PALETTE[fIdx]] as [number, number, number]) : null;
+    const bg = bIdx !== null ? ([...ARCANINE_PALETTE[bIdx]] as [number, number, number]) : null;
+    row.push({ char, type: "rose", fg, bg });
+  }
+  return row;
+});
+
+const ROSE_LARGE_RAW = ROSE_LARGE_CELLS.map((row) => row.map((c) => c.char).join(""));
 
 function rgb(r: number, g: number, b: number, text: string): string {
   return `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`;
@@ -138,18 +188,6 @@ function padLines(lines: string[]): { lines: string[]; width: number } {
   return { lines: lines.map((l) => l.padEnd(width)), width };
 }
 
-type CellType =
-  | "banner"
-  | "logo-tip"
-  | "logo-fresh"
-  | "logo-ink"
-  | "rose"
-  | "label"
-  | "value"
-  | "dim"
-  | "accent"
-  | "none";
-type LayoutCell = { char: string; type: CellType };
 type LogoCellType = Extract<
   CellType,
   "banner" | "logo-tip" | "logo-fresh" | "logo-ink"
@@ -205,7 +243,7 @@ function buildLetterSpans(bounds: Span, weights: number[]): Span[] {
 
 const LOGO_BOUNDS = computeLogoBounds(TEXT_LOGO);
 // Variable-width script regions, including the gap before Shell and shadows.
-const LETTER_WEIGHTS = [22, 9, 8, 9, 8, 9, 10, 13, 8, 8, 13]; // G E N T L E S H E L L
+const LETTER_WEIGHTS = [14, 9, 11, 6, 11, 9, 11, 10, 13, 8, 8, 12]; // T O M I D E V S H E L L
 const LETTER_SPANS = buildLetterSpans(LOGO_BOUNDS, LETTER_WEIGHTS);
 
 function letterIndexAtX(x: number): number {
@@ -494,6 +532,11 @@ class LayoutBuilder {
     for (const char of text) row.push({ char, type });
   }
 
+  addCells(cells: LayoutCell[]) {
+    const row = this.lines[this.lines.length - 1];
+    for (const cell of cells) row.push({ ...cell });
+  }
+
   center(width: number) {
     const row = this.lines[this.lines.length - 1];
     const pad = Math.max(0, Math.floor((width - row.length) / 2));
@@ -590,9 +633,6 @@ export function readGitBranch(cwd: string, run: typeof execFile = execFile, time
 // Pi dispatches its subcommands purely on the first argument, so only that
 // token decides. Flag values such as the package directory the Gentle Shell
 // launcher injects with `-e <dir>` must not be mistaken for a subcommand.
-const GUIDE_COMMAND = "gentle:guide";
-export const GUIDE_REMINDER = "Tip: run /gentle:guide for a guided tour of Gentle Shell";
-
 export function isPiCliSubcommandInvocation(argv: readonly string[]): boolean {
   const first = argv[2];
   return first !== undefined && (PI_SUBCOMMANDS as readonly string[]).includes(first);
@@ -614,16 +654,16 @@ export default function (pi: ExtensionAPI) {
 
   const registerBannerCommand = (name: string) => {
     pi.registerCommand(name, {
-      description: "Configure the Gentle Pi startup banner.",
+      description: "Configure the Tomidev Shell startup banner.",
       handler: async (_args, ctx) => {
         const config = await readBannerConfig();
         const selected = await ctx.ui.select("Startup banner", [
-          `Rose: ${config.showRose ? "on" : "off"}`,
+          `Dog: ${config.showRose ? "on" : "off"}`,
           `Text logo: ${config.showTextLogo ? "on" : "off"}`,
           `Color: ${config.color}`,
         ]);
         if (!selected) return;
-        if (selected.startsWith("Rose:")) config.showRose = !config.showRose;
+        if (selected.startsWith("Dog:") || selected.startsWith("Rose:")) config.showRose = !config.showRose;
         else if (selected.startsWith("Text logo:")) config.showTextLogo = !config.showTextLogo;
         else if (selected.startsWith("Color:")) {
           const color = await ctx.ui.select("Startup banner color", [...BANNER_COLORS]);
@@ -664,17 +704,17 @@ export default function (pi: ExtensionAPI) {
       },
     });
   };
-  registerBannerCommand("gentle:banner");
-  registerToggleCommand("gentle:toggle-rose", "showRose");
-  registerToggleCommand("gentle:toggle-text-logo", "showTextLogo");
-  registerColorCommand("gentle:banner-color");
+  registerBannerCommand(brandCommand("banner"));
+  registerToggleCommand(brandCommand("toggle-rose"), "showRose");
+  registerToggleCommand(brandCommand("toggle-text-logo"), "showTextLogo");
+  registerColorCommand(brandCommand("banner-color"));
 
   pi.on("session_start", async (_event, ctx) => {
     disposeHeader();
     if (!ctx.hasUI) return;
     // Delegated rpc children report hasUI=true but have no terminal to paint
     // (gentle-shell#1690); do not rely on a piped stdout lacking rows/columns.
-    if (process.env.GENTLE_PI_AGENTS_CHILD === "1") return;
+    if (process.env[ENV_AGENTS_CHILD] === "1") return;
 
     // CLI subcommands such as `pi update` or `pi install` skip the animated intro.
     if (isPiCliSubcommandInvocation(process.argv)) return;
@@ -703,8 +743,6 @@ export default function (pi: ExtensionAPI) {
     let backgroundAgentsCount = 0;
 
     const allCommands = pi.getCommands();
-    // A one-line reminder under the banner on every start, while the tour exists.
-    const guideReminder = allCommands.some((c) => c.name === GUIDE_COMMAND) ? GUIDE_REMINDER : undefined;
     const skills = allCommands.filter((c) => c.source === "skill");
     const allTools = pi.getAllTools();
     const customTools = allTools.filter(
@@ -873,9 +911,9 @@ export default function (pi: ExtensionAPI) {
                   }
                 } else {
                   b.addRow();
-                  b.add("accent", "✿ ");
-                  b.add("value", "Gentle Shell");
-                  b.add("accent", " ✿");
+                  b.add("accent", "🐶 ");
+                  b.add("value", "Tomidev Shell");
+                  b.add("accent", " 🐶");
                   b.center(width);
                 }
               }
@@ -886,12 +924,17 @@ export default function (pi: ExtensionAPI) {
               for (let i = 0; i < rowCount; i++) {
                 const roseI = i - roseOffset;
                 const logoI = i - logoOffset;
-                const roseLine = roseI >= 0 && roseI < roseBase.lines.length
-                  ? roseBase.lines[roseI] : " ".repeat(roseBase.width);
+                const roseCells = roseI >= 0 && roseI < ROSE_LARGE_CELLS.length
+                  ? ROSE_LARGE_CELLS[roseI]
+                  : null;
                 const logoLine = logoI >= 0 && logoI < logoBase.lines.length
                   ? logoBase.lines[logoI] : " ".repeat(logoBase.width);
                 b.addRow();
-                b.add("rose", roseLine);
+                if (roseCells) {
+                  b.addCells(roseCells);
+                } else {
+                  b.add("none", " ".repeat(roseBase.width));
+                }
                 b.add("none", "   ");
                 if (logoI >= 0 && logoI < logoBase.lines.length) {
                   b.lines[b.lines.length - 1].push(
@@ -920,9 +963,9 @@ export default function (pi: ExtensionAPI) {
                 }
               } else if (bannerConfig.showTextLogo) {
                 b.addRow();
-                b.add("accent", "✿ ");
-                b.add("value", "Gentle Shell");
-                b.add("accent", " ✿");
+                b.add("accent", "🐶 ");
+                b.add("value", "Tomidev Shell");
+                b.add("accent", " 🐶");
                 b.center(width);
                 if (showRose) {
                   b.addRow();
@@ -930,9 +973,9 @@ export default function (pi: ExtensionAPI) {
                 }
               }
               if (showRose) {
-                for (const roseLine of roseBase.lines) {
+                for (const roseRow of ROSE_LARGE_CELLS) {
                   b.addRow();
-                  b.add("rose", roseLine);
+                  b.addCells(roseRow);
                   b.center(width);
                 }
               }
@@ -1081,22 +1124,35 @@ export default function (pi: ExtensionAPI) {
                 }
 
                 if (cell.type === "rose") {
-                  const pulse = 0.9 + Math.sin((x + y + frame) * 0.08) * 0.1;
+                  if (cell.char === " " && !cell.bg) {
+                    line += " ";
+                    continue;
+                  }
+                  const pulse = 0.95 + Math.sin((x + y + frame) * 0.08) * 0.05;
                   const k = Math.max(0.01, roseOpacity * pulse);
                   const f = flashPhase ** 0.4;
 
-                  const rBase = Math.floor(palette.rose[0] * k);
-                  const gBase = Math.floor(palette.rose[1] * k);
-                  const bBase = Math.floor(palette.rose[2] * k);
-
-                  if (f > 0.85) {
-                    line += `\x1b[1m\x1b[38;2;255;255;255m${cell.char}\x1b[0m`;
-                  } else {
-                    const r = Math.floor(rBase + (255 - rBase) * f);
-                    const g = Math.floor(gBase + (255 - gBase) * f);
-                    const bColor = Math.floor(bBase + (255 - bBase) * f);
-                    line += rgb(r, g, bColor, cell.char);
+                  let fgPart = "";
+                  if (cell.fg) {
+                    const rBase = Math.floor(cell.fg[0] * k);
+                    const gBase = Math.floor(cell.fg[1] * k);
+                    const bBase = Math.floor(cell.fg[2] * k);
+                    const r = f > 0.85 ? 245 : Math.min(255, Math.floor(rBase + (255 - rBase) * f));
+                    const g = f > 0.85 ? 245 : Math.min(255, Math.floor(gBase + (255 - gBase) * f));
+                    const bColor = f > 0.85 ? 250 : Math.min(255, Math.floor(bBase + (255 - bBase) * f));
+                    fgPart = `\x1b[38;2;${r};${g};${bColor}m`;
                   }
+                  let bgPart = "";
+                  if (cell.bg) {
+                    const rBase = Math.floor(cell.bg[0] * k);
+                    const gBase = Math.floor(cell.bg[1] * k);
+                    const bBase = Math.floor(cell.bg[2] * k);
+                    const r = f > 0.85 ? 245 : Math.min(255, Math.floor(rBase + (255 - rBase) * f));
+                    const g = f > 0.85 ? 245 : Math.min(255, Math.floor(gBase + (255 - gBase) * f));
+                    const bColor = f > 0.85 ? 250 : Math.min(255, Math.floor(bBase + (255 - bBase) * f));
+                    bgPart = `\x1b[48;2;${r};${g};${bColor}m`;
+                  }
+                  line += `${fgPart}${bgPart}${cell.char}\x1b[0m`;
                   continue;
                 }
 
@@ -1156,10 +1212,6 @@ export default function (pi: ExtensionAPI) {
               out.push(truncateToWidth(line, Math.max(1, width), ""));
             }
 
-            if (guideReminder) {
-              const pad = " ".repeat(Math.max(0, Math.floor((width - guideReminder.length) / 2)));
-              out.push(truncateToWidth(theme.fg("muted", pad + guideReminder), Math.max(1, width), ""));
-            }
             headerCache = { key: headerKey, out };
             return out;
           },

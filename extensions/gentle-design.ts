@@ -1,3 +1,4 @@
+import { brandCommand, ENV_AGENTS_CHILD } from "../lib/brand.ts";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -5,9 +6,9 @@ import { appendSystemPromptOnce } from "../lib/append-system-prompt.ts";
 import type { DesignSessionContent } from "../lib/design-canvas-server.ts";
 import { DESIGN_COMMENTS_TOOL_NAME, DESIGN_HELP, DESIGN_PROMPT_HINT, DESIGN_SKILL_NAME, DESIGN_SYNC_REQUEST, DESIGN_TOOL_NAME, createDesignCanvas, designRunMessage, designUsage, hasSystemBoard, listDesigns, parseDesignArgs, planDesignImplement, runDesignCommentsTool, runDesignTool, sendDesignImplement, type DesignCanvasDeps, type DesignCommentsToolParams, type DesignToolParams } from "../lib/gentle-design.ts";
 
-// Gentle Design: /gentle:design <brief> runs the bundled gentle-design skill,
-// which writes self-contained HTML artboards under design/<slug>/ with
-// whatever model the session uses. open (and no arguments, when designs
+// Tomidev Design: each new /td:design brief asks for canvas, direct application
+// work or the repository workflow. Only the canvas route runs gentle-design,
+// which supplies self-contained HTML delivery under design/<slug>/. open (and no arguments, when designs
 // exist) shows them on a loopback canvas whose comments come back to the
 // session and persist in design/<slug>/comments.json; stop and session
 // shutdown close it. The gentle_design_comments tool lets any model list and
@@ -15,14 +16,14 @@ import { DESIGN_COMMENTS_TOOL_NAME, DESIGN_HELP, DESIGN_PROMPT_HINT, DESIGN_SKIL
 // writes design/system.md and design/system.html; implement (and the canvas
 // Implement button) hands one artboard off to the project's real stack.
 // The gentle_design tool gives the model list/open/stop/implement on the same
-// canvas, and a system-prompt hint makes the skill the default design flow.
+// canvas, and a system-prompt hint asks for the route on natural-language entry.
 // list also reports the project's design sources and whether design/system.md
 // is missing or stale, so the skill syncs first or warns (S13).
 // Every handoff (command, tool, canvas) is recorded in design/<slug>/handoffs.json
 // as sent and chosen; the tool's handoff action records in_progress and
 // implemented (with the running app's loopback previewUrl) for the canvas (S15).
 
-export const DESIGN_COMMAND_NAME = "gentle:design";
+export const DESIGN_COMMAND_NAME = brandCommand("design");
 
 const DesignCommentsParams = Type.Object({
 	action: Type.Union([Type.Literal("list"), Type.Literal("resolve")], { description: "list: open comments; resolve: mark comments resolved after applying them" }),
@@ -43,7 +44,7 @@ const DesignParams = Type.Object({
 export interface GentleDesignDeps extends DesignCanvasDeps {
 	/** Absolute path of the bundled skill, named in the message when Pi has not loaded it. */
 	skillPath?: string;
-	/** Process environment; a delegated child session (GENTLE_PI_AGENTS_CHILD=1) gets no prompt hint. */
+	/** Process environment; a delegated child session (TOMIDEV_AGENTS_CHILD=1) gets no prompt hint. */
 	env?: NodeJS.ProcessEnv;
 }
 
@@ -98,7 +99,7 @@ export default function gentleDesign(pi: ExtensionAPI, deps: GentleDesignDeps = 
 				return;
 			}
 			if (parsed.name === "sync") {
-				if (parsed.rest) ctx.ui.notify("/gentle:design sync takes no arguments.", "warning");
+				if (parsed.rest) ctx.ui.notify("/td:design sync takes no arguments.", "warning");
 				else runSkill(DESIGN_SYNC_REQUEST, ctx);
 				return;
 			}
@@ -113,7 +114,21 @@ export default function gentleDesign(pi: ExtensionAPI, deps: GentleDesignDeps = 
 			} else ctx.ui.notify(plan.notice.message, plan.notice.level);
 			return;
 		}
-		runSkill(parsed.brief, ctx);
+		if (!ctx.hasUI) {
+			throw new Error("Design route selection requires human input. Run /td:design <brief> in an interactive or UI-capable RPC session to choose canvas, direct application work, or repository-defined workflow; alternatively send a plain-language request explicitly naming your chosen route. Nothing was started.");
+		}
+		const route = await ctx.ui.select("How would you like to design?", ["Canvas (HTML artboards)", "Direct application work", "Repository-defined workflow"]);
+		if (route === "Canvas (HTML artboards)") {
+			runSkill(`Canvas route selected for this task; do not ask again.\n\n${parsed.brief}`, ctx);
+			return;
+		}
+		const instructions: Record<string, string> = {
+			"Direct application work": "Direct application route selected for this task; do not ask again. Work in the application's real stack using project skills and conventions. Do not invoke builtin canvas skills, gentle_design list, system sync, canvas artifacts or server. Reuse existing feature tracking; do not create competing artifacts.",
+			"Repository-defined workflow": "Repository-defined route selected for this task; do not ask again. Inspect the project's instructions and relevant skills through existing skill discovery, then follow its design workflow and existing artifacts. If no repository design workflow is defined, report that clearly and stop; do not invent one or fall back to canvas. Respect project prohibitions and runtime safety.",
+		};
+		const instruction = route && Object.hasOwn(instructions, route) ? instructions[route] : undefined;
+		if (!instruction) return;
+		pi.sendUserMessage(`${instruction}\n\nDesign brief:\n${parsed.brief}`, ctx.isIdle() ? undefined : { deliverAs: "followUp" });
 	};
 
 	pi.registerCommand(DESIGN_COMMAND_NAME, { description: DESIGN_HELP, handler: handle });
@@ -130,8 +145,8 @@ export default function gentleDesign(pi: ExtensionAPI, deps: GentleDesignDeps = 
 	});
 	pi.registerTool({
 		name: DESIGN_TOOL_NAME,
-		label: "Gentle Design",
-		description: "Drive the gentle-design canvas. Call list before designing: it reports the project's design sources and whether design/system.md is missing or older than them (sync first, or offer to sync again). list also gives the designs under design/ (artboards, system board, whether the canvas runs and its URL); open a design on the local canvas (optional slug, default the most recent) or refresh it after writing or changing artboards, returning the URL; stop the canvas; implement one artboard (target <slug>/<artboard>), which returns the handoff instructions to follow and records it as the design's chosen artboard; handoff reports your progress on that artboard (status in_progress when you start, implemented when done, with previewUrl of the running app on localhost, 127.0.0.1 or [::1] when there is one), which the canvas shows live. Write briefs and run the design-system sync by following the gentle-design skill, not this tool.",
+		label: "Tomidev Design",
+		description: "Drive the gentle-design canvas. After the canvas route is selected, call list before designing: it reports the project's design sources and whether design/system.md is missing or older than them (sync first, or offer to sync again). list also gives the designs under design/ (artboards, system board, whether the canvas runs and its URL); open a design on the local canvas (optional slug, default the most recent) or refresh it after writing or changing artboards, returning the URL; stop the canvas; implement one artboard (target <slug>/<artboard>), which returns the handoff instructions to follow and records it as the design's chosen artboard; handoff reports your progress on that artboard (status in_progress when you start, implemented when done, with previewUrl of the running app on localhost, 127.0.0.1 or [::1] when there is one), which the canvas shows live. Write briefs and run the design-system sync by following the gentle-design skill, not this tool.",
 		promptSnippet: "List gentle-design designs, open or stop their canvas, get an artboard's implementation handoff, and report its progress.",
 		parameters: DesignParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -142,10 +157,10 @@ export default function gentleDesign(pi: ExtensionAPI, deps: GentleDesignDeps = 
 		},
 	});
 	// gentle-shell#1485: appendSystemPrompt reaches every provider. Delegated
-	// children only run their task, so they never get the default design flow.
+	// children only run their task, so they never get the design entry question.
 	const env = deps.env ?? process.env;
 	pi.on("before_agent_start", (event) => {
-		if (env.GENTLE_PI_AGENTS_CHILD === "1") return undefined;
+		if (env[ENV_AGENTS_CHILD] === "1") return undefined;
 		const options = event.systemPromptOptions;
 		const available = options?.skills?.some((skill) => skill.name === DESIGN_SKILL_NAME) || skillLoaded();
 		if (available) appendSystemPromptOnce(options, DESIGN_PROMPT_HINT);

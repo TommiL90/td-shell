@@ -37,7 +37,7 @@ export interface SessionProfileBindingProvenance {
 	startup?: SessionProfileStartupState;
 }
 
-const bindingsRegistryKey = Symbol.for("gentle-pi:session-profile-bindings");
+const bindingsRegistryKey = Symbol.for("td:session-profile-bindings");
 
 /** The one process-wide binding store, shared across every extension entrypoint that imports this module. */
 function bindingsBySession(): Map<string, SessionProfileBinding> {
@@ -48,7 +48,7 @@ function bindingsBySession(): Map<string, SessionProfileBinding> {
 
 // Sessions whose newest record says they started without a profile
 // (gentle-shell#2742), kept apart from the bindings because no profile is bound.
-const startupNoneRegistryKey = Symbol.for("gentle-pi:session-profile-startup-none");
+const startupNoneRegistryKey = Symbol.for("td:session-profile-startup-none");
 
 function startupNoneSessions(): Set<string> {
 	const holder = globalThis as { [startupNoneRegistryKey]?: Set<string> };

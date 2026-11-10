@@ -1,3 +1,4 @@
+import { BRAND_DISPLAY_NAME } from "./brand.ts";
 import { lstatSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ExtensionContext, InputEvent, ToolCallEvent, ToolCallEventResult, ToolResultEvent } from "@earendil-works/pi-coding-agent";
@@ -10,7 +11,7 @@ import { AUTO_PERMISSION_DIAGNOSTIC_PATHS, type AutoPermissionDiagnostic } from 
 import { appendSystemPromptOnce, type AppendableSystemPromptOptions } from "./append-system-prompt.ts";
 
 export const AUTO_DIRECTIVE = `<gentle-auto-permissions>
-Auto permission mode is active. Continue ordinary authorized work without routine permission questions. An independent classifier checks eligible tool actions before execution. A denial is a boundary, not an obstacle to evade: choose a materially safer alternative within the request; never hide the same effect behind another tool, script, or subagent. Ask the human only for unresolved consequential intent, explicit required consent, or when safe progress is blocked. Existing hard safety, explicit user restrictions, and native review/maintenance consent still apply. Never answer human consent tools yourself. Auto is not a sandbox, does not grant new task scope, and does not change Gentle Shell delegation.
+Auto permission mode is active. Continue ordinary authorized work without routine permission questions. An independent classifier checks eligible tool actions before execution. A denial is a boundary, not an obstacle to evade: choose a materially safer alternative within the request; never hide the same effect behind another tool, script, or subagent. Ask the human only for unresolved consequential intent, explicit required consent, or when safe progress is blocked. Existing hard safety, explicit user restrictions, and native review/maintenance consent still apply. Never answer human consent tools yourself. Auto is not a sandbox, does not grant new task scope, and does not change ${BRAND_DISPLAY_NAME} delegation.
 </gentle-auto-permissions>`;
 export function updateAutoPrompt(options: AppendableSystemPromptOptions | undefined, active: boolean): void {
  if (!options) return;
@@ -38,7 +39,7 @@ type BranchItem = {id: string; type: string; message?: {role: string; content: u
 type AuthoredInput = {text: string; order:number; before: Set<string>; entryId?: string; prompt?: string};
 // These are independent authority/dialog/delegation surfaces, not Auto approvals.
 const OWNED_CONTROL_TOOLS = new Set([
- "ask_user_choice", "ask_user_question", "gentle_review", "gentle_review_capture", "gentle_review_capture_group", "gentle_review_run",
+ "ask_user_choice", "ask_user_question",
  "subagent_run", "subagent_continue", "subagent_reply", "subagent_cancel", "subagent_send_message",
  "subagent_status", "subagent_result", "subagent_list_tasks", "subagent_list_agents",
  "gentle_odd_phase", "todo",
@@ -399,7 +400,7 @@ export class AutoPermissionRuntime {
    status:result.status,decision:result.decision,code:result.code,usage,usageKnown:result.usageKnown,late,actualModel:result.actualModel,...(memoryContextAttached === undefined ? {} : {memoryContextAttached}),...(diagnostic ? {diagnostic} : {})});} catch { /* Missing persistence never creates permission. */ }
   if(!late)this.calls++;
   this.tokens+=usage.totalTokens ?? 0;this.cost+=usage.costTotal ?? 0;
-  try {ctx.ui.setStatus("gentle:auto-usage",`Auto checks ${this.calls} · ${this.tokens} tokens · $${this.cost.toFixed(4)} (separate)`);} catch { /* Headless. */ }
+  try {ctx.ui.setStatus("td:auto-usage",`Auto checks ${this.calls} · ${this.tokens} tokens · $${this.cost.toFixed(4)} (separate)`);} catch { /* Headless. */ }
  }
  guard(event: Pick<ToolCallEvent,"toolName"|"input">, ctx: ExtensionContext): ToolCallEventResult | undefined {
   return this.protectedMutation(event,ctx) ? block("Permission configuration is human-controlled. Use the mode settings UI; model tools cannot change it.") : undefined;

@@ -1,10 +1,11 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { gentlePiConfigHome } from "./agent-home.ts";
 
 export type PermissionMode = "normal" | "auto" | "yolo" | "super-yolo";
-export const PERMISSION_MODE_SCHEMA = "gentle-pi.permission-mode/v1";
+export const PERMISSION_MODE_SCHEMA = brandSchema("permission-mode", 1);
 export interface PermissionModeOptions { gentlePiConfigHome?: string }
 export interface PermissionModeResolution {
 	mode: PermissionMode;
@@ -24,7 +25,7 @@ export function parsePermissionModePolicyFile(raw: string): PermissionMode | und
 	try {
 		const value: unknown = JSON.parse(raw);
 		if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== 2) return undefined;
-		if (!("schema" in value) || value.schema !== PERMISSION_MODE_SCHEMA || !("mode" in value)) return undefined;
+		if (!("schema" in value) || !isBrandSchema(value.schema, "permission-mode", 1) || !("mode" in value)) return undefined;
 		return isPermissionMode(value.mode) ? value.mode : undefined;
 	} catch { return undefined; }
 }

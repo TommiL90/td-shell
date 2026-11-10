@@ -14,26 +14,34 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ENV_CONFIG_HOME } from "../runtime/brand.mjs";
 
 export const DEFAULT_STAGES = Object.freeze([
 	{ name: "unit-tests", command: "node --experimental-strip-types --test tests/*.test.ts" },
-	{ name: "provider-contract", command: "pnpm run check:provider-contract" },
 	{ name: "runtime-harness", command: "pnpm run test:harness" },
 ]);
 
 export async function runStage(stage) {
 	let configHome;
 	let unitTmp;
+	let stageHome;
 	try {
+		// L22: every stage gets a private HOME and USERPROFILE, removed after the stage, so no test
+		// or child can reach the developer's real home (~/.tomidev, ~/.gentle-shell, ~/.pi).
+		stageHome = mkdtempSync(join(tmpdir(), "gentle-pi-stage-home-"));
 		// Unit fixtures must not inherit the terminal's Git overrides, child-session
 		// identity, launcher marker, or guardrails. Later stages retain their env.
 		configHome = stage.name === "unit-tests" ? mkdtempSync(join(tmpdir(), "gentle-pi-unit-config-")) : undefined;
 		const env = configHome ? Object.fromEntries(Object.entries(process.env).filter(([key]) => {
 			const normalizedKey = key.toUpperCase();
-			return !normalizedKey.startsWith("GIT_") && !normalizedKey.startsWith("GENTLE_PI_AGENTS_") &&
-				normalizedKey !== "GENTLE_PI_CONFIG_HOME" && normalizedKey !== "GENTLE_SHELL_CONFIG_HOME";
-		})) : process.env;
-		if (configHome) env.GENTLE_PI_CONFIG_HOME = configHome;
+			return !normalizedKey.startsWith("GIT_") && !normalizedKey.startsWith("TOMIDEV_AGENTS_") &&
+				normalizedKey !== ENV_CONFIG_HOME && normalizedKey !== "TOMIDEV_SHELL_CONFIG_HOME" &&
+				// Gentle AI's own name for the config parent (its binary contract): an inherited value must not reach a fixture's gentle-ai.
+				normalizedKey !== "GENTLE_PI_CONFIG_HOME";
+		})) : { ...process.env };
+		if (configHome) env[ENV_CONFIG_HOME] = configHome;
+		env.HOME = stageHome;
+		env.USERPROFILE = stageHome;
 		// Unix sockets have short path limits; an inherited TMPDIR can already be
 		// too long. Use the short system temp root on POSIX and a private directory
 		// on every platform, removed even when stage setup or execution fails.
@@ -62,6 +70,10 @@ export async function runStage(stage) {
 			// it still reads $XDG_CONFIG_HOME/git/ignore, so a host ignore (e.g.
 			// ".agents/") would keep dropping fixture files from `git add -A`.
 			env.XDG_CONFIG_HOME = configHome;
+			// The other XDG folders would reach the developer's real data, state and cache folders.
+			env.XDG_DATA_HOME = join(stageHome, "xdg-data");
+			env.XDG_STATE_HOME = join(stageHome, "xdg-state");
+			env.XDG_CACHE_HOME = join(stageHome, "xdg-cache");
 		}
 		return await new Promise((resolve) => {
 			const child = spawn(stage.command, { shell: true, stdio: "inherit", env });
@@ -74,6 +86,7 @@ export async function runStage(stage) {
 	} finally {
 		if (configHome) rmSync(configHome, { recursive: true, force: true });
 		if (unitTmp) rmSync(unitTmp, { recursive: true, force: true });
+		if (stageHome) rmSync(stageHome, { recursive: true, force: true });
 	}
 }
 

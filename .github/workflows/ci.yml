@@ -37,7 +37,7 @@ jobs:
       - name: Run tests
         run: pnpm test
         env:
-          GENTLE_PI_REQUIRE_NATIVE_BINARY: "1"
+          TOMIDEV_REQUIRE_NATIVE_BINARY: "1"
 
       - name: Type check
         run: pnpm run typecheck
@@ -71,8 +71,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        env:
-          GENTLE_PI_SKIP_GENTLE_AI_INSTALL: "1"
 
       - name: Run Darwin session transport tests
         run: pnpm exec node --experimental-strip-types --test tests/agents-session-transport.test.ts tests/agents-session-transport-process.test.ts tests/gentle-agents.test.ts
@@ -230,8 +228,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        env:
-          GENTLE_PI_SKIP_GENTLE_AI_INSTALL: "1"
 
       - name: Run Windows Git authority probe
         shell: pwsh
@@ -284,14 +280,6 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
-
-      # The native Windows source-build test needs a local Go at the repository minimum.
-      - name: Setup Go (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version: "1.25.14"
-          cache: false
 
       # #2121: a test-file process intermittently aborts at exit (0xC0000409) with
       # no message. Windows Error Reporting keeps a dump of any node.exe crash,

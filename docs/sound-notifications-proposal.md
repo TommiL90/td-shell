@@ -2,7 +2,7 @@
 
 **Propuesta histórica aprobada y ejecutada por unidades; ver [estado actual](#estado-actual-sn6).** El texto original debajo conserva las decisiones propuestas, no afirma que sigan sin implementar.
 
-Incorporar a gentle-shell notificaciones sonoras configurables para sesión, agente principal y subagentes. El audio estará **desactivado por defecto** y no alterará la ejecución, las decisiones ni los permisos del harness.
+Incorporar a tomidev notificaciones sonoras configurables para sesión, agente principal y subagentes. El audio estará **desactivado por defecto** y no alterará la ejecución, las decisiones ni los permisos del harness.
 
 ## Decisión propuesta
 
@@ -57,13 +57,13 @@ Todos los eventos disponibles pueden asignarse a un sonido o a silencio. El cat�
 
 ## Configuración
 
-Archivo global propuesto: `<gentlePiConfigHome()>/notifications.json`; por defecto, `~/.pi/gentle-ai/notifications.json`. Se respeta `GENTLE_PI_CONFIG_HOME`.
+Archivo global propuesto: `<gentlePiConfigHome()>/notifications.json`; por defecto, `~/.pi/gentle-ai/notifications.json`. Se respeta `TOMIDEV_CONFIG_HOME`.
 
 Ejemplo ilustrativo del esquema propuesto, no configuración funcional actual:
 
 ```json
 {
-  "schema": "gentle-shell.notifications/v1",
+  "schema": "tomidev.notifications/v1",
   "enabled": false,
   "audio": {
     "backend": "auto",
@@ -181,7 +181,7 @@ Aprobar o ajustar el alcance de v1 y la configuración global. Después, realiza
 ## Estado de ejecución en este worktree
 
 **Estado histórico al copiar esta propuesta: ejecución aprobada; implementación todavía no iniciada en aquel turno.**
-El estado inicial y el texto anterior se conservan como propuesta histórica, sin modificar el original de `gentle-shell`. El alcance aprobado, los contratos refinados y las seis unidades futuras se concretan en el [plan ODD](../odd/tasks/sound-notifications.md), que rige la ejecución.
+El estado inicial y el texto anterior se conservan como propuesta histórica, sin modificar el original de `tomidev`. El alcance aprobado, los contratos refinados y las seis unidades futuras se concretan en el [plan ODD](../odd/tasks/sound-notifications.md), que rige la ejecución.
 Esta entrega es solo planificación y copia: sin implementación, review, subagentes ni commits. La elección «Por unidades revisables (recomendado)» autoriza para la ejecución posterior commits LOCALES por unidad con sus tests, no push ni PR.
 
 ## Estado actual SN6

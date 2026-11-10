@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
@@ -8,12 +9,12 @@ import { gentlePiConfigHome } from "./agent-home.ts";
 // renderer (lib/codemode-renderer.ts), and Pi warns at every startup when a
 // builtin loses its tool to another extension. Pi's only per-builtin opt-out
 // is a `-builtin:<name>` entry in the settings `extensions` array. The
-// gentle-shell launcher adds it silently to homes it owns (bin/gentle-shell.mjs,
+// gentle-shell launcher adds it silently to homes it owns (bin/tomidev.mjs,
 // #1612); a user-owned Pi home only gets it after the user accepts a
 // one-time prompt, and a declined prompt is remembered per settings file.
 export const BUILTIN_CODEMODE_EXTENSION = "builtin:codemode";
 export const BUILTIN_CODEMODE_OPTOUT_ENTRY = `-${BUILTIN_CODEMODE_EXTENSION}`;
-export const BUILTIN_CODEMODE_OPTOUT_SCHEMA = "gentle-pi.builtin-codemode-optout/v1";
+export const BUILTIN_CODEMODE_OPTOUT_SCHEMA = brandSchema("builtin-codemode-optout", 1);
 
 export type BuiltinCodemodeOptOutOutcome =
 	| "no-ui"
@@ -47,7 +48,7 @@ export function hasExplicitBuiltinEntry(extensions: unknown, builtin = BUILTIN_C
 	return Array.isArray(extensions) && extensions.some((entry) => typeof entry === "string" && entry.replace(/^[+!-]/, "") === builtin);
 }
 
-// Pure: mirrors withBuiltinExtensionExcluded in bin/gentle-shell.mjs. Returns
+// Pure: mirrors withBuiltinExtensionExcluded in bin/tomidev.mjs. Returns
 // `settingsText` with `-<builtin>` appended to its `extensions` array (created
 // when absent), or undefined when nothing should change — the text does not
 // parse as a JSON object, `extensions` exists but is not an array, or the
@@ -85,7 +86,7 @@ function readIfExists(path: string): string | undefined {
 function readDeclined(configHome: string): string[] {
 	try {
 		const value: unknown = JSON.parse(readIfExists(builtinCodemodeOptOutStatePath(configHome)) ?? "null");
-		if (typeof value !== "object" || value === null || (value as { schema?: unknown }).schema !== BUILTIN_CODEMODE_OPTOUT_SCHEMA) return [];
+		if (typeof value !== "object" || value === null || !isBrandSchema((value as { schema?: unknown }).schema, "builtin-codemode-optout", 1)) return [];
 		const declined = (value as { declined?: unknown }).declined;
 		return Array.isArray(declined) ? declined.filter((path): path is string => typeof path === "string") : [];
 	} catch { return []; }
@@ -124,9 +125,9 @@ function writeSettingsAtomically(path: string, data: string): void {
 
 function promptMessage(settingsPath: string): string {
 	return [
-		"Pi warns at startup that the builtin codemode extension was not loaded, because gentle-pi replaces it with its compact codemode renderer.",
-		`Adding "${BUILTIN_CODEMODE_OPTOUT_ENTRY}" to the "extensions" list in ${settingsPath} silences that warning from the next launch. gentle-pi keeps its compact codemode either way.`,
-		"Nothing is written unless you accept. If you decline, gentle-pi will not ask again.",
+		"Pi warns at startup that the builtin codemode extension was not loaded, because tomidev replaces it with its compact codemode renderer.",
+		`Adding "${BUILTIN_CODEMODE_OPTOUT_ENTRY}" to the "extensions" list in ${settingsPath} silences that warning from the next launch. tomidev keeps its compact codemode either way.`,
+		"Nothing is written unless you accept. If you decline, tomidev will not ask again.",
 	].join("\n\n");
 }
 
@@ -150,7 +151,7 @@ export async function offerBuiltinCodemodeOptOut(ctx: BuiltinCodemodeOptOutConte
 		const accepted = (await ctx.ui.confirm("Silence Pi's builtin codemode warning?", promptMessage(settingsPath))) === true;
 		if (!accepted) {
 			recordDeclined(configHome, settingsPath);
-			ctx.ui.notify(`gentle-pi will not ask again. To silence the warning later, add "${BUILTIN_CODEMODE_OPTOUT_ENTRY}" to "extensions" in ${settingsPath}.`, "info");
+			ctx.ui.notify(`tomidev will not ask again. To silence the warning later, add "${BUILTIN_CODEMODE_OPTOUT_ENTRY}" to "extensions" in ${settingsPath}.`, "info");
 			return "declined";
 		}
 		// The dialog may have stayed open while the file changed; re-read it.

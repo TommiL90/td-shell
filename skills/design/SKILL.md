@@ -1,6 +1,6 @@
 ---
 name: gentle-design
-description: "Trigger: design a screen or page, mockup, landing page, UI directions, artboards, try a different approach, design system sync. Write self-contained HTML design directions under design/<slug>/."
+description: "Trigger: design a screen or page, mockup, landing page, UI directions. Ask for canvas/direct/repository route first; after canvas selection, supply self-contained HTML artboard delivery and design system sync."
 license: Apache-2.0
 metadata:
   author: gentleman-programming
@@ -9,16 +9,20 @@ metadata:
 
 ## Activation Contract
 
-Use this skill by default whenever the user asks, in plain words, for a UI design, mockup, screen, landing page, or visual directions, or iterates on artboards under `design/`. Do not use it to implement production code in the project's stack.
+At a new design workflow entry, ask once whether the user prefers canvas (HTML artboards), direct application work, or the repository-defined workflow. Start nothing until the human selects; never default to canvas. An explicit route already selected for this task needs no second question. Honor it for continuations and explicit canvas utilities (open/stop/sync/implement/comments); ask anew for a subsequent independent task, with no global preference.
 
-The `/gentle:design` commands are optional shortcuts: every action also works from a plain request, through this skill and the `gentle_design` tool (`list`, `open`, `stop`, `implement`, `handoff`).
+Only the canvas route uses the delivery rules below. Direct application work uses the project's real stack and skills, without builtin canvas skills, list/system sync, artifacts or server. The repository route follows existing project instructions, relevant skills and artifacts through existing skill discovery; if no repository design workflow is defined, report that clearly and stop rather than inventing one or falling back to canvas.
+
+The project's relevant design and UX skills take precedence; builtin guidance fills gaps, not a mandatory pairing. Respect explicit project prohibitions and runtime safety. Reuse compatible artifacts and the project's existing feature tracking, never competing tracking. The integrated canvas supports self-contained HTML with `design/<slug>/design.json`, not arbitrary project formats or roots: explain any incompatibility instead of claiming unsupported formats work. Do not use the canvas delivery steps to implement production code.
+
+The `/td:design` commands are optional shortcuts: every action also works from a plain request, through this skill and the `gentle_design` tool (`list`, `open`, `stop`, `implement`, `handoff`).
 
 ## Hard Rules
 
 - Every artboard is one self-contained HTML file: inline CSS, JS, and SVG; system font stacks only. Never reference external URLs, CDNs, remote fonts, images, or scripts.
 - Use realistic content for the audience; no lorem ipsum or placeholder names.
 - Accessible markup: semantic elements and landmarks, WCAG AA contrast, visible focus styles, `prefers-reduced-motion` respected for any motion.
-- When `design/system.md` exists, read it first and use only its tokens and component rules; run the Self-check from "Design system sync" before finishing any artboard.
+- Follow the project's authoritative tokens and component rules first, reusing compatible existing artifacts. When `design/system.md` exists, read it and reconcile it with those sources; never silently use stale or conflicting tokens. Run the Self-check from "Design system sync" before finishing any artboard.
 - Ask at most one clarifying question, and only when the brief lacks the goal or the content.
 - Iterating edits only the targeted artboard. Never rewrite the others.
 
@@ -26,18 +30,19 @@ The `/gentle:design` commands are optional shortcuts: every action also works fr
 
 | Situation | Action |
 | --- | --- |
-| New brief | Write N clearly different directions (3 by default, or the number asked) to a new `design/<slug>/` |
+| New brief, canvas route selected | Write N clearly different directions (3 by default, or the number asked) to a new `design/<slug>/` |
 | Feedback on one artboard | Edit that file only; keep its manifest entry, update `tradeoff` if it changed |
 | "Save and try a different approach" | Add a new artboard with the next `NN`; keep previous ones; append it to the manifest |
 | User wants to tune values (spacing, color, type scale) | Add sliders or controls in the artboard plus a "Copy as prompt" button that copies the chosen values as a prompt |
-| `design/<slug>/` already exists for a new brief | Pick a new slug; never overwrite another design |
+| Compatible artifacts already exist for this task | Reuse them; edit only the targeted artboard and preserve other directions |
+| `design/<slug>/` belongs to a different task | Pick a new slug; never overwrite another design |
 | A message carries design comments, or the user asks to apply them | Follow "Canvas comments" below |
-| `/gentle:design sync`, or the user asks to capture the project's design system | Follow "Design system sync" below |
+| `/td:design sync`, or the user asks to capture the project's design system | Follow "Design system sync" below |
 | The user asks to show, stop, or list designs, or to implement an artboard | Call the `gentle_design` tool (`open`, `stop`, `list`, or `implement` with `<slug>/<artboard>`); follow the handoff text `implement` returns, and report progress with `action "handoff"`: `status: "in_progress"` when you start, `status: "implemented"` when done, with `previewUrl` set to the running app's loopback URL when one is running |
 
 ## Before designing
 
-Run this gate before every new brief: call the `gentle_design` tool with `action: "list"`, then:
+Only after canvas selection, inspect relevant project skills and compatible existing artifacts first. Call the `gentle_design` tool with `action: "list"`, then apply these fallback rules where the project has not supplied compatible token guidance. Missing `design/system.md` alone is not a reason to duplicate the project's existing token artifacts:
 
 | `list` reports | Action |
 | --- | --- |
@@ -48,7 +53,7 @@ Run this gate before every new brief: call the `gentle_design` tool with `action
 ## Execution Steps
 
 1. Take the brief: goal, layout, content, audience.
-2. Load `gentle-ui-design`: read its `SKILL.md` and only the references that match the brief's audience, primary job, and success condition. This skill owns delivery; that one owns UX quality.
+2. Load relevant project design/UX skills first for the audience, primary job, and success condition. Use `gentle-ui-design` only for uncovered UX gaps; read only the relevant references, not a mandatory builtin pairing.
 3. Choose a kebab-case slug from the brief.
 4. Make the directions differ in structure or visual strategy, not only in color. Label each with the tradeoff it makes.
 5. Write `design/<slug>/NN-<name>.html` per artboard (`01-…`, `02-…`; kebab-case name).
@@ -67,14 +72,14 @@ Run this gate before every new brief: call the `gentle_design` tool with `action
 ```
 
 7. Set `width`/`height` to the artboard's intended viewport in CSS pixels; keep the manifest in sync with the files on every change. Fields: `title`, `brief`, optional `feature`, and `artboards[]` with `file`, `title`, `tradeoff`, `width`, `height`.
-8. ODD link: when the design comes from a tracked ODD feature (an existing `odd/tasks/<feature>.md` for the current work), set `feature` to that path and append one entry to that document's `## Log` naming `design/<slug>/` and its artboards. When an artboard of that design is handed off to implement, the Log entry also names the chosen artboard (the one handed off; `list` reports it as `Chosen`) and that the others are alternatives. For small untracked work, omit `feature` and leave the design standalone; never create a feature document just to link it.
-9. UX self-check, for every artboard you finish: pass it against the `gentle-ui-design` composition-and-feedback (hierarchy, density, feedback) and adaptive-interfaces (narrow screens, input access, states) guidance, and fix every gap before you report.
+8. Feature / legacy ODD link: reuse the project's current tracking in its existing format, naming the artboards and chosen artboard there when appropriate; never create a second feature or log. The manifest supports `.agents/designs/features/<feature>/` and legacy `odd/tasks/<feature>.md` (whose `## Log` can record the handoff); set `feature` only for such an existing compatible locator. For other project formats, keep tracking there without inventing a manifest link. For untracked work, omit `feature` and leave the design standalone; never create a feature document just to link it.
+9. UX self-check, for every artboard you finish: apply the project's UX checks first; use `gentle-ui-design` composition-and-feedback (hierarchy, density, feedback) and adaptive-interfaces (narrow screens, input access, states) guidance only for gaps, and fix every gap before you report.
 10. After writing or changing artboards, call the `gentle_design` tool with `action: "open"` and the slug, unless the user said not to. When a canvas tab is already open it refreshes that tab instead of opening a new one, so call it after every change. Report the URL it returns.
 
 ## Design system sync
 
 1. Read only, and never edit project source. Sources: CSS custom properties (`:root`, `@theme`, `[data-theme]`), the Tailwind config or v4 `@theme`, component library folders, existing token files, and the fonts they declare.
-2. Write `design/system.md`: colors (token name, value, usage), typography, spacing, radius, shadows, and component rules. Each entry names its source `path`. Record only values found in the sources.
+2. Reuse compatible project token artifacts instead of duplicating them. When a canvas-specific snapshot is needed, write `design/system.md`: colors (token name, value, usage), typography, spacing, radius, shadows, and component rules. Each entry names its source `path`. Record only values found in the sources.
 3. Write `design/system.html`: one self-contained artboard, 1440 px wide, that renders those tokens (swatches, type scale, spacing, radius, shadows) and the core components, under the same no-external-URL rules. The canvas shows it as the first board of every design.
 4. When no design sources exist, say so and propose a minimal starter system for the user to accept; never present invented values as project tokens.
 5. Self-check, for every artboard you finish while `design/system.md` exists: list the colors and font families the artboard uses, compare them with the system tokens, and fix every deviation before you report.
@@ -105,9 +110,10 @@ Never delete or reorder entries, and keep the file valid JSON: the canvas refuse
 
 ## Output Contract
 
-Return: the slug, each artboard file with its title and tradeoff, which files changed in this turn, the comment ids resolved in this turn, and any open question. Give the canvas URL from step 10, or mention that `/gentle:design open <slug>` shows the canvas when you did not open it. For a sync, return the source paths read, the token counts per group, and whether the system is a proposed starter; after an automatic sync from "Before designing", say it ran and report it the same way.
+Return: the slug, each artboard file with its title and tradeoff, which files changed in this turn, the comment ids resolved in this turn, and any open question. Give the canvas URL from step 10, or mention that `/td:design open <slug>` shows the canvas when you did not open it. For a sync, return the source paths read, the token counts per group, and whether the system is a proposed starter; after an automatic sync from "Before designing", say it ran and report it the same way.
 
 ## References
 
 - `design/system.md` in the project, when present — the design tokens to follow.
-- `gentle-ui-design` skill — UX quality guidance paired with every artboard.
+- Project design/UX skills — authoritative project guidance.
+- `gentle-ui-design` skill — optional UX fallback for uncovered gaps.

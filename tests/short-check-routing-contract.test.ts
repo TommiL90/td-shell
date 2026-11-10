@@ -28,7 +28,7 @@ for (const [name, text] of Object.entries({ registeredDescription: background.de
 			"longer or unknown duration, external waits, CI, builds, and servers",
 			"Report a timeout as failure; never automatically retry, restart, or migrate it to background",
 			"Preserve RED/GREEN and public-check exit codes, stdout, and stderr",
-			"Engram bugfix saves and session summaries", "RDD", "not a performance guarantee",
+			"Engram bugfix saves and session summaries", "not a performance guarantee",
 		]) assert.ok(text.includes(clause), `${name} missing: ${clause}`);
 	});
 }

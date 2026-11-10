@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import test from "node:test";
 
 // Pain-point iteration S10 (C7): blind reviewers flagged tool artifacts in every
-// Gentle Shell delivery. Orchestrators told writers to create a scratch
+// Tomidev Shell delivery. Orchestrators told writers to create a scratch
 // directory in the repository root and point TMPDIR at it, so test state and
 // tool caches entered the diff. Test scratch now lives outside the worktree by
 // default. These are instruction-delivery contracts, not proof of model adherence.
@@ -94,7 +94,7 @@ test("S10: scratch outside the worktree is removed after use", () => {
 	// Session scratch and artifact ledger: the runtime owns the parent session's
 	// TMPDIR (subagent TMPDIRs nest under it) and records clones and worktrees,
 	// so the writer rule points at the command instead of a model cleanup step.
-	containsAll(writer, ["The runtime owns session scratch", "`/gentle:scratch` lists or cleans recorded clones and worktrees"], "writer runtime-owned cleanup");
+	containsAll(writer, ["The runtime owns session scratch", "`/td:scratch` lists or cleans recorded clones and worktrees"], "writer runtime-owned cleanup");
 	// The verifier's mktemp copy lives in its own TMPDIR, which the runner removes.
 	const verification = read("assets/orchestrator-verification.md");
 	containsAll(verification, ["the runtime removes each subagent's own TMPDIR, which holds that copy"], "verification runtime cleanup");

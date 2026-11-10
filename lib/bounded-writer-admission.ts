@@ -5,7 +5,7 @@ import type { OrchestratorMode } from "./agent-profiles.ts";
 import { contextBackstopReached, type MeasuredContext } from "./context-backstop.ts";
 import { resolveSessionWorktree, type WorktreeResolver } from "./session-worktree-registry.ts";
 
-const WRITER_NAMES = ["gentle-ai-worker", "worker", "jd-fix-agent"];
+const WRITER_NAMES = ["gentle-ai-worker", "worker"];
 export const WRITER_EDIT_SURFACE_REJECTION =
 	"Writer tasks must include the exact Markdown heading `## Allowed edit surfaces` with narrow repository-relative paths or narrow globs, one per line. Every non-empty line belongs to the section until the next canonical Markdown heading and must be a valid surface entry. Paths containing whitespace require whole-entry backticks; begin explanatory prose under the next Markdown heading. The parent must derive or map that canonical block from the delegated task and relaunch the writer; do not accept aliases, and do not ask the human to author paths or globs.";
 // One heading matcher: the parser scans with the global form, and continuation
@@ -84,24 +84,25 @@ export function rejectUnscopedBoundedWriterDispatch(input: unknown): { block: tr
 // Pain-point iteration S16: prompt rules alone did not stop small-task delegation (a two-feature request still
 // started two writers for ~35-line units). A generic writer launch is admitted only for a task of an existing ODD
 // feature document, or when the parent's measured context reaches the context backstop (the same threshold as the
-// runtime notice, lib/context-backstop.ts). Judgment Day fix agents and continuations keep their own protocols.
-// A line that starts with `Spec:` (optionally as a list item), names an odd/tasks document, and names a task
+// runtime notice, lib/context-backstop.ts).
+// A line that starts with `Spec:` (optionally as a list item), names a feature contract (.agents/designs/features/ or odd/tasks/), and names a task
 // `T<n>` later on the same line: covers the canon (`, T2, S3-S4`), the delegation card (`(read until "## Log").
 // Do T2; S3.`), and comma-free forms (`.md T1 S1;`). A mention inside prose does not start the line.
-const FEATURE_DOCUMENT_TASK = /^[ \t]*(?:[-*+][ \t]+)?Spec:[ \t]*`?(odd\/tasks\/[^\s,`()]+\.md)`?[^\n]*?\bT\d+\b/gm;
+const FEATURE_DOCUMENT_TASK = /^[ \t]*(?:[-*+][ \t]+)?Spec:[ \t]*`?((?:\.agents\/designs\/features\/[^\s,`()]+\/?|odd\/tasks\/[^\s,`()]+\.md))`?[^\n]*?\bT\d+\b/gm;
 export const WRITER_FEATURE_DOCUMENT_REJECTION =
-	"Writers run only for a task of an existing ODD feature document (`Spec: odd/tasks/<feature>.md, T<n>` in the task) or when your measured context reaches the context backstop. This unit has neither: write this unit inline yourself now; do not retry the launch, and never create a feature document only to launch writers.";
+	"Writers run only for a task of an existing feature contract (`Spec: .agents/designs/features/<feature>/, T<n>` or `Spec: odd/tasks/<feature>.md, T<n>` in the task) or when your measured context reaches the context backstop. This unit has neither: write this unit inline yourself now; do not retry the launch, and never create a feature document only to launch writers.";
 
 function featureDocumentExists(root: string, relativePath: string): boolean {
-	// Resolve symlinks on both sides so a document linked from outside the root, or an odd/tasks directory linked
-	// elsewhere, never admits a writer; the document must be a regular file under <root>/odd/tasks.
+	// Resolve symlinks on both sides so a document linked from outside the root never admits a writer;
+	// the target must be under <root> and cannot traverse with .. segments.
 	try {
+		const normalized = relativePath.replace(/\\/g, "/");
+		if (normalized.split("/").some(segment => segment === "..")) return false;
 		const realRoot = realpathSync(resolve(root));
-		const tasksDir = realpathSync(resolve(realRoot, "odd", "tasks"));
 		const target = realpathSync(resolve(realRoot, relativePath));
-		const inTasks = relative(tasksDir, target);
-		if (relative(realRoot, tasksDir).startsWith("..") || !inTasks || inTasks.startsWith("..") || isAbsolute(inTasks)) return false;
-		return statSync(target).isFile();
+		const within = relative(realRoot, target);
+		if (within.startsWith("..") || isAbsolute(within)) return false;
+		return statSync(target).isFile() || statSync(target).isDirectory();
 	} catch {
 		return false;
 	}
@@ -146,7 +147,6 @@ export function rejectUndocumentedWriterLaunch(
 // carries no section of its own inherits the surfaces its original launch was
 // admitted with. A follow-up that carries the heading is validated as written,
 // never merged, and nothing is inherited when the original had no valid section.
-// Judgment Day fix batches keep their own exact dispatch protocol.
 export function inheritAllowedEditSurfaces(agent: string, followUp: string, context: unknown, originalPrompt: string): string {
 	const hasHeading = (value: unknown) => typeof value === "string" && ALLOWED_EDIT_SURFACES_HEADING_LINE.test(value);
 	if (!isGenericBoundedWriter(agent) || hasHeading(followUp) || hasHeading(context)) return followUp;
@@ -157,8 +157,7 @@ export function inheritAllowedEditSurfaces(agent: string, followUp: string, cont
 	return `${followUp}\n\n## Allowed edit surfaces\n${inherited.map(path => `\`${path}\``).join("\n")}\n`;
 }
 
-// Every agent admitted through the `## Allowed edit surfaces` guard, including
-// Judgment Day fix agents; only these claim surfaces at runtime admission.
+// Every agent admitted through the `## Allowed edit surfaces` guard; only these claim surfaces at runtime admission.
 export function isBoundedWriter(name: string): boolean {
 	return WRITER_NAMES.includes(name);
 }
@@ -171,6 +170,9 @@ export function isGenericBoundedWriter(name: string): boolean {
 // exclude documentation, memory, harness metadata and configuration-only scopes.
 export function isDevelopmentSurface(path: string): boolean {
 	const normalized = path.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
+	if (normalized.startsWith(".agents/designs/features/")) {
+		return /\.(?:md|json|[cm]?[jt]sx?|py|sh)$/i.test(normalized) || !normalized.slice(".agents/designs/features/".length).includes(".");
+	}
 	if (normalized.split("/").some(part => /^(?:\.|\.\.|odd|docs?|memory|secrets|credentials|tokens|keychains|\.pi|\.agents|\.atl|\.git|\.config|\.ssh|\.aws|\.gnupg|\.credentials)$/i.test(part))) return false;
 	if (/(^|\/)\w[\w.-]*\.config\.[cm]?[jt]s$/i.test(normalized)) return false;
 	if (/(^|\/)\.env(?:$|[./_-])|\.(?:pem|key|p12|pfx)$/i.test(normalized)) return false;

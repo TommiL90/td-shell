@@ -1,4 +1,4 @@
-// Gentle Design canvas: artboards side by side with pan, zoom, live reload,
+// Tomidev Design canvas: artboards side by side with pan, zoom, live reload,
 // and comments persisted in design/<slug>/comments.json (pins, list, send modes).
 // design/system.html, when present, is the first board of every design; it is
 // kept out of state.boards so comments never apply to it.
@@ -19,6 +19,7 @@
 	const MIN_ZOOM = 0.05;
 	const MAX_ZOOM = 4;
 	const FIT_PADDING = 48;
+	const REFIT_DELAY_MS = 120;
 	const FOCUS_MARGIN = 16;
 	// Room below a focused artboard for the floating "Back to canvas" button.
 	const BACK_SPACE = 64;
@@ -27,7 +28,7 @@
 	const SCREENSHOT_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 	const MODE_KEY = "gentle-design:send-mode";
 	const SYSTEM_LABEL = { title: "Design system", tradeoff: "Project tokens (design/system.md)" };
-	const SYSTEM_NOTE = "Comments apply to design artboards only. To change the system, update the project's design sources and run /gentle:design sync.";
+	const SYSTEM_NOTE = "Comments apply to design artboards only. To change the system, update the project's design sources and run /td:design sync.";
 	const HANDOFF_LABELS = { queued: "Queued", sent: "Implementing…", in_progress: "In progress", implemented: "Implemented ✓" };
 	const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 	const MAX_PREVIEW_URL = 2048;
@@ -110,6 +111,9 @@
 		system: null,
 		systemBoard: null,
 		zoom: 1,
+		fitted: false,
+		refitTimer: 0,
+		refitPending: false,
 		x: FIT_PADDING,
 		y: FIT_PADDING,
 		commenting: false,
@@ -178,6 +182,7 @@
 
 	/** Zoom so the world point under (px, py) in viewport coordinates stays put. */
 	function zoomAt(nextZoom, px, py) {
+		state.fitted = false;
 		const zoom = clampZoom(nextZoom);
 		state.x = px - (px - state.x) * (zoom / state.zoom);
 		state.y = py - (py - state.y) * (zoom / state.zoom);
@@ -192,6 +197,7 @@
 	}
 
 	function panBy(dx, dy) {
+		state.fitted = false;
 		state.x += dx;
 		state.y += dy;
 		applyView();
@@ -205,11 +211,29 @@
 		const height = els.world.offsetHeight;
 		if (!width || !height) return;
 		const zoom = clampZoom(Math.min((rect.width - FIT_PADDING * 2) / width, (rect.height - FIT_PADDING * 2) / height, 1));
+		state.fitted = true;
 		state.zoom = zoom;
 		state.x = (rect.width - width * zoom) / 2;
 		state.y = Math.max(FIT_PADDING, (rect.height - height * zoom) / 2);
 		applyView();
 		closePopover();
+	}
+
+	/** Follow viewport layout (including panel transitions), only while the user still wants Fit. */
+	function scheduleRefit() {
+		clearTimeout(state.refitTimer);
+		state.refitPending = true;
+		state.refitTimer = setTimeout(() => {
+			// Keep the draft, its selection and attachment intact; closing it retries the fit.
+			if (!els.popover.hidden) return;
+			state.refitPending = false;
+			if (state.fitted && !state.focus) fit();
+		}, REFIT_DELAY_MS);
+	}
+
+	function viewportChanged() {
+		centerFocus();
+		scheduleRefit();
 	}
 
 	function wheelPixels(delta, mode) {
@@ -841,9 +865,9 @@
 		state.manifest = null;
 		state.boards = [];
 		showFeature(null);
-		els.title.textContent = "Gentle Design";
+		els.title.textContent = "Tomidev Design";
 		if (!state.systemBoard) {
-			showEmpty("No designs yet. Run /gentle:design with a brief to create one.");
+			showEmpty("No designs yet. Run /td:design with a brief to create one.");
 			return;
 		}
 		els.empty.hidden = true;
@@ -866,7 +890,7 @@
 		state.manifest = manifest;
 		showFeature(manifest);
 		els.title.textContent = manifest.title;
-		document.title = `${manifest.title} · Gentle Design`;
+		document.title = `${manifest.title} · Tomidev Design`;
 		history.replaceState(null, "", `${base}d/${encodeURIComponent(slug)}/`);
 		if (manifest.artboards.length === 0 && !state.systemBoard) {
 			showEmpty("This design has no artboards yet.");
@@ -961,7 +985,7 @@
 		if (slug !== state.slug) return;
 		if (slug === null) {
 			history.replaceState(null, "", base);
-			document.title = "Gentle Design";
+			document.title = "Tomidev Design";
 			if (!same || !state.systemBoard) showSystemOnly();
 			return;
 		}
@@ -1246,6 +1270,8 @@
 	function setPanel(show) {
 		els.panel.hidden = !show;
 		els.panelToggle.setAttribute("aria-pressed", String(show));
+		// ResizeObserver follows the animated layout; the fallback still fits after a toggle.
+		scheduleRefit();
 	}
 
 	els.panelToggle.addEventListener("click", () => setPanel(els.panel.hidden));
@@ -1390,6 +1416,7 @@
 		els.popover.hidden = true;
 		board?.frame.contentWindow?.postMessage({ type: "gd:clear" }, "*");
 		if (els.popover.contains(document.activeElement) || document.activeElement === document.body) (state.focus ? state.focus.frame : els.comment).focus();
+		if (state.refitPending) scheduleRefit();
 	}
 
 	els.cancel.addEventListener("click", closePopover);
@@ -1494,11 +1521,11 @@
 		}
 	});
 
-	window.addEventListener("resize", closePopover);
 	window.addEventListener("resize", layoutCompare);
-	// The viewport also changes size when the comments panel opens or closes.
-	if (typeof ResizeObserver === "function") new ResizeObserver(() => centerFocus()).observe(els.viewport);
-	else window.addEventListener("resize", () => centerFocus());
+	// Observe the actual viewport: sidebars and the comments panel can resize it
+	// without a window resize. Debouncing waits until their layout has settled.
+	if (typeof ResizeObserver === "function") new ResizeObserver(viewportChanged).observe(els.viewport);
+	else window.addEventListener("resize", viewportChanged);
 
 	setMode(state.mode);
 	start();

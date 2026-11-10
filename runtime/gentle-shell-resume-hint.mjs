@@ -9,13 +9,14 @@
 // The clean fix belongs in pi (earendil-works/pi#8048, #9750). Until then,
 // gentle-shell appends its own line below pi's, leaving pi's output as is:
 // extensions/resume-hint.ts writes a ResumeHandoff on session_shutdown, and
-// bin/gentle-shell.mjs prints the planResumeHint line after pi exits.
+// bin/tomidev.mjs prints the planResumeHint line after pi exits.
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { shellQuote } from "./gentle-shell-launcher.mjs";
+import { BRAND_NAME, ENV_PREFIX } from "./brand.mjs";
 
-export const RESUME_HANDOFF_ENV = "GENTLE_SHELL_RESUME_HANDOFF";
+export const RESUME_HANDOFF_ENV = `${ENV_PREFIX}RESUME_HANDOFF`;
 
-const HINT_LABEL = "To resume in gentle-shell:";
+const HINT_LABEL = `To resume in ${BRAND_NAME}:`;
 
 // pi's assertValidSessionId charset. The handoff ends up on the terminal, so
 // anything outside it (or any C0/C1 control in a session dir) is refused
@@ -144,7 +145,7 @@ export function gentleShellResumeCommand(
 		if (handoff.sessionDir !== undefined) values.push("--session-dir", handoff.sessionDir);
 		values.push("--session", handoff.sessionId);
 	}
-	const args = ["gentle-shell"];
+	const args = ["tomidev"];
 	for (const value of values) {
 		const quoted = quoteArg(value, platform);
 		if (quoted === undefined) return undefined;

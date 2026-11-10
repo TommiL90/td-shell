@@ -14,6 +14,7 @@ import {
 	PI_PRETTY_SUPPRESSED_TOOL_NAMES,
 	quietToolsEnabled,
 } from "../lib/quiet-tools-config.ts";
+import { ENV_AGENTS_CHILD } from "../lib/brand.ts";
 
 type PiPrettyExtension = (pi: unknown, deps?: unknown) => unknown;
 
@@ -65,7 +66,7 @@ export default async function gentlePiPrettyExtension(
 ): Promise<unknown> {
 	// gentle-shell#1690: a delegated child has no transcript to prettify, and
 	// the upstream fallback would start its own file indexing in every child.
-	if (env.GENTLE_PI_AGENTS_CHILD === "1") return undefined;
+	if (env[ENV_AGENTS_CHILD] === "1") return undefined;
 	if (quietToolsEnabled()) {
 		process.env.PRETTY_DISABLE_TOOLS = mergeDisabledTools(
 			process.env.PRETTY_DISABLE_TOOLS,

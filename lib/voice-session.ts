@@ -4,6 +4,7 @@ import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import { PARAKEET_MODEL_MANIFEST, VOICE_TARGETS, voiceRuntimeManifest, type VoiceModelManifest, type VoiceRuntimeManifest, type VoiceTarget } from "./voice-artifacts.ts";
 import { readVoiceComponentStatus, resolveVoiceHome, voiceComponentPath } from "./voice-install.ts";
+import { ENV_AGENTS_CHILD } from "./brand.ts";
 
 // One dictation session (S1-S3): record from the default microphone until stop,
 // then transcribe locally with the installed Parakeet model. Capture, the
@@ -169,7 +170,7 @@ function childEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 	const env: NodeJS.ProcessEnv = {};
 	for (const key of CHILD_ENV_KEYS) if (source[key] !== undefined) env[key] = source[key];
 	env.NODE_NO_WARNINGS = "1";
-	env.GENTLE_PI_AGENTS_CHILD = "1";
+	env[ENV_AGENTS_CHILD] = "1";
 	return env;
 }
 

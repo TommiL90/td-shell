@@ -2,15 +2,16 @@ import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { gentlePiConfigHome } from "./agent-home.ts";
+import { ENV_PREFIX, brandSchema, isBrandSchema } from "./brand.ts";
 
-// Prompt history capture is default-off. An explicit GENTLE_PI_HISTORY_CAPTURE
+// Prompt history capture is default-off. An explicit TOMIDEV_HISTORY_CAPTURE
 // value wins, then the Gentle → Customize preference, then off. Any missing,
 // malformed or unreadable preference fails closed. Turning capture off only
 // stops new captures; stored history is never deleted here.
 export const HISTORY_CAPTURE_POLICY = { ON: "on", OFF: "off" } as const;
 export type HistoryCapturePolicy = (typeof HISTORY_CAPTURE_POLICY)[keyof typeof HISTORY_CAPTURE_POLICY];
-export const HISTORY_CAPTURE_SCHEMA = "gentle-pi.history-capture/v1";
-export const HISTORY_CAPTURE_ENV = "GENTLE_PI_HISTORY_CAPTURE";
+export const HISTORY_CAPTURE_SCHEMA = brandSchema("history-capture", 1);
+export const HISTORY_CAPTURE_ENV = `${ENV_PREFIX}HISTORY_CAPTURE`;
 interface HistoryCaptureOptions { gentlePiConfigHome?: string }
 export interface HistoryCapturePolicyResolution {
 	policy: HistoryCapturePolicy;
@@ -40,7 +41,7 @@ export function parseHistoryCaptureFile(raw: string): HistoryCapturePolicy | und
 	try {
 		const value: unknown = JSON.parse(raw);
 		if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-		if (Object.keys(value).length !== 2 || !("schema" in value) || value.schema !== HISTORY_CAPTURE_SCHEMA || !("policy" in value)) return undefined;
+		if (Object.keys(value).length !== 2 || !("schema" in value) || !isBrandSchema(value.schema, "history-capture", 1) || !("policy" in value)) return undefined;
 		return value.policy === "on" || value.policy === "off" ? value.policy : undefined;
 	} catch { return undefined; }
 }

@@ -1,0 +1,58 @@
+// Single source of brand names. Import from here instead of repeating literals.
+export const BRAND_NAME = "tomidev";
+export const BRAND_DISPLAY_NAME = "Tomidev Shell";
+// Prefix of every stderr/log line the launcher and installers print, e.g. "tomidev: could not ...".
+export const LOG_PREFIX = `${BRAND_NAME}:`;
+export const COMMAND_PREFIX = "td";
+export const BIN_NAME = "tomidev";
+export const PACKAGE_NAME = "tomidev";
+export const SOURCE_REPOSITORY = "TommiL90/tomidev-shell";
+export const GIT_SOURCE = "git:github.com/TommiL90/tomidev-shell";
+export const HOME_DIRNAME = ".tomidev";
+export const ENV_PREFIX = "TOMIDEV_";
+// Environment names used by more than a few modules. Build them here from ENV_PREFIX.
+export const ENV_CONFIG_HOME = `${ENV_PREFIX}CONFIG_HOME`;
+export const ENV_AGENT_HOME = `${ENV_PREFIX}AGENT_HOME`;
+export const ENV_AGENTS_CHILD = `${ENV_PREFIX}AGENTS_CHILD`;
+export const ENV_AGENTS_PI = `${ENV_PREFIX}AGENTS_PI`;
+export const SCHEMA_PREFIX = "tomidev";
+// Persisted ids written before the rename; readers accept them, nothing writes them (S7).
+export const LEGACY_SCHEMA_PREFIX = "gentle-pi";
+export const LEGACY_SHELL_SCHEMA_PREFIX = "gentle-shell";
+
+/** Slash command name for a Tomidev command, e.g. brandCommand("guide") → "td:guide". */
+export function brandCommand(name: string): string {
+	return `${COMMAND_PREFIX}:${name}`;
+}
+
+/** Id written today for a persisted name: brandId("reply-language") → "tomidev.reply-language". */
+export function brandId(name: string): string {
+	return `${SCHEMA_PREFIX}.${name}`;
+}
+
+/** Id written today for a versioned persisted schema: brandSchema("voice-settings", 1) → "tomidev.voice-settings/v1". */
+export function brandSchema(name: string, version: number): string {
+	return brandId(`${name}/v${version}`);
+}
+
+/** Every spelling a reader accepts for `name`: the current id first, then the pre-rename ids. */
+export function readableBrandIds(name: string): readonly string[] {
+	return [brandId(name), `${LEGACY_SCHEMA_PREFIX}.${name}`, `${LEGACY_SHELL_SCHEMA_PREFIX}.${name}`];
+}
+
+/** True when `value` is any readable spelling of the unversioned `name` (kinds, customTypes). */
+export function isBrandId(value: unknown, name: string): boolean {
+	return typeof value === "string" && readableBrandIds(name).includes(value);
+}
+
+/** True when `value` is the current or a pre-rename id of exactly this version of a schema. */
+export function isBrandSchema(value: unknown, name: string, version: number): boolean {
+	return isBrandId(value, `${name}/v${version}`);
+}
+
+const READABLE_PREFIXES = [SCHEMA_PREFIX, LEGACY_SCHEMA_PREFIX, LEGACY_SHELL_SCHEMA_PREFIX] as const;
+
+/** True for any version of a family, e.g. isBrandFamily(customType, "session-profile/"). */
+export function isBrandFamily(value: unknown, family: string): boolean {
+	return typeof value === "string" && READABLE_PREFIXES.some((prefix) => value.startsWith(`${prefix}.${family}`));
+}

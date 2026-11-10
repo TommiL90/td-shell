@@ -1,5 +1,22 @@
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptionsWithoutStdio } from "node:child_process";
-import { gentleAiIsolationEnv, resolveGentleAiBinary } from "./gentle-ai-binary.ts";
+import { join } from "node:path";
+import { runningBundledPrefix } from "./gentle-shell-bundled.ts";
+
+export function gentleAiIsolationEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+	const prefix = runningBundledPrefix(env);
+	if (prefix) {
+		return {
+			...env,
+			GENTLE_AI_HOME: join(prefix, "gentle-ai"),
+			GENTLE_AI_NO_SELF_UPDATE: "1",
+		};
+	}
+	return env;
+}
+
+export function resolveGentleAiBinary(): string | undefined {
+	return undefined;
+}
 import { runtimeMetricsEnvAllows } from "./runtime-metrics-policy.ts";
 import { isPublicRuntimeModelId, normalizeRuntimeModel, type RuntimeMetricBucket } from "./runtime-metrics.ts";
 import type { ChildLaunchBucket } from "./runtime-metrics-children.ts";

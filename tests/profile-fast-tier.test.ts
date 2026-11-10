@@ -9,7 +9,6 @@ import { parseAgentsConfig, resolveAgentProfile, withPinnedModelProfiles } from 
 import { __testing } from "../extensions/gentle-ai.ts";
 import fast from "../extensions/gentle-fast.ts";
 import { CHILD_TIER_ENV, PROFILE_TIER_EVENT } from "../lib/openai-fast-tier.ts";
-import { runInProcessReviewer } from "../lib/inprocess-reviewer.ts";
 import { bindSessionProfile, clearSessionProfileBinding } from "../lib/session-profile-binding.ts";
 import { freezeSessionProfileAtStartup, readFrozenDefaultOrchestrator, readFrozenInheritedProfile, setFrozenDefaultOrchestrator } from "../lib/session-profile-freeze.ts";
 
@@ -157,8 +156,8 @@ test("session tree restores its frozen profile binding", async () => {
  const model = { provider: "openai", api: "openai-responses", id: "gpt-5.6-luna" };
  const ctx: any = { model, hasUI: false, sessionManager: { getSessionId: () => "tier-restore-test" }, ui: { notify() {} } };
  fast({ on: (name: string, fn: Function) => handlers.set(name, fn), events: { on: (name: string, fn: Function) => bus.set(name, fn) } } as any);
- const previousChild = process.env.GENTLE_PI_AGENTS_CHILD;
- process.env.GENTLE_PI_AGENTS_CHILD = "0";
+ const previousChild = process.env.TOMIDEV_AGENTS_CHILD;
+ process.env.TOMIDEV_AGENTS_CHILD = "0";
  bindSessionProfile("tier-restore-test", "work", { orchestrator: { model: "openai/gpt-5.6-luna", tier: "fast" } });
  try {
   handlers.get("session_start")!({}, ctx);
@@ -170,19 +169,19 @@ test("session tree restores its frozen profile binding", async () => {
   assert.equal(request().service_tier, "priority");
  } finally {
   clearSessionProfileBinding("tier-restore-test");
-  if (previousChild === undefined) delete process.env.GENTLE_PI_AGENTS_CHILD;
-  else process.env.GENTLE_PI_AGENTS_CHILD = previousChild;
+  if (previousChild === undefined) delete process.env.TOMIDEV_AGENTS_CHILD;
+  else process.env.TOMIDEV_AGENTS_CHILD = previousChild;
  }
 });
 
 test("child runtime uses only its launch route and rejects model mismatches", () => {
- const oldChild = process.env.GENTLE_PI_AGENTS_CHILD;
+ const oldChild = process.env.TOMIDEV_AGENTS_CHILD;
  const oldTier = process.env[CHILD_TIER_ENV];
  const handlers = new Map<string, Function>();
  const ctx: any = { model: { provider: "openai-codex", api: "openai-codex-responses", id: "gpt-5.6-luna" }, hasUI: false, sessionManager: { getSessionId: () => "child" }, ui: { notify() {} } };
  fast({ on: (name: string, fn: Function) => handlers.set(name, fn) } as any);
  try {
-  process.env.GENTLE_PI_AGENTS_CHILD = "1";
+  process.env.TOMIDEV_AGENTS_CHILD = "1";
   process.env[CHILD_TIER_ENV] = JSON.stringify({ model: "openai-codex/gpt-5.6-luna", tier: "fast" });
   handlers.get("session_start")!({}, ctx);
   assert.equal(handlers.get("before_provider_request")!({ payload: {} }, ctx).service_tier, "priority");
@@ -190,7 +189,7 @@ test("child runtime uses only its launch route and rejects model mismatches", ()
   handlers.get("session_start")!({}, ctx);
   assert.equal(handlers.get("before_provider_request")!({ payload: {} }, ctx), undefined);
  } finally {
-  if (oldChild === undefined) delete process.env.GENTLE_PI_AGENTS_CHILD; else process.env.GENTLE_PI_AGENTS_CHILD = oldChild;
+  if (oldChild === undefined) delete process.env.TOMIDEV_AGENTS_CHILD; else process.env.TOMIDEV_AGENTS_CHILD = oldChild;
   if (oldTier === undefined) delete process.env[CHILD_TIER_ENV]; else process.env[CHILD_TIER_ENV] = oldTier;
  }
 });
@@ -204,17 +203,17 @@ test("fresh default tier is frozen per session and used only for its model", () 
  assert.equal(readFrozenInheritedProfile("tier-default-test")?.defaultOrchestrator?.tier, "fast");
  freezeSessionProfileAtStartup({ ...options, sessionId: "tier-default-new" });
  assert.equal(readFrozenInheritedProfile("tier-default-new")?.defaultOrchestrator?.tier, "standard");
- freezeSessionProfileAtStartup({ ...options, sessionId: "tier-default-follow", env: { GENTLE_PI_PROFILE_FOLLOW: "1" } });
+ freezeSessionProfileAtStartup({ ...options, sessionId: "tier-default-follow", env: { TOMIDEV_PROFILE_FOLLOW: "1" } });
  current = { model: "openai/gpt-5.6-luna", tier: "fast" };
- freezeSessionProfileAtStartup({ ...options, sessionId: "tier-default-follow", env: { GENTLE_PI_PROFILE_FOLLOW: "1" } });
+ freezeSessionProfileAtStartup({ ...options, sessionId: "tier-default-follow", env: { TOMIDEV_PROFILE_FOLLOW: "1" } });
  assert.equal(readFrozenDefaultOrchestrator("tier-default-follow")?.tier, "standard");
  current = { model: "openai/gpt-5.6-luna", tier: "standard" };
  const handlers = new Map<string, Function>();
  const ctx: any = { model: { provider: "openai", api: "openai-responses", id: "gpt-5.6-luna" }, cwd: "/nonexistent", hasUI: false, sessionManager: { getSessionId: () => "tier-default-test" }, ui: { notify() {} } };
  fast({ on: (name: string, fn: Function) => handlers.set(name, fn) } as any);
- const old = process.env.GENTLE_PI_AGENTS_CHILD;
+ const old = process.env.TOMIDEV_AGENTS_CHILD;
  try {
-  process.env.GENTLE_PI_AGENTS_CHILD = "0";
+  process.env.TOMIDEV_AGENTS_CHILD = "0";
   handlers.get("session_start")!({}, ctx);
   assert.equal(handlers.get("before_provider_request")!({ payload: {} }, ctx)?.service_tier, "priority");
   bindSessionProfile("tier-default-test", "explicit", { orchestrator: { model: "openai/gpt-5.6-luna", tier: "standard" } });
@@ -230,7 +229,7 @@ test("fresh default tier is frozen per session and used only for its model", () 
   ctx.model = { ...ctx.model, id: "gpt-5.6-sol" };
   handlers.get("session_start")!({}, ctx);
   assert.equal(handlers.get("before_provider_request")!({ payload: {} }, ctx), undefined);
- } finally { if (old === undefined) delete process.env.GENTLE_PI_AGENTS_CHILD; else process.env.GENTLE_PI_AGENTS_CHILD = old; }
+ } finally { if (old === undefined) delete process.env.TOMIDEV_AGENTS_CHILD; else process.env.TOMIDEV_AGENTS_CHILD = old; }
 });
 
 for (const provider of ["openai", "openai-codex"]) for (const order of ["fast-first", "profiles-first"]) {
@@ -291,18 +290,6 @@ test("live switching emits tier only for successful and current model switches",
  current = true;
  await __testing.switchLiveOrchestrator(ctx, live, route, () => current);
  assert.deepEqual(emitted, [[PROFILE_TIER_EVENT, { sessionId: "test", tier: "fast", model: "openai/gpt-5.6-luna" }]]);
-});
-
-test("direct provider route applies tier through the provider payload hook", async () => {
- for (const [provider, api] of [["openai", "openai-responses"], ["openai-codex", "openai-codex-responses"]]) {
-  const model: any = { provider, api, id: "gpt-5.6-luna", reasoning: false };
-  let options: any;
-  const registry: any = { find: () => model, getApiKeyAndHeaders: async () => ({ ok: true }) };
-  const complete: any = async (_model: any, _context: any, value: any) => { options = value; return { content: [{ type: "text", text: "ok" }], stopReason: "stop" }; };
-  const result = await runInProcessReviewer({ selection: `${provider}/${model.id}`, tier: "fast", prompt: Buffer.from("test"), timeoutMs: 1000, routingKey: "review-risk" }, { registry, complete });
-  assert.equal(result.kind, "text");
-  assert.deepEqual(await options.onPayload({ input: "x" }, model), { input: "x", service_tier: "priority" });
- }
 });
 
 test("session snapshots reject invalid tier instead of silently changing binding", () => {

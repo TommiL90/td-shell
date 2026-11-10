@@ -98,23 +98,6 @@ function launchThroughHook(input: Record<string, unknown>, cwd: string, tokens: 
 	} as unknown as ExtensionContext);
 }
 
-test("S16: the orchestrator tool_call hook blocks an undocumented writer and admits a documented one", async (t) => {
-	const bare = workspace(false);
-	const documented = workspace(true);
-	t.after(() => { rmSync(bare, { recursive: true, force: true }); rmSync(documented, { recursive: true, force: true }); });
-	const blocked = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Implement annual budgets.${surfaces}` }, bare, 20_000);
-	assert.equal(blocked?.block, true);
-	assert.match(blocked?.reason ?? "", /write this unit inline yourself/);
-	const admitted = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Spec: odd/tasks/ledger.md, T1. Read until ## Log.${surfaces}` }, documented, 20_000);
-	assert.equal(admitted?.block, undefined);
-	const explorer = await launchThroughHook({ agent: "gentle-ai-explore", mode: "task", task: "Map src/budget.ts" }, bare, 20_000);
-	assert.equal(explorer?.block, undefined, "read-only subagents are unaffected");
-	// The hook passes the measured window, not only the tokens: 19.2k of a 128k window is at the backstop.
-	const smallWindow = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Implement annual budgets.${surfaces}` }, bare, 19_200, {}, 128_000);
-	assert.equal(smallWindow?.block, undefined, "15% of the measured window admits");
-	const envCap = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Implement annual budgets.${surfaces}` }, bare, 19_200, { GENTLE_PI_CONTEXT_BACKSTOP_FRACTION: "0.9" }, 128_000);
-	assert.equal(envCap?.block, true, "the hook reads the session environment");
-});
 
 // Verifier B1: the delegation card tells the parent to write `Spec: odd/tasks/<feature>.md (read until "## Log").
 // Do T#; S#.`, and a live x6 run wrote `Spec: ... .md T1 S1;`. Both name a document task and must be admitted.
@@ -144,15 +127,6 @@ test("canonical Spec launches from a repository subdirectory use its Git root fo
 	}
 });
 
-test("an explicit repository target never borrows the session repository's document", async t => {
-	const root = workspace(true);
-	const other = workspace(false);
-	t.after(() => { rmSync(root, { recursive: true, force: true }); rmSync(other, { recursive: true, force: true }); });
-	execFileSync("git", ["init", "--quiet", root]);
-	execFileSync("git", ["init", "--quiet", other]);
-	const result = await launchThroughHook({ agent: "gentle-ai-worker", repository_root: other, task: `Spec: odd/tasks/ledger.md, T1${surfaces}` }, root, 0);
-	assert.equal(result?.block, true);
-});
 
 test("S16: a Spec mention inside prose, outside odd/tasks, or through a symlink leaving the root is rejected", (t) => {
 	const root = workspace(true);
@@ -170,11 +144,30 @@ test("S16: a Spec mention inside prose, outside odd/tasks, or through a symlink 
 	}
 });
 
+// T14: live hooks no longer use the legacy document/risk admission helpers.
+// Custom project formats therefore need no new parser, override switch or mirror.
+test("T14: live dispatch preserves custom project plans without granting unscoped writes", async t => {
+	const root = workspace(false);
+	t.after(() => rmSync(root, { recursive: true, force: true }));
+	mkdirSync(join(root, "proposals"));
+	writeFileSync(join(root, "proposals", "cache.rst"), "Cache proposal\n==============\nAcceptance: cache hit is observable.\n");
+	for (const agent of ["gentle-ai-worker", "gentle-ai-verify"]) {
+		const input = { agent, task: `Spec: proposals/cache.rst\nImplement the approved project acceptance criteria.${surfaces}` };
+		const before = JSON.stringify(input);
+		const result = await launchThroughHook(input, root, 0);
+		assert.equal(result?.block, undefined, `${agent}: ${result?.reason}`);
+		assert.equal(JSON.stringify(input), before, "dispatch does not rewrite the project contract");
+	}
+	for (const task of ["Spec: proposals/cache.rst\nImplement.", "Spec: proposals/cache.rst\n## Allowed edit surfaces\n../outside.ts\n", "Spec: proposals/cache.rst\n## Allowed edit surfaces\n/etc/outside.ts\n"]) {
+		assert.equal((await launchThroughHook({ agent: "gentle-ai-worker", task }, root, 0))?.block, true);
+	}
+});
+
 test("S16: child sessions are exempt and an empty workspace_root falls back to the session cwd", async (t) => {
 	const bare = workspace(false);
 	const documented = workspace(true);
 	t.after(() => { rmSync(bare, { recursive: true, force: true }); rmSync(documented, { recursive: true, force: true }); });
-	const child = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Implement it.${surfaces}` }, bare, 0, { GENTLE_PI_AGENTS_CHILD: "1" });
+	const child = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Implement it.${surfaces}` }, bare, 0, { TOMIDEV_AGENTS_CHILD: "1" });
 	assert.equal(child?.block, undefined, "a child session is not gated");
 	const emptyRoot = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", workspace_root: "", task: `Spec: odd/tasks/ledger.md, T1${surfaces}` }, documented, 0);
 	assert.equal(emptyRoot?.block, undefined, "an empty workspace_root means the session cwd");
@@ -208,17 +201,17 @@ test("S1: full delegation mode admits only generic writers, never widens other a
 function withConfigHome<T>(workflowMode: string | undefined, run: (home: string) => Promise<T>): Promise<T> {
 	const home = mkdtempSync(join(tmpdir(), "writer-admission-home-"));
 	writeFileSync(join(home, "profiles.json"), JSON.stringify({
-		kind: "gentle-pi.agent_model_profiles",
+		kind: "tomidev.agent_model_profiles",
 		version: 1,
 		active: "frontier-local",
 		profiles: { "frontier-local": { orchestrator: { model: "openai/gpt-6.1-terra" } } },
 		...(workflowMode === undefined ? {} : { workflow: { "frontier-local": { orchestratorMode: workflowMode } } }),
 	}));
-	const previous = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = home;
+	const previous = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = home;
 	return run(home).finally(() => {
-		if (previous === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previous;
 		rmSync(home, { recursive: true, force: true });
 	});
 }
@@ -236,21 +229,12 @@ test("S7: the reported deadlock — a full delegation profile delegates a small 
 	});
 });
 
-test("S1: an organic profile keeps the undocumented-writer rejection through the real hook", async (t) => {
-	const bare = workspace(false);
-	t.after(() => rmSync(bare, { recursive: true, force: true }));
-	await withConfigHome(undefined, async () => {
-		const blocked = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Change the accent colors.${surfaces}` }, bare, 20_000);
-		assert.equal(blocked?.block, true);
-		assert.match(blocked?.reason ?? "", /write this unit inline yourself/);
-	});
-});
 
 test("S1: the session environment override reaches the guard, as it reaches the prompt", async (t) => {
 	const bare = workspace(false);
 	t.after(() => rmSync(bare, { recursive: true, force: true }));
 	await withConfigHome(undefined, async () => {
-		const admitted = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Change the accent colors.${surfaces}` }, bare, 20_000, { GENTLE_PI_ORCHESTRATOR_MODE: "full-delegation" });
+		const admitted = await launchThroughHook({ agent: "gentle-ai-worker", mode: "background", task: `Change the accent colors.${surfaces}` }, bare, 20_000, { TOMIDEV_ORCHESTRATOR_MODE: "full-delegation" });
 		assert.equal(admitted?.block, undefined);
 	});
 });

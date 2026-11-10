@@ -1,15 +1,15 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { generateUnifiedPatch } from "@earendil-works/pi-coding-agent";
 import { changesModel, type ChangedFile, type WorktreeChanges } from "./shell-changes.ts";
-import { SESSION_WORKTREE_ENTRY } from "./session-worktree-registry.ts";
 
 // Captured write/edit evidence of a session and its subagents. It feeds
-// session statistics and tells /gentle:changes which roots the session
+// session statistics and tells /td:changes which roots the session
 // touched; the files Changes lists always come from Git.
-export const SESSION_CHANGE_ENTRY = "gentle-pi.session-change/v1";
-export const SESSION_CHANGE_RELAY = "gentle-pi:child-session-change";
+export const SESSION_CHANGE_ENTRY = brandSchema("session-change", 1);
+export const SESSION_CHANGE_RELAY = "td:child-session-change";
 export const MAX_CHANGE_BYTES = 64 * 1024;
 const MAX_RECORDS = 256;
 const MAX_SESSION_BYTES = 4 * 1024 * 1024;
@@ -80,8 +80,8 @@ export function sessionChangeRoots(sessionId: string, entries: readonly Entry[])
 		if (entry.type !== "custom" || !entry.data || typeof entry.data !== "object") continue;
 		const data = entry.data as { sessionId?: unknown; root?: unknown; evidence?: unknown };
 		if (data.sessionId !== sessionId) continue;
-		if (entry.customType === SESSION_WORKTREE_ENTRY && typeof data.root === "string" && isAbsolute(data.root)) roots.add(data.root);
-		if (entry.customType === SESSION_CHANGE_ENTRY && isSessionChangeEvidence(data.evidence)) roots.add(data.evidence.root);
+		if (isBrandSchema(entry.customType, "session-worktree", 1) && typeof data.root === "string" && isAbsolute(data.root)) roots.add(data.root);
+		if (isBrandSchema(entry.customType, "session-change", 1) && isSessionChangeEvidence(data.evidence)) roots.add(data.evidence.root);
 	}
 	return [...roots];
 }
@@ -96,7 +96,7 @@ export class SessionChanges {
 
 	restore(entries: readonly Entry[]): void {
 		for (const entry of entries) {
-			if (entry.type !== "custom" || entry.customType !== SESSION_CHANGE_ENTRY) continue;
+			if (entry.type !== "custom" || !isBrandSchema(entry.customType, "session-change", 1)) continue;
 			const data = entry.data as { sessionId?: string; evidence?: unknown } | undefined;
 			if (data?.sessionId === this.sessionId && isSessionChangeEvidence(data.evidence)) this.record(data.evidence);
 		}

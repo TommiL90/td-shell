@@ -37,3 +37,6 @@ tmp/
 
 # Scratch directories written by the herdr activity tests
 odd/work/
+
+# Python bytecode caches (tlc-spec-lean helper scripts)
+__pycache__/

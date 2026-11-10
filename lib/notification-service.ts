@@ -8,6 +8,7 @@ import {
 	type NotificationOptions, type NotificationResolution, type NotificationSettings, type NotificationSound,
 } from "./notification-policy.ts";
 import { NotificationScheduler, type NotificationOccurrence, type SchedulerOptions } from "./notification-scheduler.ts";
+import { ENV_AGENTS_CHILD } from "./brand.ts";
 
 export interface NotificationServiceDependencies {
 	now?: () => number;
@@ -46,7 +47,7 @@ interface Holder {
 	/** A retired scheduler's backend must settle before any replacement can play. */
 	playback?: object;
 }
-const HOLDER = Symbol.for("gentle-pi.notification-service.v1");
+const HOLDER = Symbol.for("tomidev.notification-service.v1");
 function holder(): Holder {
 	const root = globalThis as typeof globalThis & { [HOLDER]?: Holder };
 	return root[HOLDER] ??= { muted: false, epoch: 0, startupNotified: false, highwater: new Map() };
@@ -54,7 +55,7 @@ function holder(): Holder {
 export function getNotificationService(): NotificationService | undefined { return holder().service; }
 export function notificationContextAllowed(ctx: ExtensionContext, env: NodeJS.ProcessEnv = process.env): boolean {
 	// Dialog-capable interactive RPC is intentionally NOT an audio host.
-	return ctx.mode === "tui" && env.GENTLE_PI_AGENTS_CHILD !== "1";
+	return ctx.mode === "tui" && env[ENV_AGENTS_CHILD] !== "1";
 }
 
 /** Owner-only claim; factory collision invalidates old hooks before the new owner attaches. */

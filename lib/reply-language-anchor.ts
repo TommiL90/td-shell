@@ -14,14 +14,15 @@
 // once, so the following requests stay append-only and the provider's prompt
 // cache keeps its prefix (gentle-shell#1662, #2195). Pure: no pi imports.
 
+import { brandId, isBrandId } from "./brand.ts";
 import type { ContextEvent } from "@earendil-works/pi-coding-agent";
 
 type AgentMessage = ContextEvent["messages"][number];
 
-export const REPLY_LANGUAGE_ANCHOR_TYPE = "gentle-pi.reply-language";
+export const REPLY_LANGUAGE_ANCHOR_TYPE = brandId("reply-language");
 
 /** Custom messages that never ask the model to answer, so they neither trigger nor hide an anchor. */
-const PASSIVE_TYPES = new Set(["gentle-todo-state", "gentle-todo-reminder", REPLY_LANGUAGE_ANCHOR_TYPE]);
+const PASSIVE_TYPES = new Set(["gentle-todo-state", "gentle-todo-reminder"]);
 /** Every automated wake opens with this disowning prefix (extensions/gentle-agents.ts PARENT_WAKE_TEXT). */
 const AUTOMATED_USER_PREFIX = "[System-generated ";
 const EXCERPT_CHARS = 100;
@@ -50,7 +51,7 @@ export function humanLanguageExcerpt(input: string): string | undefined {
 }
 
 function isPassive(message: Message): boolean {
-	return message.role === "custom" && typeof message.customType === "string" && PASSIVE_TYPES.has(message.customType);
+	return message.role === "custom" && typeof message.customType === "string" && (PASSIVE_TYPES.has(message.customType) || isBrandId(message.customType, "reply-language"));
 }
 
 function isAutomated(message: Message): boolean {
@@ -99,6 +100,6 @@ export function replyLanguageAnchor(messages: readonly AgentMessage[], recorded:
 	const excerpt = source === undefined ? undefined : humanLanguageExcerpt(source);
 	if (excerpt === undefined) return undefined;
 	const anchor = replyLanguageAnchorText(excerpt);
-	const anchored = list.slice(tail + 1).some((message) => message.customType === REPLY_LANGUAGE_ANCHOR_TYPE && text(message.content) === anchor);
+	const anchored = list.slice(tail + 1).some((message) => isBrandId(message.customType, "reply-language") && text(message.content) === anchor);
 	return anchored ? undefined : anchor;
 }

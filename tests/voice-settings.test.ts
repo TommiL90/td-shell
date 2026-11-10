@@ -45,5 +45,5 @@ test("a malformed or foreign settings file reads as off", () => {
 test("the config home follows the environment when no home is given", () => {
 	const home = scratchHome();
 	writeVoicePushToTalk(true, { gentlePiConfigHome: home });
-	assert.equal(readVoicePushToTalk({ env: { GENTLE_PI_CONFIG_HOME: home } }), true);
+	assert.equal(readVoicePushToTalk({ env: { TOMIDEV_CONFIG_HOME: home } }), true);
 });

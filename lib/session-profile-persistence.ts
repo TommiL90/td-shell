@@ -1,6 +1,7 @@
 // Standalone v1 codec and pure active-branch replay (gentle-shell#1064).
 // No Pi API, disk access, shared binding store, or orchestrator application.
 import { isValidProfileName } from "./agent-profiles.ts";
+import { brandId, brandSchema, isBrandFamily, isBrandSchema } from "./brand.ts";
 import {
 	isSafeAgentName,
 	isThinkingLevel,
@@ -11,8 +12,8 @@ import {
 	type AgentRoutingEntry,
 } from "./model-routing-authority.ts";
 
-export const SESSION_PROFILE_CUSTOM_TYPE = "gentle-pi.session-profile/v1";
-export const SESSION_PROFILE_FAMILY = "gentle-pi.session-profile/";
+export const SESSION_PROFILE_CUSTOM_TYPE = brandSchema("session-profile", 1);
+export const SESSION_PROFILE_FAMILY = brandId("session-profile/");
 
 /** True for any custom entry in the session-profile family, known version or not. */
 export function isSessionProfileFamilyEntry(entry: unknown): boolean {
@@ -21,9 +22,7 @@ export function isSessionProfileFamilyEntry(entry: unknown): boolean {
 		entry !== null &&
 		(entry as { type?: unknown }).type === "custom" &&
 		typeof (entry as { customType?: unknown }).customType === "string" &&
-		(entry as { customType: string }).customType.startsWith(
-			SESSION_PROFILE_FAMILY,
-		)
+		isBrandFamily((entry as { customType: string }).customType, "session-profile/")
 	);
 }
 
@@ -215,7 +214,7 @@ export function readSessionProfileEntry(
 	entry: SessionProfileEntry,
 ): SessionProfileReadResult {
 	if (!isSessionProfileFamilyEntry(entry)) return { status: "absent" };
-	if (entry.customType !== SESSION_PROFILE_CUSTOM_TYPE)
+	if (!isBrandSchema(entry.customType, "session-profile", 1))
 		return { status: "unsupported" };
 	const data = entry.data;
 	if (!isRecord(data) || !hasOwn(data, "kind")) return { status: "invalid" };

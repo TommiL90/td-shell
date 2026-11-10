@@ -27,7 +27,7 @@ function host(home: string, env: NodeJS.ProcessEnv = {}, onChange?: () => void) 
  const pi = { registerCommand: (n: string, c: { handler(args: string, context: ExtensionContext): Promise<void> }) => commands.set(n, c),
   events: { on: (n: string, fn: (value: unknown) => void) => listeners.set(n, fn), emit: (n: string, v: unknown) => listeners.get(n)?.(v) },
  } as unknown as ExtensionAPI;
- const controller = registerYoloSessionPolicy(pi, { ...env, GENTLE_PI_CONFIG_HOME: home }, { onChange });
+ const controller = registerYoloSessionPolicy(pi, { ...env, TOMIDEV_CONFIG_HOME: home }, { onChange });
  return { controller, context, pi, commands, notices, statuses, next: () => { sessionId = "next"; } };
 }
 
@@ -94,7 +94,7 @@ test("non-Git primary uses exclusive live modes; saved defaults affect fresh ses
  assert.equal(await h.controller.active(h.context), true);
  assert.equal(await h.controller.setMode("auto", h.context), true);
  assert.equal(await h.controller.active(h.context), false);
- assert.match(h.statuses.get("gentle:mode")!, /AUTO/);
+ assert.match(h.statuses.get("td:mode")!, /AUTO/);
  assert.equal(await h.controller.setMode("normal", h.context), true);
  assert.equal(await h.controller.mode(h.context), "normal");
  h.next(); h.controller.reset(h.context);
@@ -115,14 +115,14 @@ test("trusted defaults support headless primary but never children or headless m
  assert.equal(await h.controller.setMode("auto", h.context), false);
  assert.equal(await h.controller.saveDefault("normal", h.context), false);
  assert.equal(h.controller.defaultMode(), "yolo");
- const child = host(options.gentlePiConfigHome, { GENTLE_PI_AGENTS_CHILD: "1" });
+ const child = host(options.gentlePiConfigHome, { TOMIDEV_AGENTS_CHILD: "1" });
  assert.equal(await child.controller.mode(child.context), "normal");
  assert.equal(await child.controller.saveDefault("auto", child.context), false);
 });
 
 test("slash and optional adapter operations share mode state; invalid arguments do not mutate", async t => {
  const options = fixture(t), h = host(options.gentlePiConfigHome);
- const command = h.commands.get("gentle:mode"); assert.ok(command);
+ const command = h.commands.get("td:mode"); assert.ok(command);
  await command.handler("auto", h.context);
  assert.equal(await h.controller.mode(h.context), "auto");
  await command.handler("default yolo", h.context);

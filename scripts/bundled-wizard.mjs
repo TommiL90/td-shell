@@ -3,6 +3,7 @@
 // Gentle Shell as one self-contained product, through the shared module in
 // bundled-install.mjs. The user's Node, npm, pnpm, Go and Pi are not used or
 // changed. Everything else keeps the standard runner (installer-runner.mjs).
+import { BRAND_DISPLAY_NAME, SOURCE_REPOSITORY } from "../runtime/brand.mjs";
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { posix, win32 } from "node:path";
@@ -14,7 +15,7 @@ import { setupErrorDetail } from "./installer-runner.mjs";
 import { windowsProcessCheck } from "./installer-windows.mjs";
 
 /** Where each release's distribution assets live: <base>/v<version>/<asset>. */
-export const DISTRIBUTION_RELEASES = "https://github.com/Gentleman-Programming/gentle-shell/releases/download";
+export const DISTRIBUTION_RELEASES = `https://github.com/${SOURCE_REPOSITORY}/releases/download`;
 // GitHub answers a release asset with a redirect to its asset host.
 const ASSET_HOSTS = Object.freeze(["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]);
 const ASSET_LIMITS = Object.freeze({ distribution: 64 * 1024, lockfile: 8 * 1024 * 1024 });
@@ -111,7 +112,7 @@ export function bundledPlan({ platform, distribution, layout, path, migrate }) {
 	return {
 		tools: {}, blockers: [], actions: bundledActions(path.kind, migration), ready: false,
 		bundled: { shell, pi, id: `${shell}-${pi}`, lockfile: sha256(distribution.lockfile), root: layout.root, bin: layout.bin,
-			node: artifactFor("node", "linux", "x64").version, pnpm: artifactFor("pnpm").version, go: platform === "win32" ? goPinVersion : null, path: pathSummary(path),
+			node: artifactFor("node", "linux", "x64").version, pnpm: artifactFor("pnpm").version, go: null, path: pathSummary(path),
 			...(migration ? { migrate: migration } : {}) },
 	};
 }
@@ -142,7 +143,7 @@ function validPlan(plan, distribution) {
  * or "add-path-line" with `pathLine` { file, line } (a profile the installer may
  * not edit). Steps, logged with log({ step, status }) like the runner's:
  * claim-prefix, copy-npm-settings (the user's npmrc, filtered, S12),
- * install-runtime (our Node with its npm, pnpm, and Go on Windows),
+ * install-runtime (our Node with its npm and pnpm),
  * install-version (frozen, from the release lockfile), activate-version,
  * write-launcher, bundled-path (only symlink, profile or registry), shell-setup.
  * A migration (S4) checks the launcher's `--version` (verify-launcher) right
@@ -174,7 +175,7 @@ export async function runBundledInstall(request, adapters) {
 	const steps = [
 		["claim-prefix", () => { layout = ops.claimPrefix({ platform, env, home, root: consented.root }); }],
 		["copy-npm-settings", () => ops.writeNpmrcAuth(layout, ops.userNpmrc({ platform, env, home }))],
-		["install-runtime", async () => { runtime = await ops.ensureRuntime({ layout, platform, arch, go: platform === "win32", env }); }],
+		["install-runtime", async () => { runtime = await ops.ensureRuntime({ layout, platform, arch, env }); }],
 		["install-version", async () => {
 			try {
 				await ops.installVersion({ layout, manifest: distribution.manifest, lockfile: distribution.lockfile, platform, env, go: runtime.go });
@@ -190,10 +191,10 @@ export async function runBundledInstall(request, adapters) {
 			const check = await ops.checkLauncher(layout, { id: consented.id, shell: consented.shell, pi: consented.pi, platform, env, run: ops.run, launcher: true });
 			if (check?.ok === true) return;
 			// What the launcher reported against what the plan installed (bounded; its stderr only when it printed nothing).
-			const expected = `"gentle-shell ${consented.shell} / pi ${consented.pi}"`;
+			const expected = `"tomidev ${consented.shell} / pi ${consented.pi}"`;
 			const reported = String(check?.reported ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join(" / ").slice(0, 120);
 			const cause = reported ? "" : lastLine({ stderr: check?.stderr });
-			detail = setupErrorDetail(`gentle-shell --version reported ${reported ? `"${reported}"` : "nothing"} instead of ${expected}${cause ? `: ${cause}` : ""}`, home, platform);
+			detail = setupErrorDetail(`tomidev --version reported ${reported ? `"${reported}"` : "nothing"} instead of ${expected}${cause ? `: ${cause}` : ""}`, home, platform);
 			throw new Error("The bundled launcher did not report its versions");
 		}]] : []),
 		// The change consented to, planned again now that the prefix exists: anything else is not applied.
@@ -212,12 +213,12 @@ export async function runBundledInstall(request, adapters) {
 		}]] : []),
 		// The .cmd launcher would need cmd.exe on Windows: there setup runs the Node and entry it runs.
 		...(planned("bundled-setup") ? [["shell-setup", async () => {
-			const entry = win32.join(layout.versions, consented.id, "node_modules", "gentle-pi", "bin", "gentle-shell.mjs");
+			const entry = win32.join(layout.versions, consented.id, "node_modules", "tomidev", "bin", "tomidev.mjs");
 			const [command, args] = platform === "win32" ? [layout.node, [entry, "setup"]] : [layout.launcher, ["setup"]];
 			const result = await ops.run(command, args, { cwd: layout.root, env: setupEnvironment(layout, { platform, env, id: consented.id }), timeout: SETUP_TIMEOUT });
 			if (result?.status === 0) return;
 			detail = lastLine(result);
-			throw new Error("gentle-shell setup failed");
+			throw new Error("tomidev setup failed");
 		}]] : []),
 	];
 	for (const [step, run] of steps) {
@@ -252,7 +253,7 @@ export async function runBundledInstall(request, adapters) {
  *   appended to the startup file read last for terminals (.zshrc after
  *   .zprofile; the macOS bash login file or .bashrc), after pnpm setup's own
  *   PNPM_HOME line there;
- * - a fish line (`profile`, conf.d/gentle-shell.fish) counts as last: fish reads
+ * - a fish line (`profile`, conf.d/tomidev.fish) counts as last: fish reads
  *   conf.d before config.fish, so whatever config.fish prepends (pnpm setup's
  *   PNPM_HOME block) comes before it, and the current PATH already shows it;
  * - the Windows user Path entry goes last;
@@ -281,7 +282,7 @@ export function shadowingCommand({ platform, env, layout, pathKind, profile, fs 
 const yes = (answer) => /^\s*y(?:es)?\s*$/i.test(String(answer ?? ""));
 
 /**
- * `gentle-shell upgrade` from a global pnpm or npm install (S4): when release
+ * `tomidev upgrade` from a global pnpm or npm install (S4): when release
  * `latest` publishes the assets (migrationGate), explains the move, installs the
  * bundled prefix with runBundledInstall (a plan with removal "ask": no setup,
  * the launcher's own first run does it), then asks one question: remove the old
@@ -304,7 +305,7 @@ export async function migrateGlobalShell({ latest, currentVersion, platform, arc
 	if (!migrationGate({ channel: "release", inventory: { platform, arch, shell: { ...shell, owner: "npm" } }, distribution, version: latest })) return null;
 	const manager = await Promise.resolve().then(() => adapters.owner()).catch(() => null);
 	if (!migrationGate({ channel: "release", inventory: { platform, arch, shell: { ...shell, owner: manager?.name ?? null } }, distribution, version: latest })) {
-		out("Gentle Shell now installs as one self-contained product, but this Gentle Shell is not a global pnpm or npm package (an `npm link`, for example), so it is not moved.");
+		out("Tomidev Shell now installs as one self-contained product, but this Tomidev Shell is not a global pnpm or npm package (an `npm link`, for example), so it is not moved.");
 		return null;
 	}
 	const ops = { prefixRoot, pathEntryPlan, ...adapters.operations };
@@ -318,8 +319,8 @@ export async function migrateGlobalShell({ latest, currentVersion, platform, arc
 		return null;
 	}
 	const { shell: shellVersion, pi, migrate } = plan.bundled;
-	for (const line of [`Gentle Shell ${shellVersion} installs as one self-contained product in ${layout.root}, with its own Node.js, npm and pnpm and exactly Pi ${pi}.`,
-		"Your own Node.js, npm, pnpm and Pi are not used or changed, and your Gentle Shell home (~/.gentle-shell/agent) stays where it is.",
+	for (const line of [`${BRAND_DISPLAY_NAME} ${shellVersion} installs as one self-contained product in ${layout.root}, with its own Node.js, npm and pnpm and exactly Pi ${pi}.`,
+		`Your own Node.js, npm, pnpm and Pi are not used or changed, and your ${BRAND_DISPLAY_NAME} home (~/.tomidev/agent) stays where it is.`,
 		`Your global gentle-pi (installed with ${manager.name}) is kept until you choose to remove it.`]) out(line);
 	const outcome = await runBundledInstall({ plan, consent: true }, { platform, arch, env, home, distribution, registry: adapters.registry,
 		operations: adapters.operations });
@@ -328,9 +329,9 @@ export async function migrateGlobalShell({ latest, currentVersion, platform, arc
 		out(`The self-contained install stopped at ${step}${outcome.detail ? `: ${outcome.detail}` : ""}. ${untouched}`);
 		return null;
 	}
-	out(`Installed Gentle Shell ${shellVersion} with Pi ${pi} in ${layout.root}.`);
+	out(`Installed ${BRAND_DISPLAY_NAME} ${shellVersion} with Pi ${pi} in ${layout.root}.`);
 	if (outcome.action === "add-path-line") out(`Add this line to ${outcome.pathLine.file}, then open a new terminal: ${outcome.pathLine.line}`);
-	else if (outcome.action === "open-new-terminal") out("Open a new terminal so it finds the new `gentle-shell`.");
+	else if (outcome.action === "open-new-terminal") out("Open a new terminal so it finds the new `tomidev`.");
 	const question = `Remove the old global gentle-pi with ${manager.name} (${migrate.command})? [y/N] `;
 	let code = 0;
 	if (interactive && yes(await ask(question))) {
@@ -338,7 +339,7 @@ export async function migrateGlobalShell({ latest, currentVersion, platform, arc
 			out(`Removed the old global gentle-pi with ${manager.name}.`);
 			return { code, installed: true };
 		}
-		out(`The old global gentle-pi could not be removed; Gentle Shell ${shellVersion} stays installed in ${layout.root}. Remove it yourself with: ${migrate.command}`);
+		out(`The old global gentle-pi could not be removed; ${BRAND_DISPLAY_NAME} ${shellVersion} stays installed in ${layout.root}. Remove it yourself with: ${migrate.command}`);
 		code = 1;
 	} else {
 		out(`The old global gentle-pi was kept. To remove it, run: ${migrate.command}`);
@@ -355,8 +356,8 @@ export async function migrateGlobalShell({ latest, currentVersion, platform, arc
 // a WM_SETTINGCHANGE broadcast (through a user variable set and removed) lets
 // new terminals see it. The entry and the mode are data, never script text.
 const pathScript = `$ErrorActionPreference = 'Stop'
-$entry = $env:GENTLE_BUNDLED_PATH_ENTRY
-$add = $env:GENTLE_BUNDLED_PATH_MODE -eq 'add'
+$entry = $env:TOMIDEV_BUNDLED_PATH_ENTRY
+$add = $env:TOMIDEV_BUNDLED_PATH_MODE -eq 'add'
 $same = { param($part) $part.TrimEnd('\\') -ieq $entry.TrimEnd('\\') }
 $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
 try {
@@ -375,8 +376,8 @@ try {
   }
 } finally { $key.Close() }
 if ($result -eq 'added' -or $result -eq 'removed') {
-  [Environment]::SetEnvironmentVariable('GENTLE_SHELL_PATH_REFRESH', '1', 'User')
-  [Environment]::SetEnvironmentVariable('GENTLE_SHELL_PATH_REFRESH', $null, 'User')
+  [Environment]::SetEnvironmentVariable('TOMIDEV_PATH_REFRESH', '1', 'User')
+  [Environment]::SetEnvironmentVariable('TOMIDEV_PATH_REFRESH', $null, 'User')
 }
 $result`;
 /** The registry adapter applyPathEntry and removePathEntry use on Windows:
@@ -391,7 +392,7 @@ export function windowsPathRegistry(env, processAdapter = windowsProcessCheck) {
 			throw new Error("Unsafe entry for the user Path");
 		}
 		const output = processAdapter(win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-			["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", pathScript], { ...env, GENTLE_BUNDLED_PATH_ENTRY: entry, GENTLE_BUNDLED_PATH_MODE: mode });
+			["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", pathScript], { ...env, TOMIDEV_BUNDLED_PATH_ENTRY: entry, TOMIDEV_BUNDLED_PATH_MODE: mode });
 		if (!expected.includes(output)) throw new Error("The user Path could not be changed");
 		return output;
 	};

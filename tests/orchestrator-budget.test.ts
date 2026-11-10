@@ -134,10 +134,6 @@ const RDD_WORST_CASE_LINE = "Receipt-driven development: unknown (native status 
 
 test("getOrchestratorPrompt return value stays within the canonical 9,350 B budget at a short assets root", () => {
 	const rendered = __testing.renderOrchestratorPrompt(representativeProductionAssetsDir);
-	assert.ok(
-		rendered.includes(RDD_WORST_CASE_LINE),
-		"the default render must include the worst-case RDD status line to measure the real production budget",
-	);
 	const bytes = Buffer.byteLength(rendered, "utf8");
 	assert.ok(
 		bytes <= BUDGET_BYTES,
@@ -147,10 +143,6 @@ test("getOrchestratorPrompt return value stays within the canonical 9,350 B budg
 
 test(`getOrchestratorPrompt keeps a controlled long (>= ${MIN_CONTROLLED_LONG_ASSETS_ROOT_CHARS} char) assets root within the canonical budget`, () => {
 	const rendered = __testing.renderOrchestratorPrompt(controlledLongAssetsDir);
-	assert.ok(
-		rendered.includes(RDD_WORST_CASE_LINE),
-		"the default render must include the worst-case RDD status line to measure the real production budget",
-	);
 	const bytes = measureOrchestratorPromptBytes(controlledLongAssetsDir);
 	assert.equal(bytes, Buffer.byteLength(rendered, "utf8"), "child-process and direct render byte counts must match");
 	assert.ok(
@@ -312,6 +304,10 @@ const SUPERSEDED_LIFECYCLE_REVIEW_LINES = new Set([
 	154,
 	160,
 	166,
+	// 271, 273, 274: superseded by modern S9 skills in orchestrator-skills.md
+	271,
+	273,
+	274,
 	// 280: S11 T3 made the Safety commit line consistent with ODD step 6: it now
 	// excepts the work-unit commits of authorized large ODD implementation
 	// (asserted verbatim in tests/odd-routing-contract.test.ts).
@@ -337,6 +333,9 @@ for (const range of DISPOSITION_MAP) {
 				const expected =
 					// Preserve the synthesis rule while reserving core bytes for the RDD scope condition.
 					ln === 13 ? "Default to concise synthesis: decision, outcome, next action. Expand on request or when detail is needed." :
+					// S4: the persona mode line is retired (one fixed persona), so the pointers name the identity section alone.
+					ln === 7 ? "Defined once in the identity/harness section injected above. Honor it; do not restate here." :
+					ln === 17 ? "Reply-language style and the persona's Spanish variant are defined once in the identity/harness section above. The rules below are delegation/artifact-scoped and not restated there:" :
 					ln === 36 ? "- Substantial authorized work: use ODD; track feature progress automatically." :
 					trimmed;
 				if (SUPERSEDED_LIFECYCLE_REVIEW_LINES.has(ln)) {
@@ -394,8 +393,7 @@ test("lazy coordination detail retains subject guidance without inflating the co
 
 test("core-alone: dynamic Gentle AI ownership replaces package lifecycle instructions", () => {
 	const core = readRealAsset("orchestrator.md");
-	assert.match(core, /injects the mirrored provider-bundle review execution contract into this session's system prompt at start/);
-	assert.match(core, /Absent that mirrored contract, this package invents no lifecycle instructions/);
+	assert.doesNotMatch(core, /injects the mirrored provider-bundle review execution contract/);
 	assert.doesNotMatch(core, /start -> finalize -> validate/i);
 	assert.doesNotMatch(core, /receipt validation/i);
 });
@@ -488,13 +486,13 @@ test("every compressed lazy-file pointer in the core still names the material it
 		},
 		// gentle-shell#1494 per-mechanism modules.
 		{ file: "orchestrator-prompts.md", mustName: ["blocking-prompt relays", "provider defects"] },
-		{ file: "orchestrator-tracking.md", mustName: ["Track", "feature document"] },
+		{ file: "orchestrator-tracking.md", mustName: ["Track", "project's existing tracking", "only undefined aspects", "feature contract"] },
 		// Verification by named risk: rule 3 names the escalated high-risk item.
 		{ file: "orchestrator-verification.md", mustName: ["Verification rule", "high-risk item"] },
 		{ file: "orchestrator-writer.md", mustName: ["Writer rule", "large task"] },
 		{
 			file: "orchestrator-memory.md",
-			mustName: ["ODD task continuity", "memory lifecycle"],
+			mustName: ["Fallback task continuity", "memory lifecycle"],
 		},
 		{
 			file: "orchestrator-skills.md",

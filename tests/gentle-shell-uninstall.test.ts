@@ -25,12 +25,12 @@ function write(path: string, text = "{}\n") {
 	writeFileSync(path, text);
 }
 
-/** A sandboxed $HOME holding a full Gentle Shell installation; the real home is never touched. */
+/** A sandboxed $HOME holding a full Tomidev Shell installation; the real home is never touched. */
 function world() {
 	const root = realpathSync(mkdtempSync(join(tmpdir(), "self-uninstall-")));
 	const home = join(root, "home");
 	const config = join(home, ".pi", "gentle-ai");
-	const shell = join(home, ".gentle-shell");
+	const shell = join(home, ".tomidev");
 	const isolated = join(shell, "agent");
 	const piHome = join(home, ".pi", "agent");
 	const paths = {
@@ -42,12 +42,12 @@ function world() {
 		launcherConfig: join(shell, "config.json"),
 	};
 	write(join(paths.main, "gentle-ai", SHA, "gentle-ai"), "binary");
-	write(paths.channel, JSON.stringify({ schema: "gentle-shell.channel/v1", channel: "main", shellCommit: SHA, gentleAiCommit: SHA }));
-	write(paths.devBinary, JSON.stringify({ schema: "gentle-pi.dev-binary/v1", path: join(paths.main, "gentle-ai", SHA, "gentle-ai") }));
+	write(paths.channel, JSON.stringify({ schema: "tomidev.channel/v1", channel: "main", shellCommit: SHA, gentleAiCommit: SHA }));
+	write(paths.devBinary, JSON.stringify({ schema: "tomidev.dev-binary/v1", path: join(paths.main, "gentle-ai", SHA, "gentle-ai") }));
 	write(join(paths.go, "1.25.10", "go", "bin", "go"), "go");
-	write(join(paths.go, "1.25.10", ".gentle-shell-go"), "https://go.dev/dl/go1.25.10.darwin-arm64.tar.gz\n");
+	write(join(paths.go, "1.25.10", ".tomidev-go"), "https://go.dev/dl/go1.25.10.darwin-arm64.tar.gz\n");
 	write(join(isolated, "settings.json"));
-	write(join(isolated, ".gentle-shell-home"));
+	write(join(isolated, ".tomidev-home"));
 	write(paths.launcherConfig, JSON.stringify({ home: "isolated" }));
 	for (const name of ["profiles.json", "persona.json"]) write(join(config, name));
 	write(join(config, "unknown.json"));
@@ -93,7 +93,7 @@ function untouched(w: World) {
 	assert.deepEqual(w.calls, []);
 }
 
-/** The indented lines of one plan section, such as "Remove Gentle Shell data:". */
+/** The indented lines of one plan section, such as "Remove Tomidev Shell data:". */
 function section(out: string[], heading: string): string[] {
 	const start = out.findIndex((line) => line.startsWith(heading));
 	if (start < 0) return [];
@@ -107,7 +107,7 @@ async function refused(w: World, env: Record<string, string>, reason: RegExp) {
 	assert.match(w.err.join("\n"), reason, JSON.stringify(env));
 	assert.match(w.err.join("\n"), /Nothing was removed\./);
 	assert.deepEqual(w.calls, []);
-	assert.deepEqual(section(w.out, "Remove Gentle Shell data:"), ["  (refused, see below)"]);
+	assert.deepEqual(section(w.out, "Remove Tomidev Shell data:"), ["  (refused, see below)"]);
 }
 
 test("unknown self-uninstall arguments are a usage error that removes nothing", async () => {
@@ -115,7 +115,7 @@ test("unknown self-uninstall arguments are a usage error that removes nothing", 
 		const w = world();
 		try {
 			assert.equal(await w.uninstall(args), 2);
-			assert.match(w.err.join("\n"), /usage: gentle-shell self-uninstall \[--dry-run\] \[--yes\] \[--include-shared\]/);
+			assert.match(w.err.join("\n"), /usage: tomidev self-uninstall \[--dry-run\] \[--yes\] \[--include-shared\]/);
 			untouched(w);
 		} finally { w.cleanup(); }
 	}
@@ -127,7 +127,7 @@ test("--dry-run prints the whole plan and removes nothing", async () => {
 		assert.equal(await w.uninstall(["--dry-run"]), 0);
 		const plan = w.out.join("\n");
 		for (const path of Object.values(w.paths)) assert.ok(plan.includes(path), path);
-		assert.ok(plan.includes("pnpm remove -g gentle-pi"));
+		assert.ok(plan.includes("pnpm remove -g tomidev"));
 		assert.ok(plan.includes(join(w.config, "profiles.json")));
 		assert.ok(plan.includes(w.piHome));
 		assert.match(plan, /Dry run: nothing was removed\./);
@@ -146,20 +146,20 @@ test("without a terminal and without --yes it prints the plan and exits 2", asyn
 	} finally { w.cleanup(); }
 });
 
-test("--yes removes Gentle Shell's own data, then the package, then the empty ~/.gentle-shell, keeping shared configuration", async () => {
+test("--yes removes Tomidev Shell's own data, then the package, then the empty ~/.tomidev, keeping shared configuration", async () => {
 	const w = world();
 	try {
 		assert.equal(await w.uninstall(["--yes"]), 0);
-		assert.deepEqual(w.calls.map(({ command, argv }) => `${command} ${argv.join(" ")}`), ["/usr/bin/pnpm remove -g gentle-pi"]);
+		assert.deepEqual(w.calls.map(({ command, argv }) => `${command} ${argv.join(" ")}`), ["/usr/bin/pnpm remove -g tomidev"]);
 		assert.deepEqual(w.calls[0].ownDataLeft, [], "own data is removed before the package");
-		assert.equal(w.calls[0].shellLeft, true, "~/.gentle-shell is removed only after the package");
+		assert.equal(w.calls[0].shellLeft, true, "~/.tomidev is removed only after the package");
 		assert.equal(existsSync(w.shell), false);
 		assert.deepEqual(w.ownLeft(), []);
 		assert.equal(existsSync(join(w.config, "tools")), false);
 		for (const name of ["profiles.json", "persona.json", "unknown.json"]) assert.equal(existsSync(join(w.config, name)), true, name);
 		assert.equal(existsSync(join(w.piHome, "settings.json")), true);
 		assert.deepEqual(w.questions, []);
-		assert.match(w.out.join("\n"), /Gentle Shell was removed\./);
+		assert.match(w.out.join("\n"), /Tomidev Shell was removed\./);
 	} finally { w.cleanup(); }
 });
 
@@ -167,15 +167,15 @@ test("an npm-owned installation is removed with npm uninstall -g", async () => {
 	const w = world();
 	try {
 		assert.equal(await w.uninstall(["--yes"], { owner: { name: "npm", command: "/usr/bin/npm", prefix: [] } }), 0);
-		assert.deepEqual(w.calls.map(({ command, argv }) => `${command} ${argv.join(" ")}`), ["/usr/bin/npm uninstall -g gentle-pi"]);
+		assert.deepEqual(w.calls.map(({ command, argv }) => `${command} ${argv.join(" ")}`), ["/usr/bin/npm uninstall -g tomidev"]);
 	} finally { w.cleanup(); }
 });
 
 test("Windows: the package is removed through the owner's verified invocation, never a .cmd", async () => {
 	const node = "C:\\nodejs\\node.exe";
 	for (const [owner, expected] of [
-		[{ name: "pnpm", command: node, prefix: ["C:\\tools\\pnpm\\package\\bin\\pnpm.mjs"] }, ["C:\\tools\\pnpm\\package\\bin\\pnpm.mjs", "remove", "-g", "gentle-pi"]],
-		[{ name: "npm", command: node, prefix: ["C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js"] }, ["C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js", "uninstall", "-g", "gentle-pi"]],
+		[{ name: "pnpm", command: node, prefix: ["C:\\tools\\pnpm\\package\\bin\\pnpm.mjs"] }, ["C:\\tools\\pnpm\\package\\bin\\pnpm.mjs", "remove", "-g", "tomidev"]],
+		[{ name: "npm", command: node, prefix: ["C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js"] }, ["C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js", "uninstall", "-g", "tomidev"]],
 	] as const) {
 		const w = world();
 		try {
@@ -190,14 +190,14 @@ test("POSIX: the package manager runs as it was found, with no prefix", async ()
 	const w = world();
 	try {
 		assert.equal(await w.uninstall(["--yes"], { platform: "linux" }), 0);
-		assert.deepEqual(w.calls.map(({ command, argv }) => [command, argv]), [["/usr/bin/pnpm", ["remove", "-g", "gentle-pi"]]]);
+		assert.deepEqual(w.calls.map(({ command, argv }) => [command, argv]), [["/usr/bin/pnpm", ["remove", "-g", "tomidev"]]]);
 	} finally { w.cleanup(); }
 });
 
-test("inside a Gentle Shell session the isolated home in PI_CODING_AGENT_DIR is not the user's Pi home", async () => {
+test("inside a Tomidev Shell session the isolated home in PI_CODING_AGENT_DIR is not the user's Pi home", async () => {
 	const w = world();
 	try {
-		assert.equal(await w.uninstall(["--yes"], { env: { PI_CODING_AGENT_DIR: w.isolated, GENTLE_SHELL_USER_PI_HOME: w.piHome } }), 0, w.err.join("\n"));
+		assert.equal(await w.uninstall(["--yes"], { env: { PI_CODING_AGENT_DIR: w.isolated, TOMIDEV_USER_PI_HOME: w.piHome } }), 0, w.err.join("\n"));
 		assert.equal(existsSync(w.isolated), false);
 		assert.equal(existsSync(join(w.piHome, "settings.json")), true);
 		assert.ok(section(w.out, "Not touched:").some((line) => line.includes(`${w.piHome}  (your Pi home)`)));
@@ -206,14 +206,14 @@ test("inside a Gentle Shell session the isolated home in PI_CODING_AGENT_DIR is 
 
 test("inside a session the user's Pi home and any other PI_CODING_AGENT_DIR stay protected", async () => {
 	const cases = (w: World) => [
-		// GENTLE_SHELL_USER_PI_HOME pointing at the isolated home itself.
-		{ PI_CODING_AGENT_DIR: w.isolated, GENTLE_SHELL_USER_PI_HOME: w.isolated },
+		// TOMIDEV_USER_PI_HOME pointing at the isolated home itself.
+		{ PI_CODING_AGENT_DIR: w.isolated, TOMIDEV_USER_PI_HOME: w.isolated },
 		// A PI_CODING_AGENT_DIR other than the isolated home, inside it.
-		{ PI_CODING_AGENT_DIR: join(w.isolated, "pi"), GENTLE_SHELL_USER_PI_HOME: w.piHome },
-		// Without GENTLE_SHELL_USER_PI_HOME, PI_CODING_AGENT_DIR is the user's Pi home.
+		{ PI_CODING_AGENT_DIR: join(w.isolated, "pi"), TOMIDEV_USER_PI_HOME: w.piHome },
+		// Without TOMIDEV_USER_PI_HOME, PI_CODING_AGENT_DIR is the user's Pi home.
 		{ PI_CODING_AGENT_DIR: w.isolated },
-		// A GENTLE_SHELL_USER_PI_HOME that is not an existing directory proves no session.
-		{ PI_CODING_AGENT_DIR: w.isolated, GENTLE_SHELL_USER_PI_HOME: join(w.root, "missing-pi-home") },
+		// A TOMIDEV_USER_PI_HOME that is not an existing directory proves no session.
+		{ PI_CODING_AGENT_DIR: w.isolated, TOMIDEV_USER_PI_HOME: join(w.root, "missing-pi-home") },
 	];
 	for (let index = 0; index < 4; index += 1) {
 		const w = world();
@@ -236,7 +236,7 @@ test("--yes --include-shared also removes exactly the shared Gentle AI configura
 	} finally { w.cleanup(); }
 });
 
-test("the shared files are the Gentle AI configuration Gentle Shell writes", () => {
+test("the shared files are the Gentle AI configuration Tomidev Shell writes", () => {
 	assert.deepEqual([...SHARED_CONFIG_FILES].sort(), [
 		"background-subagents.json", "banner.json", "builtin-codemode-optout.json", "double-esc-cancel.json",
 		"persona.json", "profiles.export.json", "profiles.json", "runtime-guardrails.json",
@@ -246,7 +246,7 @@ test("the shared files are the Gentle AI configuration Gentle Shell writes", () 
 test("a dev binary the user registered is kept", async () => {
 	const w = world();
 	try {
-		write(w.paths.devBinary, JSON.stringify({ schema: "gentle-pi.dev-binary/v1", path: "/Users/me/src/gentle-ai/gentle-ai" }));
+		write(w.paths.devBinary, JSON.stringify({ schema: "tomidev.dev-binary/v1", path: "/Users/me/src/gentle-ai/gentle-ai" }));
 		assert.equal(await w.uninstall(["--yes"]), 0);
 		assert.equal(existsSync(w.paths.devBinary), true);
 		assert.match(w.out.join("\n"), /dev-binary\.json: points at a binary you registered yourself/);
@@ -302,13 +302,13 @@ test("an installation no package manager owns, such as npm link, is refused befo
 
 test("an isolated home that is or contains the user's Pi home, $HOME or the config home is refused", async () => {
 	const cases = (w: World) => [
-		{ GENTLE_SHELL_HOME: w.piHome },
-		{ GENTLE_SHELL_HOME: join(w.home, ".pi") },
-		{ GENTLE_SHELL_HOME: w.home },
-		{ GENTLE_SHELL_HOME: w.root },
-		{ GENTLE_SHELL_HOME: w.config },
-		{ GENTLE_SHELL_HOME: join(w.root, "agent"), PI_CODING_AGENT_DIR: join(w.root, "agent", "pi") },
-		{ GENTLE_SHELL_HOME: join(w.root, "agent"), GENTLE_SHELL_USER_PI_HOME: join(w.root, "agent") },
+		{ TOMIDEV_HOME: w.piHome },
+		{ TOMIDEV_HOME: join(w.home, ".pi") },
+		{ TOMIDEV_HOME: w.home },
+		{ TOMIDEV_HOME: w.root },
+		{ TOMIDEV_HOME: w.config },
+		{ TOMIDEV_HOME: join(w.root, "agent"), PI_CODING_AGENT_DIR: join(w.root, "agent", "pi") },
+		{ TOMIDEV_HOME: join(w.root, "agent"), TOMIDEV_USER_PI_HOME: join(w.root, "agent") },
 	];
 	for (let index = 0; index < 7; index += 1) {
 		const w = world();
@@ -323,8 +323,8 @@ test("an isolated home that is or contains the user's Pi home, $HOME or the conf
 	}
 });
 
-test("a relative GENTLE_SHELL_HOME or GENTLE_PI_CONFIG_HOME is refused", async () => {
-	for (const env of [{ GENTLE_SHELL_HOME: "agent" }, { GENTLE_PI_CONFIG_HOME: "gentle-ai" }]) {
+test("a relative TOMIDEV_HOME or TOMIDEV_CONFIG_HOME is refused", async () => {
+	for (const env of [{ TOMIDEV_HOME: "agent" }, { TOMIDEV_CONFIG_HOME: "gentle-ai" }]) {
 		const w = world();
 		try {
 			assert.equal(await w.uninstall(["--yes"], { env }), 1);
@@ -334,15 +334,15 @@ test("a relative GENTLE_SHELL_HOME or GENTLE_PI_CONFIG_HOME is refused", async (
 	}
 });
 
-test("GENTLE_SHELL_HOME and GENTLE_PI_CONFIG_HOME select what is removed", async () => {
+test("TOMIDEV_HOME and TOMIDEV_CONFIG_HOME select what is removed", async () => {
 	const w = world();
 	try {
 		const custom = join(w.root, "custom-agent");
 		const config = join(w.root, "custom-config");
-		write(join(custom, ".gentle-shell-home"));
+		write(join(custom, ".tomidev-home"));
 		write(join(config, "channel.json"));
 		write(join(config, "persona.json"));
-		assert.equal(await w.uninstall(["--yes"], { env: { GENTLE_SHELL_HOME: custom, GENTLE_PI_CONFIG_HOME: config } }), 0);
+		assert.equal(await w.uninstall(["--yes"], { env: { TOMIDEV_HOME: custom, TOMIDEV_CONFIG_HOME: config } }), 0);
 		assert.equal(existsSync(custom), false);
 		assert.equal(existsSync(join(config, "channel.json")), false);
 		assert.equal(existsSync(join(config, "persona.json")), true);
@@ -351,24 +351,24 @@ test("GENTLE_SHELL_HOME and GENTLE_PI_CONFIG_HOME select what is removed", async
 	} finally { w.cleanup(); }
 });
 
-test("a GENTLE_SHELL_HOME without Gentle Shell's ownership evidence is kept", async () => {
+test("a TOMIDEV_HOME without Tomidev Shell's ownership evidence is kept", async () => {
 	const w = world();
 	try {
 		const custom = join(w.root, "projects");
 		write(join(custom, "notes.txt"), "mine");
-		assert.equal(await w.uninstall(["--yes"], { env: { GENTLE_SHELL_HOME: custom } }), 0);
+		assert.equal(await w.uninstall(["--yes"], { env: { TOMIDEV_HOME: custom } }), 0);
 		assert.equal(readFileSync(join(custom, "notes.txt"), "utf8"), "mine");
-		assert.match(w.out.join("\n"), /projects: not created by Gentle Shell/);
+		assert.match(w.out.join("\n"), /projects: not created by Tomidev Shell/);
 	} finally { w.cleanup(); }
 });
 
-test("a GENTLE_SHELL_HOME recorded as provisioned in ~/.gentle-shell/config.json is removed", async () => {
+test("a TOMIDEV_HOME recorded as provisioned in ~/.tomidev/config.json is removed", async () => {
 	const w = world();
 	try {
 		const custom = join(w.root, "provisioned-agent");
 		write(join(custom, "settings.json"));
 		write(w.paths.launcherConfig, JSON.stringify({ provisioned: { [custom]: { gentleAi: "4.0.0", gentlePi: "4.0.0", at: "now" } } }));
-		assert.equal(await w.uninstall(["--yes"], { env: { GENTLE_SHELL_HOME: custom } }), 0);
+		assert.equal(await w.uninstall(["--yes"], { env: { TOMIDEV_HOME: custom } }), 0);
 		assert.equal(existsSync(custom), false);
 	} finally { w.cleanup(); }
 });
@@ -377,13 +377,13 @@ test("symbolic links are never followed or removed", posixOnly, async () => {
 	const w = world();
 	try {
 		const target = join(w.root, "elsewhere");
-		write(join(target, ".gentle-shell-home"));
+		write(join(target, ".tomidev-home"));
 		write(join(target, "keep.txt"));
 		rmSync(w.paths.main, { recursive: true });
 		symlinkSync(target, w.paths.main);
 		const linkedHome = join(w.root, "linked-agent");
 		symlinkSync(target, linkedHome);
-		assert.equal(await w.uninstall(["--yes"], { env: { GENTLE_SHELL_HOME: linkedHome } }), 0);
+		assert.equal(await w.uninstall(["--yes"], { env: { TOMIDEV_HOME: linkedHome } }), 0);
 		assert.equal(existsSync(join(target, "keep.txt")), true);
 		assert.equal(existsSync(w.paths.main), true);
 		assert.equal(existsSync(linkedHome), true);
@@ -426,12 +426,12 @@ test("a failed package removal exits 1 and prints the command to run", async () 
 	const w = world();
 	try {
 		assert.equal(await w.uninstall(["--yes"], { runCode: 1 }), 1);
-		assert.match(w.err.join("\n"), /pnpm remove -g gentle-pi/);
+		assert.match(w.err.join("\n"), /pnpm remove -g tomidev/);
 		assert.deepEqual(w.ownLeft(), []);
 	} finally { w.cleanup(); }
 });
 
-test("~/.gentle-shell is kept when it still holds other files", async () => {
+test("~/.tomidev is kept when it still holds other files", async () => {
 	const w = world();
 	try {
 		write(join(w.shell, "notes.txt"), "mine");
@@ -444,7 +444,7 @@ test("a config home that is, contains or lies inside the user's Pi home is refus
 	const w = world();
 	try {
 		write(join(w.piHome, "main", "sessions.txt"), "mine");
-		await refused(w, { GENTLE_PI_CONFIG_HOME: w.piHome }, /GENTLE_PI_CONFIG_HOME .*Pi's default home/);
+		await refused(w, { TOMIDEV_CONFIG_HOME: w.piHome }, /TOMIDEV_CONFIG_HOME .*Pi's default home/);
 		assert.equal(readFileSync(join(w.piHome, "main", "sessions.txt"), "utf8"), "mine");
 		untouched(w);
 	} finally { w.cleanup(); }
@@ -452,8 +452,8 @@ test("a config home that is, contains or lies inside the user's Pi home is refus
 	try {
 		const piDir = join(v.root, "pi", "agent");
 		write(join(piDir, "settings.json"));
-		await refused(v, { PI_CODING_AGENT_DIR: piDir, GENTLE_PI_CONFIG_HOME: join(piDir, "cfg") }, /your Pi home/);
-		await refused(v, { GENTLE_SHELL_USER_PI_HOME: piDir, GENTLE_PI_CONFIG_HOME: join(v.root, "pi") }, /your Pi home/);
+		await refused(v, { PI_CODING_AGENT_DIR: piDir, TOMIDEV_CONFIG_HOME: join(piDir, "cfg") }, /your Pi home/);
+		await refused(v, { TOMIDEV_USER_PI_HOME: piDir, TOMIDEV_CONFIG_HOME: join(v.root, "pi") }, /your Pi home/);
 		untouched(v);
 	} finally { v.cleanup(); }
 });
@@ -462,9 +462,9 @@ test("a config home that is $HOME never removes main/, tools/ or channel.json fr
 	const w = world();
 	try {
 		write(join(w.home, "main", "myproject", "src.txt"), "code");
-		write(join(w.home, "tools", "go", "1.25.10", ".gentle-shell-go"), "x");
+		write(join(w.home, "tools", "go", "1.25.10", ".tomidev-go"), "x");
 		write(join(w.home, "channel.json"), "{}");
-		await refused(w, { GENTLE_PI_CONFIG_HOME: w.home }, /GENTLE_PI_CONFIG_HOME .*your home directory/);
+		await refused(w, { TOMIDEV_CONFIG_HOME: w.home }, /TOMIDEV_CONFIG_HOME .*your home directory/);
 		for (const path of [join("main", "myproject", "src.txt"), join("tools", "go"), "channel.json"]) assert.equal(existsSync(join(w.home, path)), true, path);
 		untouched(w);
 	} finally { w.cleanup(); }
@@ -476,18 +476,18 @@ test("a config home reached through a symbolic link is checked at its real path"
 		write(join(w.home, "main", "gentle-ai", SHA, "gentle-ai"), "binary");
 		const link = join(w.home, "cfglink");
 		symlinkSync(w.home, link);
-		await refused(w, { GENTLE_PI_CONFIG_HOME: link }, /GENTLE_PI_CONFIG_HOME .*your home directory/);
+		await refused(w, { TOMIDEV_CONFIG_HOME: link }, /TOMIDEV_CONFIG_HOME .*your home directory/);
 		assert.equal(existsSync(join(w.home, "main", "gentle-ai", SHA, "gentle-ai")), true);
 		untouched(w);
 	} finally { w.cleanup(); }
 });
 
-test("a ~/.gentle-shell reached through a symbolic link to $HOME is refused", posixOnly, async () => {
+test("a ~/.tomidev reached through a symbolic link to $HOME is refused", posixOnly, async () => {
 	const w = world();
 	try {
 		rmSync(w.shell, { recursive: true });
 		symlinkSync(w.home, w.shell);
-		write(join(w.home, "agent", ".gentle-shell-home"));
+		write(join(w.home, "agent", ".tomidev-home"));
 		write(join(w.home, "config.json"), JSON.stringify({ home: "isolated" }));
 		assert.equal(await w.uninstall(["--yes"]), 1);
 		assert.match(w.err.join("\n"), /your home directory/);
@@ -500,15 +500,15 @@ test("Gentle AI's state and any .pi directory are protected for the isolated hom
 	const cases = (w: World) => {
 		const repo = join(w.root, "repo");
 		return [
-			[{ GENTLE_SHELL_HOME: join(w.home, ".gentle-ai") }, /Gentle AI's state/],
-			[{ GENTLE_SHELL_HOME: join(w.home, ".gentle-ai", "agent") }, /Gentle AI's state/],
-			[{ GENTLE_SHELL_HOME: join(repo, ".pi") }, /a \.pi directory/],
-			[{ GENTLE_SHELL_HOME: join(repo, ".pi", "gentle-ai") }, /a \.pi directory/],
-			[{ GENTLE_SHELL_HOME: repo }, /a \.pi directory/],
-			[{ GENTLE_PI_CONFIG_HOME: join(w.home, ".gentle-ai") }, /Gentle AI's state/],
-			[{ GENTLE_PI_CONFIG_HOME: join(repo, ".pi", "gentle-ai") }, /a \.pi directory/],
-			[{ GENTLE_PI_CONFIG_HOME: join(repo, ".pi") }, /a \.pi directory/],
-			[{ GENTLE_PI_CONFIG_HOME: repo }, /a \.pi directory/],
+			[{ TOMIDEV_HOME: join(w.home, ".gentle-ai") }, /Gentle AI's state/],
+			[{ TOMIDEV_HOME: join(w.home, ".gentle-ai", "agent") }, /Gentle AI's state/],
+			[{ TOMIDEV_HOME: join(repo, ".pi") }, /a \.pi directory/],
+			[{ TOMIDEV_HOME: join(repo, ".pi", "gentle-ai") }, /a \.pi directory/],
+			[{ TOMIDEV_HOME: repo }, /a \.pi directory/],
+			[{ TOMIDEV_CONFIG_HOME: join(w.home, ".gentle-ai") }, /Gentle AI's state/],
+			[{ TOMIDEV_CONFIG_HOME: join(repo, ".pi", "gentle-ai") }, /a \.pi directory/],
+			[{ TOMIDEV_CONFIG_HOME: join(repo, ".pi") }, /a \.pi directory/],
+			[{ TOMIDEV_CONFIG_HOME: repo }, /a \.pi directory/],
 		] as const;
 	};
 	for (let index = 0; index < 9; index += 1) {
@@ -517,9 +517,9 @@ test("Gentle AI's state and any .pi directory are protected for the isolated hom
 			const repo = join(w.root, "repo");
 			const state = join(w.home, ".gentle-ai", "state.json");
 			write(state, "{}");
-			write(join(w.home, ".gentle-ai", ".gentle-shell-home"));
-			write(join(w.home, ".gentle-ai", "agent", ".gentle-shell-home"));
-			for (const dir of [repo, join(repo, ".pi"), join(repo, ".pi", "gentle-ai")]) write(join(dir, ".gentle-shell-home"));
+			write(join(w.home, ".gentle-ai", ".tomidev-home"));
+			write(join(w.home, ".gentle-ai", "agent", ".tomidev-home"));
+			for (const dir of [repo, join(repo, ".pi"), join(repo, ".pi", "gentle-ai")]) write(join(dir, ".tomidev-home"));
 			write(join(repo, ".pi", "gentle-ai", "main", "gentle-ai", SHA, "gentle-ai"), "binary");
 			const [env, reason] = cases(w)[index];
 			await refused(w, env, reason);
@@ -541,23 +541,23 @@ test("a custom --home home that overlaps what would be removed is refused", asyn
 	} finally { w.cleanup(); }
 });
 
-test("main/ outside Gentle Shell's known layout is listed as not touched", async () => {
+test("main/ outside Tomidev Shell's known layout is listed as not touched", async () => {
 	for (const extra of [join("myproject", "src.txt"), join("gentle-ai", "not-a-commit", "gentle-ai"), join("gentle-ai", SHA, "notes.txt"), join("packages", "notes.txt")]) {
 		const w = world();
 		try {
 			write(join(w.paths.main, extra), "mine");
 			assert.equal(await w.uninstall(["--yes"]), 0, extra);
 			assert.equal(readFileSync(join(w.paths.main, extra), "utf8"), "mine", extra);
-			assert.ok(section(w.out, "Kept:").some((line) => line.includes(`${w.paths.main}: not Gentle Shell's main-channel layout`)), extra);
+			assert.ok(section(w.out, "Kept:").some((line) => line.includes(`${w.paths.main}: not Tomidev Shell's main-channel layout`)), extra);
 			assert.equal(existsSync(w.paths.channel), false);
 		} finally { w.cleanup(); }
 	}
 });
 
-test("main/ in Gentle Shell's known layout is removed", async () => {
+test("main/ in Tomidev Shell's known layout is removed", async () => {
 	const w = world();
 	try {
-		write(join(w.paths.main, "packages", "gentle-pi-4.1.0-main.1f9d5e6423e3.tgz"), "tgz");
+		write(join(w.paths.main, "packages", "tomidev-4.1.0-main.1f9d5e6423e3.tgz"), "tgz");
 		write(join(w.paths.main, ".build", "gocache", "x"), "x");
 		write(join(w.paths.main, ".source", "src", "package.json"), "{}");
 		assert.equal(await w.uninstall(["--yes"]), 0);
@@ -665,7 +665,7 @@ test("a failed removal stops before the package is removed", { skip: process.pla
 });
 
 // T6 (S6, S7): self-uninstall run from the bundled launcher removes the prefix's
-// own folders and exactly the PATH entry its receipt records; the Gentle Shell
+// own folders and exactly the PATH entry its receipt records; the Tomidev Shell
 // home is shared data. POSIX fixtures use the real `current` symlink; the
 // Windows ones simulate the platform with real temporary paths.
 const BUNDLED_ID = "4.1.0-1.1.0";
@@ -684,15 +684,15 @@ function bundledWorld({ platform = "darwin" } = {}) {
 	const base = realpathSync(mkdtempSync(join(tmpdir(), "bundled-uninstall-")));
 	const home = join(base, "home");
 	const windows = platform === "win32";
-	const shellHome = join(home, ".gentle-shell");
+	const shellHome = join(home, ".tomidev");
 	const prefix = windows ? join(home, "AppData", "Local", "gentle-shell") : shellHome;
 	const node = windows ? join(prefix, "runtime", "node-24.21.0", "node.exe") : join(prefix, "runtime", "node-24.21.0", "bin", "node");
-	const launcher = join(prefix, "bin", windows ? "gentle-shell.cmd" : "gentle-shell");
+	const launcher = join(prefix, "bin", windows ? "tomidev.cmd" : "tomidev");
 	const own = ["bin", "current", "versions", "versions.history", "runtime", "pnpm", "npm", "gentle-ai", "config", "tmp", "path-entry.json",
-		...(windows ? [".gentle-shell-bundle"] : [])].map((name) => join(prefix, name));
+		...(windows ? [".tomidev-bundle"] : [])].map((name) => join(prefix, name));
 	write(launcher, "launcher\n");
-	write(join(prefix, "versions", BUNDLED_ID, ".gentle-shell-version"), `${BUNDLED_ID}\n`);
-	write(join(prefix, "versions", BUNDLED_ID, "node_modules", "gentle-pi", "package.json"));
+	write(join(prefix, "versions", BUNDLED_ID, ".tomidev-version"), `${BUNDLED_ID}\n`);
+	write(join(prefix, "versions", BUNDLED_ID, "node_modules", "tomidev", "package.json"));
 	write(join(prefix, "versions.history"), `${BUNDLED_ID}\n`);
 	if (windows) write(join(prefix, "current"), `${BUNDLED_ID}\n`);
 	else symlinkSync(`versions/${BUNDLED_ID}`, join(prefix, "current"));
@@ -704,7 +704,7 @@ function bundledWorld({ platform = "darwin" } = {}) {
 	write(join(prefix, "config", "gentle-ai", "persona.json"));
 	mkdirSync(join(prefix, "tmp"));
 	write(join(prefix, "path-entry.json"));
-	if (windows) write(join(prefix, ".gentle-shell-bundle"), "gentle-shell bundled install");
+	if (windows) write(join(prefix, ".tomidev-bundle"), "tomidev bundled install");
 	const shared = { agent: join(shellHome, "agent"), config: join(shellHome, "config.json") };
 	write(join(shared.agent, "auth.json"));
 	write(shared.config, JSON.stringify({ home: "isolated" }));
@@ -732,11 +732,11 @@ function bundledWorld({ platform = "darwin" } = {}) {
 				: state === "invalid" ? { status: "invalid", reason: `${join(prefix, "path-entry.json")} does not describe this install's PATH entry` }
 				: {
 					status: "recorded",
-					description: `the line export PATH="${join(prefix, "bin")}:$PATH" # gentle-shell bundled install in ${join(home, ".zshrc")}`,
+					description: `the line export PATH="${join(prefix, "bin")}:$PATH" # tomidev bundled install in ${join(home, ".zshrc")}`,
 					remove: () => {
 						pathCalls.push({ ownLeft: ownLeft().length });
 						if (state === "fails") throw new Error("EACCES: permission denied");
-						return state === "edited" ? { removed: false, note: `${join(home, ".zshrc")} still holds export PATH="$PATH:${join(prefix, "bin")}" # gentle-shell bundled install (edited, so it was kept)` }
+						return state === "edited" ? { removed: false, note: `${join(home, ".zshrc")} still holds export PATH="$PATH:${join(prefix, "bin")}" # tomidev bundled install (edited, so it was kept)` }
 							: { removed: true };
 					},
 				},
@@ -773,7 +773,7 @@ test("bundled: --dry-run lists the PATH entry, the prefix's own folders, the sha
 		const removed = section(w.out, "Remove the bundled install:").join("\n");
 		for (const path of w.own) assert.ok(removed.includes(path), path);
 		assert.ok(removed.includes(`${w.prefix} itself`));
-		const shared = section(w.out, "Your Gentle Shell home").join("\n");
+		const shared = section(w.out, "Your Tomidev Shell home").join("\n");
 		for (const path of Object.values(w.shared)) assert.ok(shared.includes(path), path);
 		const never = section(w.out, "Not touched:").join("\n");
 		for (const name of [join(".pi", "agent"), ".gentle-ai", ".engram"]) assert.ok(never.includes(join(w.home, name)), name);
@@ -791,11 +791,11 @@ test("bundled: --yes removes the PATH entry first, then the prefix's own folders
 		for (const path of [...w.kept, w.shared.config, join(w.shared.agent, "auth.json")]) assert.equal(existsSync(path), true, path);
 		assert.deepEqual(readdirSync(w.prefix).sort(), ["agent", "config.json"]);
 		assert.deepEqual(w.deferred, []);
-		assert.match(w.out.join("\n"), /Gentle Shell was removed\./);
+		assert.match(w.out.join("\n"), /Tomidev Shell was removed\./);
 	} finally { w.cleanup(); }
 });
 
-test("bundled: --yes --include-shared also removes the Gentle Shell home, then the empty prefix, and nothing of the user's", posixOnly, async () => {
+test("bundled: --yes --include-shared also removes the Tomidev Shell home, then the empty prefix, and nothing of the user's", posixOnly, async () => {
 	const w = bundledWorld();
 	try {
 		assert.equal(await w.uninstall(["--yes", "--include-shared"]), 0, w.err.join("\n"));
@@ -832,11 +832,11 @@ test("bundled: without a valid receipt the PATH entry is named for the user to r
 			assert.deepEqual(w.pathCalls, []);
 			const plan = w.out.join("\n");
 			assert.ok(section(w.out, "Remove the PATH entry:").join("\n").includes("(none recorded"), pathEntry);
-			assert.match(plan, /# gentle-shell bundled install/);
+			assert.match(plan, /# tomidev bundled install/);
 			assert.ok(plan.includes(join(w.prefix, "bin")), pathEntry);
 			if (pathEntry === "invalid") assert.match(plan, /does not describe this install's PATH entry/);
 			// A5: said once, in the plan.
-			assert.equal(w.out.filter((line) => line.includes("If a new terminal still finds gentle-shell")).length, 1, pathEntry);
+			assert.equal(w.out.filter((line) => line.includes("If a new terminal still finds tomidev")).length, 1, pathEntry);
 			assert.deepEqual(w.ownLeft(), []);
 		} finally { w.cleanup(); }
 	}
@@ -848,13 +848,13 @@ test("bundled: a PATH entry the user changed is kept, and the final message name
 	try {
 		assert.equal(await w.uninstall(["--yes"], { pathEntry: "edited" }), 0, w.err.join("\n"));
 		const tail = w.out.slice(-2);
-		assert.match(tail[0], /The PATH entry was kept: .*\.zshrc still holds export PATH="\$PATH:.*# gentle-shell bundled install/);
-		assert.match(tail[1], /Gentle Shell was removed\./);
+		assert.match(tail[0], /The PATH entry was kept: .*\.zshrc still holds export PATH="\$PATH:.*# tomidev bundled install/);
+		assert.match(tail[1], /Tomidev Shell was removed\./);
 		assert.deepEqual(w.ownLeft(), []);
 	} finally { w.cleanup(); }
 });
 
-test("bundled: a prefix that is not the real ~/.gentle-shell, or a Windows prefix without its marker, is refused before anything is removed", async () => {
+test("bundled: a prefix that is not the real ~/.tomidev, or a Windows prefix without its marker, is refused before anything is removed", async () => {
 	if (process.platform !== "win32") {
 		const posix = bundledWorld();
 		try {
@@ -883,7 +883,7 @@ test("bundled: a prefix that is not the real ~/.gentle-shell, or a Windows prefi
 	// The Windows prefix is the user's home itself: refused even with the marker.
 	const homeRoot = bundledWorld({ platform: "win32" });
 	try {
-		write(join(homeRoot.home, ".gentle-shell-bundle"), "gentle-shell bundled install");
+		write(join(homeRoot.home, ".tomidev-bundle"), "tomidev bundled install");
 		assert.equal(await homeRoot.uninstall(["--yes"], { root: homeRoot.home }), 1);
 		assert.match(homeRoot.err.join("\n"), /your home directory/);
 		bundledUntouched(homeRoot);
@@ -891,24 +891,24 @@ test("bundled: a prefix that is not the real ~/.gentle-shell, or a Windows prefi
 	for (const marker of [undefined, "someone else's folder"]) {
 		const w = bundledWorld({ platform: "win32" });
 		try {
-			const path = join(w.prefix, ".gentle-shell-bundle");
+			const path = join(w.prefix, ".tomidev-bundle");
 			if (marker === undefined) rmSync(path);
 			else writeFileSync(path, marker);
 			assert.equal(await w.uninstall(["--yes"]), 1, String(marker));
-			assert.match(w.err.join("\n"), /\.gentle-shell-bundle/);
+			assert.match(w.err.join("\n"), /\.tomidev-bundle/);
 			assert.equal(existsSync(join(w.prefix, "runtime")), true);
 			assert.deepEqual([w.pathCalls, w.deferred], [[], []]);
 		} finally { w.cleanup(); }
 	}
 });
 
-test("bundled: a Pi home inside the prefix is protected, except the session's own Gentle Shell home", posixOnly, async () => {
+test("bundled: a Pi home inside the prefix is protected, except the session's own Tomidev Shell home", posixOnly, async () => {
 	const w = bundledWorld();
 	try {
 		assert.equal(await w.uninstall(["--yes", "--include-shared"], { env: { PI_CODING_AGENT_DIR: w.shared.agent } }), 1);
 		assert.match(w.err.join("\n"), /your Pi home/);
 		bundledUntouched(w);
-		const session = { PI_CODING_AGENT_DIR: w.shared.agent, GENTLE_SHELL_USER_PI_HOME: join(w.home, ".pi", "agent") };
+		const session = { PI_CODING_AGENT_DIR: w.shared.agent, TOMIDEV_USER_PI_HOME: join(w.home, ".pi", "agent") };
 		assert.equal(await w.uninstall(["--yes", "--include-shared"], { env: session }), 0, w.err.join("\n"));
 		assert.equal(existsSync(w.prefix), false);
 		for (const path of w.kept) assert.equal(existsSync(path), true, path);
@@ -961,18 +961,18 @@ test("bundled on Windows: the user Path entry goes first, the running node.exe, 
 	try {
 		assert.equal(await w.uninstall(["--yes"]), 0, w.err.join("\n"));
 		assert.equal(w.pathCalls.length, 1);
-		const marker = join(w.prefix, ".gentle-shell-bundle");
+		const marker = join(w.prefix, ".tomidev-bundle");
 		const nodeDir = dirname(w.node);
 		// A4: the marker goes last, only once the others are gone, so a failed removal can be retried.
 		assert.deepEqual(w.deferred, [{ pid: 4242, files: [w.node, w.launcher], last: marker,
 			directories: [nodeDir, join(w.prefix, "runtime"), join(w.prefix, "bin"), w.prefix] }]);
 		// Everything else is already gone; those three wait for the detached removal.
-		assert.deepEqual(readdirSync(w.prefix).sort(), [".gentle-shell-bundle", "bin", "runtime"]);
+		assert.deepEqual(readdirSync(w.prefix).sort(), [".tomidev-bundle", "bin", "runtime"]);
 		assert.deepEqual(readdirSync(join(w.prefix, "runtime")), ["node-24.21.0"]);
 		assert.deepEqual(readdirSync(nodeDir), ["node.exe"]);
-		assert.deepEqual(readdirSync(join(w.prefix, "bin")), ["gentle-shell.cmd"]);
+		assert.deepEqual(readdirSync(join(w.prefix, "bin")), ["tomidev.cmd"]);
 		assert.match(w.out.join("\n"), /after this command exits/);
-		// The Gentle Shell home lives outside the prefix on Windows and stays.
+		// The Tomidev Shell home lives outside the prefix on Windows and stays.
 		assert.equal(existsSync(join(w.shared.agent, "auth.json")), true);
 	} finally { w.cleanup(); }
 });
@@ -980,7 +980,7 @@ test("bundled on Windows: the user Path entry goes first, the running node.exe, 
 // #2469: a home that self-uninstall keeps must not keep Pi pointed at the npm
 // the uninstall removed: a stale `npmCommand` makes every later `pi install`
 // fail with ENOENT naming the deleted node.exe.
-const bundledNpmCommand = (w: BundledWorld) => [w.node, join(dirname(w.node), "gentle-shell", "npm"), "--update-notifier=false"];
+const bundledNpmCommand = (w: BundledWorld) => [w.node, join(dirname(w.node), "tomidev", "npm"), "--update-notifier=false"];
 
 const bundledNpmSettings = (w: BundledWorld, npmCommand: unknown) => `${JSON.stringify({ theme: "dark", npmCommand }, null, "  ")}\n`;
 
@@ -1036,15 +1036,15 @@ test("bundled: --include-shared removes the home with its settings, so no npmCom
 	} finally { w.cleanup(); }
 });
 
-// #2201: the standalone isolated home keeps its config in ~/.gentle-shell/gentle-ai.
-test("Gentle Shell's own config folder next to the isolated home is removed; the shared config home keeps its rule", async () => {
+// #2201: the standalone isolated home keeps its config in ~/.tomidev/gentle-ai.
+test("Tomidev Shell's own config folder next to the isolated home is removed; the shared config home keeps its rule", async () => {
 	const w = world();
 	try {
 		const own = join(w.shell, "gentle-ai");
 		write(join(own, "profiles.json"));
 		write(join(own, "persona.json"));
 		assert.equal(await w.uninstall(["--dry-run"]), 0);
-		assert.ok(section(w.out, "Remove Gentle Shell data:").some((line) => line.includes(own)), w.out.join("\n"));
+		assert.ok(section(w.out, "Remove Tomidev Shell data:").some((line) => line.includes(own)), w.out.join("\n"));
 		assert.equal(await w.uninstall(["--yes"]), 0);
 		assert.equal(existsSync(own), false);
 		assert.equal(existsSync(w.shell), false);
@@ -1052,14 +1052,14 @@ test("Gentle Shell's own config folder next to the isolated home is removed; the
 	} finally { w.cleanup(); }
 });
 
-test("the gentle-ai folder next to a custom GENTLE_SHELL_HOME is kept: it may not be Gentle Shell's", async () => {
+test("the gentle-ai folder next to a custom TOMIDEV_HOME is kept: it may not be Tomidev Shell's", async () => {
 	const w = world();
 	try {
 		const custom = join(w.root, "elsewhere", "agent");
 		const sibling = join(w.root, "elsewhere", "gentle-ai");
-		write(join(custom, ".gentle-shell-home"));
+		write(join(custom, ".tomidev-home"));
 		write(join(sibling, "notes.json"));
-		assert.equal(await w.uninstall(["--yes"], { env: { GENTLE_SHELL_HOME: custom } }), 0);
+		assert.equal(await w.uninstall(["--yes"], { env: { TOMIDEV_HOME: custom } }), 0);
 		assert.equal(existsSync(custom), false);
 		assert.equal(existsSync(join(sibling, "notes.json")), true);
 		assert.ok(section(w.out, "Kept:").some((line) => line.includes(sibling)), w.out.join("\n"));

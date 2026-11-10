@@ -29,7 +29,6 @@ const ASSET_OWNER_BY_KEY = Object.freeze({
 	"agents/gentle-ai-explore.md": "delegation",
 	"agents/gentle-ai-verify.md": "delegation",
 	"agents/gentle-ai-worker.md": "delegation",
-	"agents/jd-fix-agent.md": "review",
 	"agents/jd-judge-a.md": "review",
 	"agents/jd-judge-b.md": "review",
 	"agents/review-readability.md": "review",
@@ -38,7 +37,6 @@ const ASSET_OWNER_BY_KEY = Object.freeze({
 	"agents/review-risk.md": "review",
 	"agents/review-refuter.md": "review",
 	"agents/review-validator.md": "review",
-	"chains/4r-review.chain.md": "review",
 	"gentle-ai/support/strict-tdd.md": "delegation",
 	"gentle-ai/support/strict-tdd-verify.md": "delegation",
 } as const);

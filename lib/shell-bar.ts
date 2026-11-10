@@ -6,11 +6,11 @@ import { HOVER_ROLE } from "./shell-hover.ts";
 import { renderStatsRows, type SessionStats } from "./shell-stats.ts";
 import { CARD_TONE, floatRows, paintSurfaceRow, panelInnerWidth, renderCard } from "./shell-card.ts";
 import { chromeSurface, clipPanelText, fitPanelLine, PANEL_ROW_INDENT, panelSurfaceOpener, renderPanelHeader, renderPanelRow, sectionGap } from "./shell-panel.ts";
-import { REVIEW_SCOPE_UNAVAILABLE, REVIEW_SIDEBAR_LABELS, type ReviewSidebarSnapshot } from "./review-sidebar-state.ts";
 import type { VisualSettings } from "./visual-customization-policy.ts";
 import { renderChangesWidget, type ChangesModel } from "./shell-changes.ts";
 import type { RunningJobDisplay } from "./jobs-sidebar-state.ts";
 import { JOB_GLYPH } from "./background-jobs-tools.ts";
+import { BRAND_NAME, ENV_AGENTS_CHILD } from "./brand.ts";
 
 type Presentation = Pick<VisualSettings, "density" | "visibility">;
 type HeaderPresentation = Presentation & Partial<Pick<VisualSettings, "headerPlacement" | "statusPlacement">>;
@@ -24,7 +24,6 @@ export { gaugeTone, renderGauge, type GaugeTone };
 export interface ShellBarModel {
 	/** Session statistics for the Power user rail; absent elsewhere. */
 	stats?: SessionStats;
-	review?: ReviewSidebarSnapshot;
 	jobs?: RunningJobDisplay[];
 	profile?: string;
 	changes?: { files: number; added: number; deleted: number };
@@ -116,15 +115,15 @@ const ROLE = {
 	SESSION: "dim",
 } as const;
 
-export const SHELL_BAR_BRAND = "✿ gentle shell";
+export const SHELL_BAR_BRAND = `✿ ${BRAND_NAME} shell`;
 export const SHELL_BAR_SEPARATOR = "⟡";
 export const SHELL_BAR_GAUGE_CELLS = GAUGE_CELLS;
 const RIGHT_PADDING = 2;
 const COMPACT_BRANCH_WIDTH = 15;
 
 export function shellEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-	if (env.GENTLE_PI_AGENTS_CHILD === "1") return false;
-	const value = env.GENTLE_PI_SHELL?.trim().toLowerCase();
+	if (env[ENV_AGENTS_CHILD] === "1") return false;
+	const value = env.TOMIDEV_SHELL?.trim().toLowerCase();
 	return !(value === "0" || value === "false" || value === "off");
 }
 
@@ -132,7 +131,7 @@ export function shellEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 // Inside a Herdr pane keep that row, which Pi shows only during real activity,
 // so detection works without a local manifest override.
 export function keepNativeWorkingRow(env: NodeJS.ProcessEnv = process.env): boolean {
-	return env.HERDR_ENV === "1" && env.GENTLE_PI_AGENTS_CHILD !== "1";
+	return env.HERDR_ENV === "1" && env[ENV_AGENTS_CHILD] !== "1";
 }
 
 export function formatTokens(count: number): string {
@@ -224,7 +223,7 @@ function joinSegments(segments: string[], theme: ShellBarTheme): string {
 // Sidebar groups use structured fields, never positional compact-bar segments
 // or inferred meanings from opaque extension status strings.
 // The fullscreen rail's Status, drawn as panel sections (design/shell-rework/02-proposal.html):
-// Changes, Review (only with current-session RDD evidence) and Integrations.
+// Changes and Integrations.
 // Location and model live in the header row; the effective agent profile opens
 // Stats when that section is enabled. Opaque integration statuses wrap so none
 // of their meaning is clipped; callers can still supply optional legacy hints.
@@ -232,7 +231,7 @@ export function renderShellSidebarBar(model: ShellBarModel, theme: ShellBarTheme
 	return renderShellStatusSections(model, theme, width, presentation, hints, options).lines;
 }
 
-export type StatusSection = "session" | "changes" | "review" | "stats" | "integrations";
+export type StatusSection = "session" | "changes" | "stats" | "integrations";
 export type StatusTarget = { row: number; kind: "toggle"; section: StatusSection } | { row: number; kind: "open-changes" };
 export interface StatusSectionsOptions {
 	/** Keep the session name (no title row shows it). */
@@ -243,7 +242,7 @@ export interface StatusSectionsOptions {
 	hovered?: StatusSection | "open-changes";
 }
 
-/** The rail Status with its click targets: section headers collapse them and the Changes row opens /gentle:changes. */
+/** The rail Status with its click targets: section headers collapse them and the Changes row opens /td:changes. */
 export function renderShellStatusSections(model: ShellBarModel, theme: ShellBarTheme, width: number, presentation?: Presentation, hints?: string, options: StatusSectionsOptions = {}): { lines: string[]; targets: StatusTarget[]; groups: Array<{ start: number; end: number }>; loose: number[] } {
 	const label = (text: string) => theme.fg(ROLE.LABEL, text);
 	const wrapped = (text: string, role: string) => wrapTextWithAnsi(text, Math.max(1, width - PANEL_ROW_INDENT)).map((line) => renderPanelRow(width, theme.fg(role, line)));
@@ -257,24 +256,12 @@ export function renderShellStatusSections(model: ShellBarModel, theme: ShellBarT
 	}
 	if (presentation?.visibility.changes !== false) {
 		const changes = model.changes;
-		const command = options.hovered === "open-changes" ? theme.fg(HOVER_ROLE, "/gentle:changes") : label("/gentle:changes");
+		const command = options.hovered === "open-changes" ? theme.fg(HOVER_ROLE, "/td:changes") : label("/td:changes");
 		sections.push({
 			key: "changes",
 			header: header("changes", "Changes", changes?.files ? `${changes.files} ${changes.files === 1 ? "file" : "files"}` : "clean"),
 			rows: [renderPanelRow(width, changes?.files ? `${theme.fg("success", `+${changes.added}`)} ${theme.fg("error", `−${changes.deleted}`)}` : label("no captured changes"), command)],
 			openChangesRow: 0,
-		});
-	}
-	if (model.review && presentation?.visibility.rdd !== false) {
-		const needsYou = model.review.state === "consent";
-		sections.push({
-			key: "review",
-			header: header("review", "Review", needsYou ? "needs you" : undefined, "warning"),
-			rows: [
-				...wrapped(REVIEW_SIDEBAR_LABELS[model.review.state], needsYou ? "warning" : ROLE.VALUE),
-				// Unknown scope is an internal sentinel, not something the user acts on.
-				...(model.review.scope !== REVIEW_SCOPE_UNAVAILABLE ? wrapped(sanitizeStatus(model.review.scope), ROLE.LABEL) : []),
-			],
 		});
 	}
 	// Power user (compact density) adds what the session spent, per model.
@@ -431,7 +418,7 @@ export function renderShellStatusBar(model: ShellBarModel, theme: ShellBarTheme,
 	return { rows: [paintChromeRow(theme, ` ${fitPanelLine(left, "", room)} `)], headerRow: 0 };
 }
 
-const HEADER_BRAND = "✿ Gentle Shell";
+const HEADER_BRAND = "🐶 Tomidev Shell";
 
 // Narrower than the width, widest first: dropping the profile, then the
 // effort, then the whole location keeps the brand and the model alive.
@@ -618,7 +605,7 @@ export function renderShellBelowInputFloat(model: ShellBarModel, theme: ShellBar
 	if (floatHeaderPaint(theme, targetWidth, () => "") === undefined) return undefined;
 	const chrome = renderShellHeaderChrome(buildShellHeaderModel(model, presentation.statusPlacement === "hidden"), theme, targetWidth, usageHint, presentation, paint);
 	// The row exists only while files are actually tracked; an unborn-only root
-	// is silence here (/gentle:changes explains the state on demand).
+	// is silence here (/td:changes explains the state on demand).
 	const changesRow = Boolean(changes && changes.files.length > 0) && presentation.visibility.changes !== false
 		? floatHeaderRow(theme, targetWidth, (inner) => renderChangesWidget(changes, theme, inner)[0] ?? "")
 		: undefined;

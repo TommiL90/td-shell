@@ -119,7 +119,7 @@ function run(tool: RegisteredTool, params: unknown, ctx: unknown): Promise<ToolR
 	return tool.execute("call", params, new AbortController().signal, undefined, ctx);
 }
 
-const INTERACTIVE_HOST_ENV = "GENTLE_SHELL_INTERACTIVE_HOST";
+const INTERACTIVE_HOST_ENV = "TOMIDEV_INTERACTIVE_HOST";
 
 /** Fake interactive-RPC-host ctx: scripted `select` answers, one per call. */
 function rpcHostContext(selectAnswers: readonly (string | undefined)[]) {
@@ -263,8 +263,8 @@ test("ask_user_question resolves a single-select answer through RPC dialogs on a
 		{ questionIndex: 0, question: "Proceed?", kind: "option", answer: "Alpha" },
 	]);
 	assert.deepEqual(emitted, [
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: true } },
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: false } },
+		{ channel: "td:ask-user-question:blocked", data: { active: true } },
+		{ channel: "td:ask-user-question:blocked", data: { active: false } },
 	]);
 });
 
@@ -403,8 +403,8 @@ test("ask_user_question cancels through RPC dialogs like the TUI path when selec
 	assert.equal(result.content[0]?.text, "User cancelled the questionnaire");
 	assert.deepEqual(result.details, { cancelled: true });
 	assert.deepEqual(emitted, [
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: true } },
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: false } },
+		{ channel: "td:ask-user-question:blocked", data: { active: true } },
+		{ channel: "td:ask-user-question:blocked", data: { active: false } },
 	]);
 });
 
@@ -437,8 +437,8 @@ test("ask_user_question commits a single-select answer end-to-end", async () => 
 		{ questionIndex: 0, question: "Proceed?", kind: "option", answer: "Alpha" },
 	]);
 	assert.deepEqual(emitted, [
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: true } },
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: false } },
+		{ channel: "td:ask-user-question:blocked", data: { active: true } },
+		{ channel: "td:ask-user-question:blocked", data: { active: false } },
 	]);
 });
 
@@ -554,8 +554,8 @@ for (const multiSelect of [false, true]) {
 			assert.deepEqual(result.details.answers, [answer]);
 			assert.equal(result.content[0]?.text, multiSelect ? `1. Pick? — selected: ${label}` : `1. Pick? — ${label}`);
 			assert.deepEqual(emitted, [
-				{ channel: "gentle-pi:ask-user-question:blocked", data: { active: true } },
-				{ channel: "gentle-pi:ask-user-question:blocked", data: { active: false } },
+				{ channel: "td:ask-user-question:blocked", data: { active: true } },
+				{ channel: "td:ask-user-question:blocked", data: { active: false } },
 			]);
 		} finally { tui.stop(); }
 	});
@@ -669,8 +669,8 @@ test("ask_user_question reports cancellation without answers", async () => {
 	assert.equal(result.content[0]?.text, "User cancelled the questionnaire");
 	assert.deepEqual(result.details, { cancelled: true });
 	assert.deepEqual(emitted, [
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: true } },
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: false } },
+		{ channel: "td:ask-user-question:blocked", data: { active: true } },
+		{ channel: "td:ask-user-question:blocked", data: { active: false } },
 	]);
 });
 
@@ -684,8 +684,8 @@ test("ask_user_question settles its lifecycle after a custom UI error", async ()
 	);
 
 	assert.deepEqual(emitted, [
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: true } },
-		{ channel: "gentle-pi:ask-user-question:blocked", data: { active: false } },
+		{ channel: "td:ask-user-question:blocked", data: { active: true } },
+		{ channel: "td:ask-user-question:blocked", data: { active: false } },
 	]);
 });
 

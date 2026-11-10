@@ -46,7 +46,7 @@ export const IMPORTED_SETTINGS_KEYS                    = ["defaultProvider", "de
 
 
 function tempPathFor(path        )         {
-	return join(dirname(path), `.${basename(path)}.gentle-shell-${process.pid}.tmp`);
+	return join(dirname(path), `.${basename(path)}.tomidev-${process.pid}.tmp`);
 }
 
 function removeQuietly(path        )       {

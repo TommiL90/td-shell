@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { gentlePiConfigHome } from "./agent-home.ts";
 // inside the voice directory, so reading it touches no voice install. A
 // missing, malformed or foreign file reads as off.
 
-export const VOICE_SETTINGS_SCHEMA = "gentle-pi.voice-settings/v1";
+export const VOICE_SETTINGS_SCHEMA = brandSchema("voice-settings", 1);
 export const VOICE_SETTINGS_FILE = "voice-settings.json";
 
 export interface VoiceSettingsOptions {
@@ -22,7 +23,7 @@ export function parseVoiceSettingsFile(raw: string): boolean | undefined {
 	try {
 		const value: unknown = JSON.parse(raw);
 		if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-		if (Object.keys(value).length !== 2 || !("schema" in value) || value.schema !== VOICE_SETTINGS_SCHEMA || !("pushToTalk" in value)) return undefined;
+		if (Object.keys(value).length !== 2 || !("schema" in value) || !isBrandSchema(value.schema, "voice-settings", 1) || !("pushToTalk" in value)) return undefined;
 		return typeof value.pushToTalk === "boolean" ? value.pushToTalk : undefined;
 	} catch { return undefined; }
 }

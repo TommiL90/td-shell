@@ -23,10 +23,7 @@ import { installSidebar } from "../lib/shell-sidebar-layout.ts";
 import { renderTodoCard } from "../lib/shell-todo.ts";
 import type { ShellBarTheme } from "../lib/shell-bar.ts";
 import { createGentleAiExtension } from "../extensions/gentle-ai.ts";
-import { decodeReviewStatusV3 } from "../lib/review-integration-v2.ts";
-import { REVIEW_SIDEBAR_EVENT } from "../lib/review-sidebar-state.ts";
 import { isJobsSidebarSnapshot } from "../lib/jobs-sidebar-state.ts";
-import type { NativeReviewCli } from "../lib/native-review-cli.ts";
 import { chromeSurface, setChromeSurface } from "../lib/shell-panel.ts";
 import { DEFAULT_VISUAL_SETTINGS, DENSITY, VISUAL_PRESET, VISUAL_SCHEMA, resolveVisualSettings, visualPresetOf, writeVisualSettings } from "../lib/visual-customization-policy.ts";
 import { resolveAnimationPolicy } from "../lib/animation-policy.ts";
@@ -49,22 +46,22 @@ import { SUPER_YOLO_STATUS_TEXT, yoloBannerContent } from "../lib/yolo-session-p
 // verifies against imported metadata; the open devDependency range is policy.
 const INSTALLED_PI = (createRequire(import.meta.url)("@earendil-works/pi-tui/package.json") as { version: string }).version;
 
-// The Gentle Shell extension wires the pure bar renderer into pi's footer
+// The Tomidev Shell extension wires the pure bar renderer into pi's footer
 // slot. These tests drive it with a fake ExtensionAPI and context.
 
 initTheme("dark");
 
 const resolveWorktree = (path: string) => ({ root: path.startsWith("/repo") || path === "." ? "/repo" : path, commonDir: "/clone/git" });
-// Without GENTLE_PI_CONFIG_HOME the extension reads ~/.pi/gentle-ai, so a
-// developer's persisted preferences (for example /gentle:vim on) would leak into
+// Without TOMIDEV_CONFIG_HOME the extension reads ~/.pi/gentle-ai, so a
+// developer's persisted preferences (for example /td:vim on) would leak into
 // tests. Each instance gets a fresh empty config home unless the test owns one.
 const isolatedConfigHomes: string[] = [];
 after(() => { for (const home of isolatedConfigHomes) rmSync(home, { recursive: true, force: true }); });
 function isolatedEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-	if (env.GENTLE_PI_CONFIG_HOME !== undefined) return env;
+	if (env.TOMIDEV_CONFIG_HOME !== undefined) return env;
 	const home = mkdtempSync(join(tmpdir(), "gentle-shell-config-"));
 	isolatedConfigHomes.push(home);
-	return { ...env, GENTLE_PI_CONFIG_HOME: home };
+	return { ...env, TOMIDEV_CONFIG_HOME: home };
 }
 const gentleShell: typeof installGentleShell = (pi, env, deps) => installGentleShell(pi, isolatedEnv(env), { resolveWorktree, gitRunner: (cwd) => async (args) => pi.exec("git", ["-C", cwd, ...args], { timeout: 5000 }), rootExists: () => true, ...deps });
 
@@ -116,12 +113,12 @@ const renderers = new Map<string, MessageRenderer>();
 const FAKE_SOURCE_INFO: SourceInfo = { path: "extensions/gentle-shell.ts", source: "gentle-shell", scope: "project", origin: "top-level" };
 
 const DEFAULT_COMMANDS: SlashCommandInfo[] = [
-	{ name: "gentle:profiles", description: "Configure models", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
-	{ name: "gentle:changes", description: "Browse changes", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
-	{ name: "gentle:status", description: "Show Gentle AI status", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
+	{ name: "td:profiles", description: "Configure models", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
+	{ name: "td:changes", description: "Browse changes", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
+	{ name: "td:status", description: "Show Gentle AI status", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
 	{ name: "skill-registry:refresh", description: "Regenerate the skill registry", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
-	{ name: "gentle:commands", description: "Open the command palette", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
-	{ name: "gentle:not-in-catalog", description: "Not a curated command", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
+	{ name: "td:commands", description: "Open the command palette", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
+	{ name: "td:not-in-catalog", description: "Not a curated command", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
 	{ name: "skill:foo", description: "A skill", source: "skill", sourceInfo: FAKE_SOURCE_INFO },
 ];
 
@@ -260,6 +257,41 @@ function assistantEntry(usage: { input: number; output: number; cost: number }) 
 		},
 	};
 }
+
+test("context command reports only sizes through registration, captures payload sizes, and supports headless JSON", async (t) => {
+ const { pi, commands, handlers, sentMessages } = fakePi();
+ Object.assign(pi, { getActiveTools: () => ["read"], getAllTools: () => [{ name: "read", description: "PRIVATE_SCHEMA", parameters: {} }, { name: "inactive", description: "excluded", parameters: {} }] });
+ gentleShell(pi, {});
+ const { ctx, ui } = fakeContext();
+ Object.assign(ctx, { getSystemPrompt: () => "PRIVATE_PROMPT", getSystemPromptOptions: () => ({ cwd: "/repo", hiddenTools: [] }) });
+ Object.assign(ctx.sessionManager, { buildSessionProjection: () => ({ messages: [{ role: "user", content: "PRIVATE_MESSAGE" }] }) });
+ const command = commands.get("td:context");
+ assert.ok(command);
+ await command.handler("", ctx);
+ assert.match(ui.notices.at(-1)!, /Context breakdown/);
+ assert.doesNotMatch(ui.notices.at(-1)!, /PRIVATE_|inactive/);
+ t.diagnostic(ui.notices.at(-1)!);
+ for (const hook of handlers.get("before_provider_request") ?? []) assert.equal(await hook({ payload: { input: "PRIVATE_PAYLOAD" } }, ctx), undefined);
+ const stdout: string[] = [];
+ const originalLog = console.log;
+ console.log = (value: string) => { stdout.push(value); };
+ try {
+  Object.assign(ctx, { hasUI: false });
+  await command.handler("--json", ctx);
+ } finally { console.log = originalLog; }
+ const report = JSON.parse(stdout[0]);
+ assert.equal(report.providerPayload.bytes, Buffer.byteLength(JSON.stringify({ input: "PRIVATE_PAYLOAD" })));
+ assert.equal(report.tools.count, 1);
+ assert.equal(report.conversation.bytes, Buffer.byteLength(JSON.stringify([{ role: "user", content: "PRIVATE_MESSAGE" }])));
+ assert.equal(report.usageTokens, 122400);
+ assert.doesNotMatch(stdout[0], /PRIVATE_|inactive/);
+ assert.deepEqual(sentMessages, [], "diagnostics never enter model context");
+ for (const hook of handlers.get("session_start") ?? []) await hook({}, ctx);
+ stdout.length = 0;
+ console.log = (value: string) => { stdout.push(value); };
+ try { await command.handler("--json", ctx); } finally { console.log = originalLog; }
+ assert.equal(JSON.parse(stdout[0]).providerPayload, null, "new sessions cannot reuse old payload sizes");
+});
 
 test("buildShellBarModel reads session, model, and footer data", () => {
 	const { pi } = fakePi();
@@ -405,7 +437,7 @@ test("session shutdown detaches the footer before a queued fullscreen render and
 	// The provider is deliberately inert: this lifecycle test makes no network calls.
 	(first.ctx as unknown as { model: { provider: string } }).model.provider = "test";
 	const deps = { activeProfile: () => undefined };
-	gentleShell(old.pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, deps);
+	gentleShell(old.pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, deps);
 	const frames: string[] = [];
 	let mounted: { render(width: number): string[]; dispose(): void } | undefined;
 	let mountedWidget: { render(width: number): string[] } | undefined;
@@ -448,7 +480,7 @@ test("session shutdown detaches the footer before a queued fullscreen render and
 		second = fakeContext();
 		(second.ctx as unknown as { model: { provider: string } }).model.provider = "test";
 		(second.ctx.ui as unknown as { theme: typeof theme }).theme = theme;
-		gentleShell(fresh.pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, deps);
+		gentleShell(fresh.pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, deps);
 		await fire(fresh.handlers, "session_start", second.ctx);
 		freshFooter = mounted = installFooter(second.ui);
 		mountedWidget = (second.ui.widgets.get("gentle-shell-below-input-header") as () => NonNullable<typeof mountedWidget>)();
@@ -478,141 +510,9 @@ test("session shutdown detaches the footer before a queued fullscreen render and
 	}
 });
 
-async function reviewSidebarHarness() {
-	const { pi, handlers, tools } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { activeProfile: () => undefined });
-	const { ctx, ui } = fakeContext();
-	ctx.cwd = process.cwd();
-	let sessionId = "shell-session";
-	ctx.sessionManager.getSessionId = () => sessionId;
-	const raw = JSON.parse(readFileSync(new URL("./fixtures/devbinary/status-v5-capture-result-submission.captured.json", import.meta.url), "utf8"));
-	raw.action = "stop";
-	raw.projection.paths = ["src/fresh.ts"];
-	const status = decodeReviewStatusV3(raw);
-	// Each hold() parks the next native status call until the returned release runs.
-	const held: Array<(release: (result: typeof status) => void) => void> = [];
-	const native = { targetStatus: async () => {
-		const park = held.shift();
-		return park ? new Promise<typeof status>((resolve) => park(resolve)) : status;
-	} } as unknown as NativeReviewCli;
-	const hold = () => {
-		let release!: () => void;
-		held.push((resolve) => { release = () => resolve(status); });
-		return () => release();
-	};
-	const published: unknown[] = [];
-	const bus = pi.events;
-	const observedPi = { ...pi, events: {
-		...bus,
-		emit(name: string, value: unknown) {
-			if (name === REVIEW_SIDEBAR_EVENT) published.push(value);
-			bus.emit(name, value);
-		},
-	} } as ExtensionAPI;
-	const producerHooks = new Map<string, Array<(event: unknown, context: ExtensionContext) => unknown>>();
-	createGentleAiExtension({ nativeReviewCli: native, candidateViews: null, processEnv: {} })({
-		...observedPi,
-		on(name: string, handler: (event: unknown, context: ExtensionContext) => unknown) {
-			producerHooks.set(name, [...(producerHooks.get(name) ?? []), handler]);
-		},
-	} as ExtensionAPI);
-	const produce = async (name: string, event: unknown = {}) => {
-		for (const hook of producerHooks.get(name) ?? []) await hook(event, ctx);
-	};
-	await fire(handlers, "session_start", ctx);
-	await produce("session_start");
-	const tui = { terminal: { rows: 40, columns: 160 }, requestRender() {} };
-	const factory = ui.footerFactory as (tui: unknown, theme: ShellBarTheme, footerData: unknown) => { dispose(): void };
-	const component = factory(tui, plainTheme, { getGitBranch: () => "main", getExtensionStatuses: () => new Map(), getAvailableProviderCount: () => 1, onBranchChange: () => () => {} });
-	const rail = sidebarState(tui as unknown as TUI).parts.get("footer") as SidebarRail;
-	return {
-		pi,
-		rail,
-		published,
-		hold,
-		text: () => rail.render(60).join("\n"),
-		sessionId: () => sessionId,
-		run: () => tools.get("gentle_review")!.execute("reset-test", { operation: "status", lineageId: status.authority!.lineageId }, undefined, undefined, ctx),
-		async startSession(next: string) {
-			sessionId = next;
-			await fire(handlers, "session_start", ctx);
-			await produce("session_start");
-		},
-		async navigateTree() {
-			await fire(handlers, "session_tree", ctx);
-			await produce("session_tree");
-		},
-		shutdownShell: () => fire(handlers, "session_shutdown", ctx),
-		async dispose() {
-			await produce("session_shutdown", { reason: "quit" });
-			await fire(handlers, "session_shutdown", ctx);
-			component.dispose();
-		},
-	};
-}
-
-test("review sidebar ignores a stale completion after session_start and accepts the new session", async () => {
-	const harness = await reviewSidebarHarness();
-	try {
-		const release = harness.hold();
-		const pending = harness.run();
-		assert.match(harness.text(), /Updating…/);
-		await harness.startSession("next-session");
-		assert.doesNotMatch(harness.text(), /RDD/);
-		const before = harness.published.length;
-		release();
-		await pending;
-		assert.equal(harness.published.length, before, "producer must not publish the old session completion");
-		assert.doesNotMatch(harness.text(), /RDD/, "old completion must not repaint the new session");
-		await harness.run();
-		assert.match(harness.text(), /fresh\.ts/, "a fresh result in the new session is accepted");
-	} finally {
-		await harness.dispose();
-	}
-});
-
-test("review sidebar ignores a stale completion after same-session tree navigation", async () => {
-	const harness = await reviewSidebarHarness();
-	try {
-		await harness.run();
-		assert.match(harness.text(), /fresh\.ts/);
-		const release = harness.hold();
-		const pending = harness.run();
-		assert.match(harness.text(), /Updating…/);
-		await harness.navigateTree();
-		assert.doesNotMatch(harness.text(), /RDD/, "tree navigation clears the visible snapshot");
-		const before = harness.published.length;
-		release();
-		await pending;
-		assert.equal(harness.published.length, before, "producer must not publish the old tree completion with the same session ID");
-		assert.doesNotMatch(harness.text(), /RDD/);
-		await harness.run();
-		assert.match(harness.text(), /fresh\.ts/, "a fresh tree-bound result is accepted");
-	} finally {
-		await harness.dispose();
-	}
-});
-
-test("review sidebar rejects foreign-session events and unsubscribes on shutdown", async () => {
-	const harness = await reviewSidebarHarness();
-	try {
-		await harness.run();
-		assert.match(harness.text(), /fresh\.ts/);
-		const previous = harness.rail.digest?.();
-		harness.pi.events.emit(REVIEW_SIDEBAR_EVENT, { sessionId: "foreign", snapshot: { state: "closed", scope: "foreign.ts" } });
-		assert.equal(harness.rail.digest?.(), previous, "foreign events cannot replace the current snapshot");
-		await harness.shutdownShell();
-		assert.doesNotMatch(harness.text(), /RDD/);
-		harness.pi.events.emit(REVIEW_SIDEBAR_EVENT, { sessionId: harness.sessionId(), snapshot: { state: "closed", scope: "late.ts" } });
-		assert.doesNotMatch(harness.text(), /RDD/, "shutdown unsubscribes the consumer");
-	} finally {
-		await harness.dispose();
-	}
-});
-
 test("jobs snapshots feed their own rail card, keep one compact fallback, and reject stale sessions", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const statuses = new Map([["gentle-jobs", "⧗ 1 job"], ["mcp", "MCP: 3 servers"]]);
@@ -682,7 +582,7 @@ test("hidden Status leaves only a jobs count in regular bottom and fullscreen he
 	const home = scopedDoubleEscCancelConfigHome(t);
 	writeVisualSettings({ ...resolveVisualSettings({ gentlePiConfigHome: home }).settings, statusPlacement: "hidden" }, { gentlePiConfigHome: home });
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const tui = { mode: "regular", terminal: { rows: 40, columns: 160 }, requestRender() {} };
@@ -708,7 +608,7 @@ test("hidden Status leaves only a jobs count in regular bottom and fullscreen he
 test("the fullscreen Status rail and header refresh the effective agent profile together", async () => {
 	const { pi, handlers } = fakePi();
 	let profile: string | undefined = "team";
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { activeProfile: () => profile });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { activeProfile: () => profile });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 
@@ -749,7 +649,7 @@ test("the fullscreen Status rail and header refresh the effective agent profile 
 
 test("the fullscreen header rail carries a live digest so model, context, and cost changes refresh it", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 	const entries: unknown[] = [];
 	const { ctx, ui } = fakeContext({ entries });
 	await fire(handlers, "session_start", ctx);
@@ -789,7 +689,7 @@ test("the fullscreen header rail carries a live digest so model, context, and co
 
 test("clicking the header's usage segment opens the usage panel; other header clicks are ignored", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 
@@ -819,9 +719,9 @@ test("profile reader follows store changes and rejects missing or invalid active
 	const root = mkdtempSync(join(tmpdir(), "shell-profile-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const path = join(root, "profiles.json");
-	const read = createActiveProfileReader({ GENTLE_PI_CONFIG_HOME: root });
+	const read = createActiveProfileReader({ TOMIDEV_CONFIG_HOME: root });
 	const save = (active: string | undefined) => writeFileSync(path, JSON.stringify({
-		kind: "gentle-pi.agent_model_profiles", version: 1, active, profiles: { team: {}, other: {} },
+		kind: "tomidev.agent_model_profiles", version: 1, active, profiles: { team: {}, other: {} },
 	}));
 	assert.equal(read(), undefined);
 	save("team");
@@ -830,10 +730,10 @@ test("profile reader follows store changes and rejects missing or invalid active
 	save("other");
 	assert.equal(read(), "other");
 	const replacement = join(root, "replacement.json");
-	writeFileSync(replacement, JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {} } }));
+	writeFileSync(replacement, JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {} } }));
 	renameSync(replacement, path);
 	assert.equal(read(), "team", "atomic replacement refreshes the cached profile");
-	const isolated = createActiveProfileReader({ GENTLE_PI_CONFIG_HOME: join(root, "other-home") });
+	const isolated = createActiveProfileReader({ TOMIDEV_CONFIG_HOME: join(root, "other-home") });
 	assert.equal(isolated(), undefined);
 	assert.equal(read(), "team", "another shell's config home does not alter this cache");
 	save("missing");
@@ -857,9 +757,9 @@ test("bound profile reader follows pin precedence and keeps frames free of resol
 	const shared = join(repo, ".pi", "gentle-ai", "profile.json");
 	mkdirSync(join(commonDir, "gentle-ai"), { recursive: true });
 	mkdirSync(join(repo, ".pi", "gentle-ai"), { recursive: true });
-	writeFileSync(join(home, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, other: {} } }));
-	const pin = (path: string, profile: string) => writeFileSync(path, JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile }));
-	const read = createActiveProfileReader({ GENTLE_PI_CONFIG_HOME: home });
+	writeFileSync(join(home, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, other: {} } }));
+	const pin = (path: string, profile: string) => writeFileSync(path, JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile }));
+	const read = createActiveProfileReader({ TOMIDEV_CONFIG_HOME: home });
 	let resolutions = 0;
 	const resolver = () => { resolutions++; return { root: repo, commonDir }; };
 	assert.equal(read(), "team");
@@ -893,7 +793,7 @@ test("profile polling refreshes both fullscreen surfaces only on change and stop
 	const local = join(commonDir, "gentle-ai", "profile-pin.json");
 	mkdirSync(join(commonDir, "gentle-ai"), { recursive: true });
 	mkdirSync(repo);
-	writeFileSync(join(home, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, other: {} } }));
+	writeFileSync(join(home, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, other: {} } }));
 	const intervals: Array<{ tick: () => void; delay: number; stopped: boolean }> = [];
 	t.mock.method(globalThis, "setInterval", (tick: () => void, delay: number) => {
 		const timer = { tick, delay, stopped: false };
@@ -905,7 +805,7 @@ test("profile polling refreshes both fullscreen surfaces only on change and stop
 	let resolutions = 0;
 	// follow mode keeps the live p → P → G resolution, so a pin edit reaches the
 	// open session through the poll (gentle-shell#1064 slice 3b-ii).
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off", GENTLE_PI_PROFILE_FOLLOW: "1" }, {
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off", TOMIDEV_PROFILE_FOLLOW: "1" }, {
 		resolveWorktree: () => { resolutions++; return { root: repo, commonDir }; },
 	});
 	const first = fakeContext();
@@ -925,7 +825,7 @@ test("profile polling refreshes both fullscreen surfaces only on change and stop
 		const before = tui.requestRender.mock.callCount();
 		timer.tick();
 		assert.equal(tui.requestRender.mock.callCount(), before, "unchanged poll does not render");
-		writeFileSync(local, JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "other" }));
+		writeFileSync(local, JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "other" }));
 		assert.match(header(), /team/, "external edits do not read during render");
 		timer.tick();
 		assert.equal(tui.requestRender.mock.callCount(), before + 1);
@@ -956,7 +856,7 @@ test("profile polling refreshes both fullscreen surfaces only on change and stop
 
 test("gentleShell stays out of the way without a UI or when disabled", () => {
 	const disabled = fakePi();
-	gentleShell(disabled.pi, { GENTLE_PI_SHELL: "0" });
+	gentleShell(disabled.pi, { TOMIDEV_SHELL: "0" });
 	assert.equal(disabled.commands.size, 0);
 	assert.ok(disabled.handlers.has("tool_call"), "capture remains available to headless children");
 
@@ -1101,7 +1001,7 @@ test("installed sidebar clears mobile Panel hover on unhandled native transcript
 test("installed fullscreen Panel button opens the panel sheet with no live work", async () => {
 	const previousStyle = cardStyle();
 	const { pi, handlers } = fakePi();
-	installGentleShell(pi, { GENTLE_PI_CONFIG_HOME: "/dev/null" }, {
+	installGentleShell(pi, { TOMIDEV_CONFIG_HOME: "/dev/null" }, {
 		activeProfile: () => undefined, resolveWorktree: () => undefined, rootExists: () => false,
 		gitRunner: () => async () => ({ stdout: "", stderr: "", code: 0 }),
 		fetch: async () => { throw new Error("network forbidden in test"); },
@@ -1152,7 +1052,7 @@ interface MutablePromptThemeHost {
 test("T2 float prompt installed editor reads live toolSuccessBg and preserves Esc/queued hints", () => {
 	const previous = cardStyle();
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_DOUBLE_ESC_CANCEL: "on" });
+	gentleShell(pi, { TOMIDEV_DOUBLE_ESC_CANCEL: "on" });
 	const { ctx, ui } = fakeContext({ pending: true });
 	const editor = installedPrompt(ctx, ui, handlers, { matches: (data: string, action: string) => action === "app.interrupt" && data === "\x1b" });
 	// The fake context owns this mutable slot; the production UI exposes it readonly.
@@ -1956,7 +1856,7 @@ test("GentlePromptEditor keeps visual selection when autocomplete offers printab
 	} finally { editor.dispose(); }
 });
 
-// gentle-shell#1565: in ordinary editing the Gentle Agents alt+a shortcut
+// gentle-shell#1565: in ordinary editing the Tomidev Agents alt+a shortcut
 // must win over prompt select-all, for empty and non-empty drafts alike.
 test("GentlePromptEditor gives extension shortcuts precedence over selection chords", () => {
 	const { pi, handlers } = fakePi(); gentleShell(pi, {});
@@ -2378,17 +2278,17 @@ test("visual customization and Vim register once and remain independently discov
 		registrations.push(name);
 		register(name, registration);
 	}) as typeof pi.registerCommand;
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
-	for (const name of ["gentle:customize", "gentle:vim"]) {
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
+	for (const name of ["td:customize", "td:vim"]) {
 		assert.equal(registrations.filter((registered) => registered === name).length, 1, `${name} must register once`);
 		assert.ok(commands.has(name));
 	}
 	const groups = buildCommandPaletteGroups([...commands].map(([name, value]) => ({ name, description: value.description })), {});
 	const configuration = groups.find((group) => group.title === "Configuration")!;
-	assert.deepEqual(configuration.items.filter((item) => ["gentle:customize", "gentle:vim"].includes(item.command)).map((item) => item.command), ["gentle:customize", "gentle:vim"]);
+	assert.deepEqual(configuration.items.filter((item) => ["td:customize", "td:vim"].includes(item.command)).map((item) => item.command), ["td:customize", "td:vim"]);
 	const { ctx, ui, overlayReady } = fakeContext();
-	await commands.get("gentle:vim")!.handler("enable", ctx);
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	await commands.get("td:vim")!.handler("enable", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(ui.overlayView!.render(90).some((row) => /Animations\s+● quality/.test(row)));
 	ui.overlayView!.handleInput("\x1b");
@@ -2396,12 +2296,12 @@ test("visual customization and Vim register once and remain independently discov
 	assert.equal(JSON.parse(readFileSync(join(home, "vim.json"), "utf8")).policy, "on");
 });
 
-test("/gentle:customize forwards a mouse click through its command overlay", async (t) => {
+test("/td:customize forwards a mouse click through its command overlay", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	const view = ui.overlayView as unknown as { render(width: number): string[]; handleMouse(event: TuiMouseEvent): { handled?: boolean } | undefined; handleInput(data: string): void };
 	try {
@@ -2416,15 +2316,15 @@ test("/gentle:customize forwards a mouse click through its command overlay", asy
 	} finally { view.handleInput("\x1b"); await pending; }
 });
 
-test("/gentle:customize has a Keymaps category that saves a key and reloads on request", async () => {
+test("/td:customize has a Keymaps category that saves a key and reloads on request", async () => {
 	const home = mkdtempSync(join(tmpdir(), "gentle-shell-keymaps-"));
 	isolatedConfigHomes.push(home);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	let reloads = 0;
 	(ctx as unknown as { reload(): Promise<void> }).reload = async () => { reloads += 1; };
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	const view = ui.overlayView as unknown as { render(width: number): string[]; handleInput(data: string): void; focus(label: string): boolean };
 	assert.ok(view.focus("Command palette: alt+k"));
@@ -2445,11 +2345,11 @@ test(`actual Pi ${INSTALLED_PI} enables a live prompt and enters NORMAL without 
  assert.ok(isAuditedPiEditorVersion(INSTALLED_PI), `actual installed Pi ${INSTALLED_PI} must be audited`);
  const configHome = mkdtempSync(join(tmpdir(), "gentle-vim-shell-"));
  const { pi, handlers, commands } = fakePi();
- gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+ gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
  const { ctx, ui } = fakeContext();
  const editor = installedPrompt(ctx, ui, handlers);
  editor.setText("hello");
- await commands.get("gentle:vim")!.handler("enable", ctx);
+ await commands.get("td:vim")!.handler("enable", ctx);
  editor.handleInput("\x1b");
  assert.equal(editor.getText(), "hello");
  assert.match(editor.render(60).join("\n"), /NORMAL/);
@@ -2464,12 +2364,12 @@ test(`actual Pi ${INSTALLED_PI} enables a live prompt and enters NORMAL without 
 test("vim command distinguishes persisted preference from rejected live editor and recovers on next start", async () => {
  const configHome = mkdtempSync(join(tmpdir(), "gentle-vim-rejected-"));
  const { pi, handlers, commands } = fakePi();
- gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome }, { vimRuntimeVersion: () => "unsupported" });
+ gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome }, { vimRuntimeVersion: () => "unsupported" });
  const { ctx, ui } = fakeContext();
  const editor = installedPrompt(ctx, ui, handlers);
  try {
   editor.setText("draft");
-  await commands.get("gentle:vim")!.handler("enable", ctx);
+  await commands.get("td:vim")!.handler("enable", ctx);
   assert.equal(JSON.parse(readFileSync(join(configHome, "vim.json"), "utf8")).policy, "on");
   assert.match(ui.notices.at(-1)!, /vim: on.*ordinary editing remains active/i);
   assert.doesNotMatch(ui.notices.at(-1)!, /applies now/i);
@@ -2478,7 +2378,7 @@ test("vim command distinguishes persisted preference from rejected live editor a
   // Split bracketed paste must not leak its framing bytes or run modal commands.
   for (const part of ["\x1b[200~", "z", "\x1b[20", "1~"]) editor.handleInput(part);
   assert.equal(editor.getExpandedText(), "drafthz");
-  await commands.get("gentle:vim")!.handler("status", ctx);
+  await commands.get("td:vim")!.handler("status", ctx);
   assert.match(ui.notices.at(-1)!, /vim: on.*ordinary editing remains active/i);
   editor.dispose();
   const next = installedPrompt(ctx, ui, handlers);
@@ -2486,7 +2386,7 @@ test("vim command distinguishes persisted preference from rejected live editor a
    assert.doesNotMatch(next.render(40).join("\n"), /NORMAL|INSERT/);
    next.handleInput("h");
    assert.equal(next.getText(), "h");
-   await commands.get("gentle:vim")!.handler("disable", ctx);
+   await commands.get("td:vim")!.handler("disable", ctx);
    assert.match(ui.notices.at(-1)!, /vim: off.*ordinary editing/i);
   } finally { next.dispose(); }
  } finally { editor.dispose(); }
@@ -2494,15 +2394,15 @@ test("vim command distinguishes persisted preference from rejected live editor a
 
 test("compatible vim command reports live activation and disable returns ordinary editing", async () => {
  const { pi, handlers, commands } = fakePi();
- gentleShell(pi, { GENTLE_PI_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-compatible-")) }, { vimRuntimeVersion: () => INSTALLED_PI });
+ gentleShell(pi, { TOMIDEV_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-compatible-")) }, { vimRuntimeVersion: () => INSTALLED_PI });
  const { ctx, ui } = fakeContext();
  const editor = installedPrompt(ctx, ui, handlers);
  try {
-  await commands.get("gentle:vim")!.handler("enable", ctx);
+  await commands.get("td:vim")!.handler("enable", ctx);
   assert.match(ui.notices.at(-1)!, /Prompt applies now/);
   editor.handleInput("\x1b");
   assert.match(editor.render(40).join("\n"), /NORMAL/);
-  await commands.get("gentle:vim")!.handler("disable", ctx);
+  await commands.get("td:vim")!.handler("disable", ctx);
   assert.doesNotMatch(editor.render(40).join("\n"), /NORMAL|INSERT/);
   editor.handleInput("h");
   assert.equal(editor.getText(), "h");
@@ -2520,7 +2420,7 @@ test("vim NORMAL slash uses Pi's command and skill completion without displacing
 		fg: (_color, text) => text, bold: (text) => text, requestRender() {}, pending: () => false,
 		now: () => 0, doubleEscCancelEnabled: () => false, dispatchQueuedText() {}, tuiVersion: () => INSTALLED_PI,
 	});
-	const entries = ["gentle:vim", "gentle:profiles", "skill:example"];
+	const entries = ["td:vim", "td:profiles", "skill:example"];
 	const requests: string[] = [];
 	editor.setAutocompleteProvider({
 		async getSuggestions(lines: string[], line: number, col: number) {
@@ -2554,9 +2454,9 @@ test("vim NORMAL slash uses Pi's command and skill completion without displacing
 		assert.match(editor.render(40).join("\n"), /NORMAL/);
 		editor.setText("");
 		editor.handleInput("/");
-		for (const char of "gentle:") editor.handleInput(char);
+		for (const char of "td:") editor.handleInput(char);
 		await new Promise<void>((resolve) => setImmediate(resolve));
-		assert.equal(requests.at(-1), "/gentle:");
+		assert.equal(requests.at(-1), "/td:");
 		assert.ok(editor.isShowingAutocomplete(), "Pi filters command entries");
 		editor.handleInput("\x1b");
 		editor.handleInput("\x1b");
@@ -2612,10 +2512,10 @@ test("vim NORMAL gives extension and app shortcuts precedence over modal letters
 
 test("vim NORMAL blocks Kitty and emoji text, handles encoded motions and ignores releases", async () => {
  const { pi, handlers, commands } = fakePi();
- gentleShell(pi, { GENTLE_PI_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-keys-")) });
+ gentleShell(pi, { TOMIDEV_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-keys-")) });
  const { ctx, ui } = fakeContext();
  const editor = installedPrompt(ctx, ui, handlers, { matches: (data: string, binding: string) => binding === "app.interrupt" && data === "\x1b" });
- await commands.get("gentle:vim")!.handler("enable", ctx);
+ await commands.get("td:vim")!.handler("enable", ctx);
  editor.setText("ab\n雪🙂");
  editor.handleInput("\x1b");
  editor.handleInput("\x1b[120u");
@@ -2767,10 +2667,10 @@ test("vim paste overflow and policy cancellation discard partial frames without 
 
 test("vim NORMAL rejects encoded insertions and paste without losing Unicode multiline draft", async () => {
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-safety-")) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-safety-")) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
-	await commands.get("gentle:vim")!.handler("enable", ctx);
+	await commands.get("td:vim")!.handler("enable", ctx);
 	editor.setText("雪🙂\nhello");
 	editor.handleInput("\x1b");
 	for (const input of ["\x1b[13u", "\x1b[9u", "\x1b[200~", "pasted", "\x1b[201~", "\x1b[27;5;120~", "\x1b[27;1;120~", "\x1b[105;2u", "\x1b[105;1:2u"]) {
@@ -3079,12 +2979,12 @@ test("vim NORMAL k at the first visual line does not recall history", () => {
 
 test("vim status preserves NORMAL and frame remains width-safe in every state", async () => {
  const { pi, handlers, commands } = fakePi();
- gentleShell(pi, { GENTLE_PI_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-frame-")) });
+ gentleShell(pi, { TOMIDEV_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-frame-")) });
  const { ctx, ui } = fakeContext();
  const editor = installedPrompt(ctx, ui, handlers);
- await commands.get("gentle:vim")!.handler("enable", ctx);
+ await commands.get("td:vim")!.handler("enable", ctx);
  editor.handleInput("\x1b");
- await commands.get("gentle:vim")!.handler("status", ctx);
+ await commands.get("td:vim")!.handler("status", ctx);
  for (const state of ["idle", "working", "queued"]) {
   editor.setWorking(state !== "idle");
   if (state === "queued") ctx.hasPendingMessages = () => true;
@@ -3099,10 +2999,10 @@ test("vim status preserves NORMAL and frame remains width-safe in every state", 
 
 test("vim NORMAL Escape retains working cancellation and idle draft clearing", async () => {
  const { pi, handlers, commands } = fakePi();
- gentleShell(pi, { GENTLE_PI_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-esc-")) });
+ gentleShell(pi, { TOMIDEV_CONFIG_HOME: mkdtempSync(join(tmpdir(), "gentle-vim-esc-")) });
  const { ctx, ui } = fakeContext();
  const editor = installedPrompt(ctx, ui, handlers, { matches: (data: string, binding: string) => binding === "app.interrupt" && data === "\x1b" });
- await commands.get("gentle:vim")!.handler("enable", ctx);
+ await commands.get("td:vim")!.handler("enable", ctx);
  let aborted = 0;
  editor.onEscape = () => { aborted++; };
  editor.setWorking(true);
@@ -3122,22 +3022,22 @@ test("vim NORMAL Escape retains working cancellation and idle draft clearing", a
 test("vim live disable restores ordinary input, re-enable starts INSERT, and invalid persisted preference fails closed", async () => {
 	const home = mkdtempSync(join(tmpdir(), "gentle-vim-toggle-"));
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
 	try {
-		await commands.get("gentle:vim")!.handler("enable", ctx);
+		await commands.get("td:vim")!.handler("enable", ctx);
 		editor.setText("draft");
 		editor.handleInput("\x1b");
 		editor.handleInput("z");
 		assert.equal(editor.getText(), "draft");
-		await commands.get("gentle:vim")!.handler("disable", ctx);
+		await commands.get("td:vim")!.handler("disable", ctx);
 		editor.handleInput("z");
 		assert.equal(editor.getText(), "draftz");
-		await commands.get("gentle:vim")!.handler("enable", ctx);
+		await commands.get("td:vim")!.handler("enable", ctx);
 		assert.match(editor.render(40).join("\n"), /INSERT/);
-		writeFileSync(join(home, "vim.json"), '{"schema":"gentle-pi.vim/v1","policy":"invalid"}');
-		await commands.get("gentle:vim")!.handler("status", ctx);
+		writeFileSync(join(home, "vim.json"), '{"schema":"tomidev.vim/v1","policy":"invalid"}');
+		await commands.get("td:vim")!.handler("status", ctx);
 		assert.match(ui.notices.at(-1)!, /vim: off.*falling back to off/);
 		assert.doesNotMatch(editor.render(40).join("\n"), /INSERT|NORMAL/);
 	} finally { editor.dispose(); }
@@ -3147,13 +3047,13 @@ test("vim selector exposes enable, disable and status; status and cancellation d
  const home = mkdtempSync(join(tmpdir(), "gentle-vim-menu-"));
  t.after(() => rmSync(home, { recursive: true, force: true }));
  const { pi, handlers, commands } = fakePi();
- gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+ gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
  let selected: string | undefined = "enable";
  const choices: string[][] = [];
  const { ctx, ui } = fakeContext({ select: async (_title, options) => { choices.push(options); return selected; } });
  const editor = installedPrompt(ctx, ui, handlers);
  try {
-  const command = commands.get("gentle:vim")!;
+  const command = commands.get("td:vim")!;
   await command.handler("", { ...ctx, hasUI: false });
   assert.match(ui.notices.at(-1)!, /vim: off/);
   assert.equal(existsSync(join(home, "vim.json")), false);
@@ -3185,10 +3085,10 @@ test("animations command reports without writing and switches the live watchdog"
 	});
 	t.mock.method(globalThis, "clearInterval", () => { active--; });
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
-	const command = commands.get("gentle:animations");
+	const command = commands.get("td:animations");
 	assert.ok(command);
 	await command.handler("", ctx);
 	assert.match(ui.notices.at(-1)!, /animations: quality/);
@@ -3215,14 +3115,14 @@ test("animations command reports without writing and switches the live watchdog"
 
 test("potato repaints start/settle and shows queued state on the host's next render without intervals", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
-	writeFileSync(join(configHome, "animations.json"), '{"schema":"gentle-pi.animations/v1","policy":"potato"}');
+	writeFileSync(join(configHome, "animations.json"), '{"schema":"tomidev.animations/v1","policy":"potato"}');
 	const intervals = t.mock.method(globalThis, "setInterval", (_callback: () => void, delay: number) => {
 		assert.equal(delay, 2000, "potato must not animate");
 		return { unref() {} };
 	});
 	const renders = t.mock.method(fakeTui, "requestRender", () => {});
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const pending = { value: false };
 	(ctx as unknown as { hasPendingMessages(): boolean }).hasPendingMessages = () => pending.value;
@@ -3244,7 +3144,7 @@ test("potato repaints start/settle and shows queued state on the host's next ren
 	for (const handler of handlers.get("agent_settled") ?? []) handler({}, ctx);
 	assert.ok(renders.mock.callCount() > before);
 	assert.doesNotMatch(stripAnsi(editor.render(60)[0]), /working|queued/);
-	await commands.get("gentle:animations")!.handler("status", ctx);
+	await commands.get("td:animations")!.handler("status", ctx);
 	assert.match(ui.notices.at(-1)!, /animations: potato/);
 	for (const handler of handlers.get("session_shutdown") ?? []) handler({}, ctx);
 	assert.equal(intervals.mock.callCount(), 1);
@@ -3255,14 +3155,14 @@ test("animations status attributes malformed files and reports a failed write", 
 	const path = join(configHome, "animations.json");
 	writeFileSync(path, "broken");
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
-	await commands.get("gentle:animations")!.handler("", ctx);
+	await commands.get("td:animations")!.handler("", ctx);
 	assert.match(ui.notices.at(-1)!, /animations: quality.*global file.*malformed/);
 	assert.equal(readFileSync(path, "utf8"), "broken");
 	rmSync(path);
 	mkdirSync(path);
-	await commands.get("gentle:animations")!.handler("potato", ctx);
+	await commands.get("td:animations")!.handler("potato", ctx);
 	assert.match(ui.notices.at(-1)!, /EISDIR|ENOTEMPTY|EPERM/);
 });
 
@@ -3270,7 +3170,7 @@ test("animations with no argument opens a selectable menu and applies the chosen
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const path = join(configHome, "animations.json");
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	// No editor/prompt is installed: the handler's `prompt?.setAnimationPolicy`
 	// optional chain must tolerate the interactive menu without one.
 	const chosen = fakeContext({
@@ -3280,23 +3180,23 @@ test("animations with no argument opens a selectable menu and applies the chosen
 			return "potato";
 		},
 	});
-	await commands.get("gentle:animations")!.handler("", chosen.ctx);
+	await commands.get("td:animations")!.handler("", chosen.ctx);
 	assert.equal(JSON.parse(readFileSync(path, "utf8")).policy, "potato");
 	assert.match(chosen.ui.notices.at(-1)!, /animations: potato/);
 
 	// A dismissed menu (undefined selection) reports nothing and writes nothing.
 	const dismissHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi: dismissPi, commands: dismissCommands } = fakePi();
-	gentleShell(dismissPi, { GENTLE_PI_CONFIG_HOME: dismissHome });
+	gentleShell(dismissPi, { TOMIDEV_CONFIG_HOME: dismissHome });
 	const dismissed = fakeContext({ select: async () => undefined });
-	await dismissCommands.get("gentle:animations")!.handler("", dismissed.ctx);
+	await dismissCommands.get("td:animations")!.handler("", dismissed.ctx);
 	assert.equal(dismissed.ui.notices.length, 0);
 	assert.equal(existsSync(join(dismissHome, "animations.json")), false);
 });
 
 test("prompt installs the silence watchdog unref'd and releases it at settlement", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
-	writeFileSync(join(configHome, "animations.json"), '{"schema":"gentle-pi.animations/v1","policy":"quality"}');
+	writeFileSync(join(configHome, "animations.json"), '{"schema":"tomidev.animations/v1","policy":"quality"}');
 	const delays: number[] = [];
 	let active = 0;
 	let unrefs = 0;
@@ -3307,7 +3207,7 @@ test("prompt installs the silence watchdog unref'd and releases it at settlement
 	});
 	t.mock.method(globalThis, "clearInterval", () => { active--; });
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
 	assert.equal(active, 1);
@@ -3343,11 +3243,11 @@ function petalGlyphOf(editor: GentlePromptEditor): string {
 
 test("streaming frames advance the working petal and the quality watchdog stays silent while renders flow", (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
-	writeFileSync(join(configHome, "animations.json"), '{"schema":"gentle-pi.animations/v1","policy":"quality"}');
+	writeFileSync(join(configHome, "animations.json"), '{"schema":"tomidev.animations/v1","policy":"quality"}');
 	const intervals = recordIntervals(t);
 	const renders = t.mock.method(fakeTui, "requestRender", () => {});
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome }, { now: () => 1_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome }, { now: () => 1_000_000 });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
 	for (const handler of handlers.get("agent_start") ?? []) handler({}, ctx);
@@ -3364,12 +3264,12 @@ test("streaming frames advance the working petal and the quality watchdog stays 
 
 test("silent working phases repaint only through the 1000ms watchdog window", (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
-	writeFileSync(join(configHome, "animations.json"), '{"schema":"gentle-pi.animations/v1","policy":"quality"}');
+	writeFileSync(join(configHome, "animations.json"), '{"schema":"tomidev.animations/v1","policy":"quality"}');
 	const intervals = recordIntervals(t);
 	const renders = t.mock.method(fakeTui, "requestRender", () => {});
 	let clock = 1_000_000;
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome }, { now: () => clock });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome }, { now: () => clock });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
 	for (const handler of handlers.get("agent_start") ?? []) handler({}, ctx);
@@ -3391,10 +3291,10 @@ test("silent working phases repaint only through the 1000ms watchdog window", (t
 
 test("potato installs no working watchdog and the petal never advances", (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
-	writeFileSync(join(configHome, "animations.json"), '{"schema":"gentle-pi.animations/v1","policy":"potato"}');
+	writeFileSync(join(configHome, "animations.json"), '{"schema":"tomidev.animations/v1","policy":"potato"}');
 	const intervals = recordIntervals(t);
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
 	for (const handler of handlers.get("agent_start") ?? []) handler({}, ctx);
@@ -3406,10 +3306,10 @@ test("potato installs no working watchdog and the petal never advances", (t) => 
 
 test("the working watchdog is cleared on settlement and on dispose", (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
-	writeFileSync(join(configHome, "animations.json"), '{"schema":"gentle-pi.animations/v1","policy":"quality"}');
+	writeFileSync(join(configHome, "animations.json"), '{"schema":"tomidev.animations/v1","policy":"quality"}');
 	const intervals = recordIntervals(t);
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
 	for (const handler of handlers.get("agent_start") ?? []) handler({}, ctx);
@@ -3438,7 +3338,7 @@ const escapeKeybindings = { matches: (_data: string, keybinding: string) => keyb
 
 test("double-esc-cancel default off: a single Esc while working still aborts immediately, exactly as before", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	let aborted = 0;
@@ -3489,10 +3389,10 @@ async function customizeAction(ui: FakeUi, label: string): Promise<void> {
 test("customize Notifications applies audio controls directly in the same overlay, without nested menus or visual writes", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }); // Shell loads BEFORE owner.
-	const child = process.env.GENTLE_PI_AGENTS_CHILD;
-	process.env.GENTLE_PI_AGENTS_CHILD = "0";
-	t.after(() => { if (child === undefined) delete process.env.GENTLE_PI_AGENTS_CHILD; else process.env.GENTLE_PI_AGENTS_CHILD = child; });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }); // Shell loads BEFORE owner.
+	const child = process.env.TOMIDEV_AGENTS_CHILD;
+	process.env.TOMIDEV_AGENTS_CHILD = "0";
+	t.after(() => { if (child === undefined) delete process.env.TOMIDEV_AGENTS_CHILD; else process.env.TOMIDEV_AGENTS_CHILD = child; });
 	let nested = 0; let writes = 0;
 	const { ctx, ui, overlayReady } = fakeContext({ select: async () => { nested++; return undefined; } });
 	const uiSpies = ctx.ui as unknown as Record<string, unknown>;
@@ -3503,7 +3403,7 @@ test("customize Notifications applies audio controls directly in the same overla
 		write: () => { writes++; return join(home, "notifications.json"); } });
 	owner.attach(ctx); t.after(() => owner.retire());
 	let settled = false;
-	const pending = commands.get("gentle:customize")!.handler("", ctx).then(() => { settled = true; });
+	const pending = commands.get("td:customize")!.handler("", ctx).then(() => { settled = true; });
 	await overlayReady;
 	try {
 		assert.ok(findCustomizeRow(ui, "Audio notifications: off"), "global switch is a direct row");
@@ -3547,9 +3447,9 @@ test("production customize never wires the legacy notification panel", () => {
 test("customize Editor rows preview global preference without applying until Enter or Space", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Vim: enable"));
 	assert.match(ui.overlayView!.render(90).join("\n"), /Preview · Vim[\s\S]*preference: off.*effective: no active prompt/i);
@@ -3568,9 +3468,9 @@ test("customize Editor rows preview global preference without applying until Ent
 test("customize History rows persist prompt history capture and keep stored history", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Prompt history capture: enable"));
 	assert.match(ui.overlayView!.render(90).join("\n"), /History · 1\/1/);
@@ -3592,9 +3492,9 @@ test("customize History rows persist prompt history capture and keep stored hist
 test("customize Layout offers explicit task summary choices without saving on navigation", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	try {
 		assert.ok(findCustomizeRow(ui, "Task summary: on (current)"));
@@ -3615,7 +3515,7 @@ test("customize task summary persists only enabled then emits once per choice fo
 	const options = { gentlePiConfigHome: home };
 	writeHerdrTaskSummarySettings({ enabled: true, summaryColor: "success", continuationColor: "warning" }, options);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const events: unknown[] = [];
 	const saved: boolean[] = [];
 	pi.events.on(HERDR_TASK_SUMMARY_CHANGED, payload => {
@@ -3623,7 +3523,7 @@ test("customize task summary persists only enabled then emits once per choice fo
 		saved.push(resolveHerdrTaskSummarySettings(options).settings.enabled);
 	});
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	try {
 		for (const enabled of [false, true]) {
@@ -3643,14 +3543,14 @@ for (const [kind, bytes] of [["malformed", "{"], ["unreadable oversized", " ".re
 		const home = scopedDoubleEscCancelConfigHome(t);
 		const file = join(home, "herdr-task-summary.json");
 		const { pi, commands } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 		let events = 0;
 		pi.events.on(HERDR_TASK_SUMMARY_CHANGED, () => { events++; });
 		const { ctx, ui, overlayReady } = fakeContext();
 		const notices: Array<{ message: string; type: unknown }> = [];
 		const notify = ctx.ui.notify.bind(ctx.ui);
 		ctx.ui.notify = (message, type) => { notices.push({ message, type }); notify(message, type); };
-		const pending = commands.get("gentle:customize")!.handler("", ctx);
+		const pending = commands.get("td:customize")!.handler("", ctx);
 		await overlayReady;
 		try {
 			// Re-read at activation: a file can become invalid while the card is open.
@@ -3667,9 +3567,9 @@ for (const [kind, bytes] of [["malformed", "{"], ["unreadable oversized", " ".re
 test("customize task summary leaves the previous Layout controls working independently", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	try {
 		assert.ok(findCustomizeRow(ui, "Task summary: off"));
@@ -3688,10 +3588,10 @@ test("customize Cards rows persist the card style and switch live conversation c
 	const found = cardStyle();
 	t.after(() => setCardStyle(found));
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	assert.equal(cardStyle(), CARD_STYLE.FLOAT, "no preference file means float");
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Card style: float (current)"));
 	assert.match(ui.overlayView!.render(90).join("\n"), /Cards · 1\/2/, "Card style and Card content are one line each");
@@ -3724,10 +3624,10 @@ test("customize Cards rows persist the card content level and switch the live qu
 	const previous = cardContent();
 	t.after(() => setCardContent(previous));
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	assert.equal(cardContent(), CARD_CONTENT.MINIMAL, "no preference file means minimal, the default");
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Card content: minimal (current)"));
 	assert.ok(findCustomizeRow(ui, "Card content: default"));
@@ -3752,7 +3652,7 @@ test("T3 live style Cards action refreshes cached TODO and Status in both direct
 	writeCardStyle(CARD_STYLE.NEON, { gentlePiConfigHome: home });
 	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: "split" }, { gentlePiConfigHome: home });
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }, { activeProfile: () => "team" });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }, { activeProfile: () => "team" });
 	const { ctx, ui, overlayReady } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const painted = { ...plainTheme, strikethrough: (text: string) => text, bg: (_role: string, text: string) => `\x1b[44m${text}\x1b[49m` };
@@ -3803,7 +3703,7 @@ test("T3 live style Cards action refreshes cached TODO and Status in both direct
 	const neon = { ...frame };
 	paint();
 	assert.equal(todoRenders, 1, "unchanged frame uses cached TODO");
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	let overlayRenders = 0;
 	t.mock.method(fakeTui, "requestRender", () => { overlayRenders++; });
@@ -3842,7 +3742,7 @@ test("T3 live style failed persistence leaves live style and sidebar revision un
 	t.after(() => setCardStyle(previous));
 	writeCardStyle(CARD_STYLE.NEON, { gentlePiConfigHome: home });
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }, { activeProfile: () => "team" });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }, { activeProfile: () => "team" });
 	const { ctx, ui, overlayReady } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	let renders = 0;
@@ -3850,10 +3750,10 @@ test("T3 live style failed persistence leaves live style and sidebar revision un
 	const factory = ui.footerFactory as (tui: unknown, theme: ShellBarTheme, data: unknown) => { dispose(): void };
 	const footer = factory(tui, plainTheme, { getGitBranch: () => "main", getExtensionStatuses: () => new Map(), getAvailableProviderCount: () => 1, onBranchChange: () => () => {} });
 	t.after(() => footer.dispose());
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	writeFileSync(join(home, "card-style.json"), "{");
-	const cache = Symbol.for("gentle-pi.experimental-sidebar.cache");
+	const cache = Symbol.for("tomidev.experimental-sidebar.cache");
 	const revision = () => (tui.terminal as unknown as Record<symbol, { revision: number }>)[cache]?.revision;
 	const beforeRevision = revision();
 	const beforeRenders = renders;
@@ -3872,7 +3772,7 @@ test("the saved card style applies at startup and on every session start", async
 	t.after(() => setCardStyle(found));
 	writeCardStyle("neon", { gentlePiConfigHome: home });
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	assert.equal(cardStyle(), CARD_STYLE.NEON);
 	writeCardStyle("float", { gentlePiConfigHome: home });
 	const { ctx } = fakeContext({ hasUI: false });
@@ -3886,7 +3786,7 @@ test("the saved card content applies at startup and on every session start", asy
 	t.after(() => setCardContent(found));
 	writeCardContent("minimal", { gentlePiConfigHome: home });
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	assert.equal(cardContent(), CARD_CONTENT.MINIMAL);
 	writeCardContent("default", { gentlePiConfigHome: home });
 	const { ctx } = fakeContext({ hasUI: false });
@@ -3900,9 +3800,9 @@ test("customize Cards rows refuse to overwrite a malformed preference", async (t
 	t.after(() => setCardStyle(found));
 	writeFileSync(join(home, "card-style.json"), "{");
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Card style: float"));
 	assert.match(ui.overlayView!.render(90).join("\n"), /malformed or unreadable file/i);
@@ -3914,16 +3814,16 @@ test("customize Cards rows refuse to overwrite a malformed preference", async (t
 	ui.overlayView!.handleInput("\x1b"); await pending;
 });
 
-test("customize History rows show when GENTLE_PI_HISTORY_CAPTURE overrides the saved preference", async (t) => {
+test("customize History rows show when TOMIDEV_HISTORY_CAPTURE overrides the saved preference", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	writeHistoryCapturePolicy("on", { gentlePiConfigHome: home });
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_HISTORY_CAPTURE: " Off " });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_HISTORY_CAPTURE: " Off " });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Prompt history capture: enable (current) · env override"));
-	assert.match(ui.overlayView!.render(90).join("\n"), /preference: on · effective: off · GENTLE_PI_HISTORY_CAPTURE overrides/i);
+	assert.match(ui.overlayView!.render(90).join("\n"), /preference: on · effective: off · TOMIDEV_HISTORY_CAPTURE overrides/i);
 	await customizeAction(ui, "Prompt history capture: disable");
 	await new Promise<void>(resolve => setImmediate(resolve));
 	// The choice is still saved for when the env stops forcing a value.
@@ -3931,7 +3831,7 @@ test("customize History rows show when GENTLE_PI_HISTORY_CAPTURE overrides the s
 	await customizeAction(ui, "Prompt history capture: enable");
 	await new Promise<void>(resolve => setImmediate(resolve));
 	assert.equal(resolveHistoryCapturePolicy({ gentlePiConfigHome: home }).policy, "on");
-	assert.match(ui.notices.at(-1)!, /GENTLE_PI_HISTORY_CAPTURE=off overrides it; capture stays off/i);
+	assert.match(ui.notices.at(-1)!, /TOMIDEV_HISTORY_CAPTURE=off overrides it; capture stays off/i);
 	ui.overlayView!.handleInput("\x1b"); await pending;
 });
 
@@ -3939,9 +3839,9 @@ test("customize History rows refuse to overwrite a malformed preference and repo
 	const home = scopedDoubleEscCancelConfigHome(t);
 	writeFileSync(join(home, "history-capture.json"), "{");
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Prompt history capture: enable"));
 	assert.match(ui.overlayView!.render(90).join("\n"), /preference: off · effective: off · malformed or unreadable file/i);
@@ -3955,11 +3855,11 @@ test("customize History rows refuse to overwrite a malformed preference and repo
 test("external Vim preference change while customize is open never implies a compatibility failure", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }, { vimRuntimeVersion: () => INSTALLED_PI });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }, { vimRuntimeVersion: () => INSTALLED_PI });
 	const { ctx, ui, overlayReady } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
 	try {
-		const pending = commands.get("gentle:customize")!.handler("", ctx);
+		const pending = commands.get("td:customize")!.handler("", ctx);
 		await overlayReady;
 		assert.ok(findCustomizeRow(ui, "Vim: enable"));
 		writeVimPolicy("on", { gentlePiConfigHome: home }); // Another session changes the global preference.
@@ -3967,7 +3867,7 @@ test("external Vim preference change while customize is open never implies a com
 		const preview = ui.overlayView!.render(90).join("\n");
 		assert.match(preview, /preference: on.*effective: off/i);
 		assert.doesNotMatch(preview, /compatibility rejected|unsupported/i);
-		await commands.get("gentle:vim")!.handler("status", ctx);
+		await commands.get("td:vim")!.handler("status", ctx);
 		assert.equal(editor.effectiveVimPolicy, "on");
 		assert.doesNotMatch(ui.notices.at(-1)!, /compatibility rejected|unsupported/i);
 		ui.overlayView!.handleInput("\x1b"); await pending;
@@ -3978,11 +3878,11 @@ test("customize updates live Vim prompt and reports unsupported effective state 
 	for (const version of [INSTALLED_PI, "unsupported"]) {
 		const home = scopedDoubleEscCancelConfigHome(t);
 		const { pi, handlers, commands } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }, { vimRuntimeVersion: () => version });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }, { vimRuntimeVersion: () => version });
 		const { ctx, ui, overlayReady } = fakeContext();
 		const editor = installedPrompt(ctx, ui, handlers);
 		try {
-			const pending = commands.get("gentle:customize")!.handler("", ctx); await overlayReady;
+			const pending = commands.get("td:customize")!.handler("", ctx); await overlayReady;
 			await customizeAction(ui, "Vim: enable");
 			await new Promise<void>(resolve => setImmediate(resolve));
 			assert.equal(editor.effectiveVimPolicy, version === "unsupported" ? "off" : "on");
@@ -3998,10 +3898,10 @@ test("customize updates live Vim prompt and reports unsupported effective state 
 
 test("customize Vim reports a persistence error without changing the live prompt", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
-	const { pi, handlers, commands } = fakePi(); gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	const { pi, handlers, commands } = fakePi(); gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
-	const pending = commands.get("gentle:customize")!.handler("", ctx); await overlayReady;
+	const pending = commands.get("td:customize")!.handler("", ctx); await overlayReady;
 	chmodSync(home, 0o500);
 	try {
 		await customizeAction(ui, "Vim: enable");
@@ -4019,9 +3919,9 @@ test("customize Vim refuses malformed or unreadable policy without false success
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const path = join(home, "vim.json");
 	writeFileSync(path, "invalid");
-	const { pi, commands } = fakePi(); gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	const { pi, commands } = fakePi(); gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx); await overlayReady;
+	const pending = commands.get("td:customize")!.handler("", ctx); await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Vim: enable"));
 	assert.match(ui.overlayView!.render(90).join("\n"), /malformed or unreadable/i);
 	await customizeAction(ui, "Vim: enable");
@@ -4039,18 +3939,18 @@ test("customize Vim refuses malformed or unreadable policy without false success
 test("customize command updates displayed settings and applies layout immediately", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.match(ui.overlayView!.render(90).join("\n"), /Animations\s+● quality/);
 	await customizeAction(ui, "Animations: performance");
 	assert.equal(resolveAnimationPolicy({ gentlePiConfigHome: home }).policy, "performance");
 	assert.match(ui.overlayView!.render(90).join("\n"), /Animations\s+○ quality\s+● performance/);
 	assert.match(ui.notices.at(-1)!, /Prompt applies now.*banner.*next startup/i);
-	await customizeAction(ui, "Banner rose: off");
+	await customizeAction(ui, "Banner dog: off");
 	assert.equal((await readBannerConfig(home)).showRose, false);
-	assert.match(ui.overlayView!.render(90).join("\n"), /Banner rose\s+○ on\s+● off/);
+	assert.match(ui.overlayView!.render(90).join("\n"), /Banner dog\s+○ on\s+● off/);
 	assert.match(ui.notices.at(-1)!, /next startup/i);
 	await customizeAction(ui, "Status placement: hidden");
 	assert.equal(resolveVisualSettings({ gentlePiConfigHome: home }).settings.statusPlacement, "hidden");
@@ -4063,7 +3963,7 @@ test("customize command updates displayed settings and applies layout immediatel
 test("below-input header remains a fullscreen widget without the rail and follows live placement", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 180 }, requestRender() {} };
@@ -4073,10 +3973,10 @@ test("below-input header remains a fullscreen widget without the rail and follow
 	try {
 		const widget = ui.widgets.get("gentle-shell-below-input-header") as (tui: unknown, theme: ShellBarTheme) => { render(width: number): string[] };
 		assert.deepEqual(widget(tui, plainTheme).render(180), []);
-		const pending = commands.get("gentle:customize")!.handler("", ctx);
+		const pending = commands.get("td:customize")!.handler("", ctx);
 		await overlayReady;
 		await customizeAction(ui, "Header placement: below-input");
-		assert.match(widget(tui, plainTheme).render(180).join("\n"), /Gentle Shell/);
+		assert.match(widget(tui, plainTheme).render(180).join("\n"), /Tomidev Shell/);
 		assert.equal(widget(tui, plainTheme).render(180).length, 2);
 		tui.mode = "regular";
 		assert.deepEqual(widget(tui, plainTheme).render(180), []);
@@ -4088,7 +3988,7 @@ test("below-input header remains a fullscreen widget without the rail and follow
 test("narrow fullscreen with a below-input header shows only the bottom bar, carrying the header's data without extension statuses", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 100 }, requestRender() {} };
@@ -4099,14 +3999,14 @@ test("narrow fullscreen with a below-input header shows only the bottom bar, car
 		const widget = ui.widgets.get("gentle-shell-below-input-header") as (tui: unknown, theme: ShellBarTheme) => { render(width: number): string[] };
 		const topBottom = footer.render(100);
 		assert.equal(topBottom.length, 1, "top placement keeps the compact bar contract");
-		assert.match(topBottom[0]!, /gentle shell/);
-		const pending = commands.get("gentle:customize")!.handler("", ctx);
+		assert.match(topBottom[0]!, /tomidev shell/);
+		const pending = commands.get("td:customize")!.handler("", ctx);
 		await overlayReady;
 		await customizeAction(ui, "Header placement: below-input");
 		assert.deepEqual(widget(tui, plainTheme).render(100), [], "no second status row below the input at narrow width");
 		const narrow = footer.render(100);
 		assert.equal(narrow.length, 1, "integrations live only in the rail");
-		assert.match(narrow[0]!, /Gentle Shell/, "bottom-only bar reuses the header row");
+		assert.match(narrow[0]!, /Tomidev Shell/, "bottom-only bar reuses the header row");
 		assert.match(narrow[0]!, /ctx .* 45%/);
 		assert.match(narrow[0]!, /\$0\.000 sub/);
 		assert.match(narrow[0]!, /usage/);
@@ -4120,7 +4020,7 @@ test("narrow fullscreen with a below-input header shows only the bottom bar, car
 		}
 		tui.terminal.columns = 180;
 		assert.equal(widget(tui, plainTheme).render(180).length, 2, "wide keeps the below-input header");
-		assert.match(footer.render(180).join("\n"), /gentle shell/, "wide keeps the compact bottom bar");
+		assert.match(footer.render(180).join("\n"), /tomidev shell/, "wide keeps the compact bottom bar");
 		tui.terminal.columns = 100;
 		await customizeAction(ui, "Status placement: hidden");
 		assert.deepEqual(footer.render(100), [], "hidden never paints a bottom bar");
@@ -4141,7 +4041,7 @@ test("T4d unified float footer uses one live owner and restores legacy Changes o
 	// The painted float group is the tinted surface's.
 	writeVisualSettings({ ...resolveVisualSettings({ gentlePiConfigHome: home }).settings, headerPlacement: "below-input", surface: "tinted" }, { gentlePiConfigHome: home });
 	const { pi, handlers, commands } = fakePi([{ numstat: "2\t0\tlib/live.ts\n", porcelain: " M lib/live.ts\0" }, { numstat: "3\t0\tlib/live.ts\n", porcelain: " M lib/live.ts\0" }]);
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 139 }, requestRender() {} };
@@ -4172,7 +4072,7 @@ test("T4d unified float footer uses one live owner and restores legacy Changes o
 			const rows = footer.render(width);
 			assert.equal(rows.length, 5, "edge, padding, Changes, header row and padding; statuses stay in the rail");
 			assert.match(stripAnsi(rows[2]!), /1 file · \+2 −0/);
-			assert.match(stripAnsi(rows[3]!), /Gentle Shell/);
+			assert.match(stripAnsi(rows[3]!), /Tomidev Shell/);
 			assert.doesNotMatch(stripAnsi(rows.join("\n")), /MCP ready/);
 			assert.ok(rows.slice(1).every((row) => row.startsWith(bg)));
 			assert.deepEqual(changes.render(width), []);
@@ -4238,7 +4138,7 @@ test("T4d unified float footer uses one live owner and restores legacy Changes o
 		assert.deepEqual(header.render(240), []);
 		tui.mode = "fullscreen";
 		const previousView = ui.overlayView;
-		const pending = commands.get("gentle:customize")!.handler("", ctx);
+		const pending = commands.get("td:customize")!.handler("", ctx);
 		await overlayReady;
 		for (let attempt = 0; attempt < 100 && ui.overlayView === previousView; attempt++) await new Promise<void>((resolve) => setTimeout(resolve, 5));
 		await customizeAction(ui, "Status placement: hidden");
@@ -4270,14 +4170,14 @@ test("customize previews installed source palette without selecting until Enter"
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const source = new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/dark.json", import.meta.url).pathname;
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	const themeApi = ctx.ui as unknown as { getTheme(name: string): { name: string; sourcePath?: string } | undefined; setTheme(name: string): { success: boolean } };
 	const original = themeApi.getTheme;
 	themeApi.getTheme = (name) => name === "dark" ? { name, sourcePath: source } : original(name);
 	const applied: string[] = [];
 	themeApi.setTheme = (name) => { applied.push(name); return { success: true }; };
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Theme: dark"), "missing Theme: dark");
 	const lines = ui.overlayView!.render(90).join("\n");
@@ -4295,11 +4195,11 @@ test("customize preserves invalid visual settings and reports failed theme selec
 	const path = join(home, "visual-customization.json");
 	writeFileSync(path, "invalid");
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	const api = ctx.ui as unknown as { getTheme(name: string): unknown; setTheme(name: string): unknown };
 	api.getTheme = () => undefined;
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	await customizeAction(ui, "Status placement: hidden");
 	assert.equal(readFileSync(path, "utf8"), "invalid");
@@ -4315,11 +4215,11 @@ test("customize never overwrites malformed banner through toggle, color or reset
 	const bannerPath = join(home, "banner.json");
 	writeFileSync(bannerPath, "invalid banner");
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
-	for (const action of ["Banner rose", "Banner color: cyan", "Reset visual, banner and animation defaults"]) {
+	for (const action of ["Banner dog", "Banner color: cyan", "Reset visual, banner and animation defaults"]) {
 		await customizeAction(ui, action);
 		assert.equal(readFileSync(bannerPath, "utf8"), "invalid banner");
 		assert.match(ui.notices.at(-1)!, /malformed.*banner/i);
@@ -4333,9 +4233,9 @@ test("customize refuses an unreadable banner path before modifying visual settin
 	const home = scopedDoubleEscCancelConfigHome(t);
 	mkdirSync(join(home, "banner.json"));
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	await customizeAction(ui, "Banner color: cyan");
 	assert.match(ui.notices.at(-1)!, /unreadable banner/i);
@@ -4352,9 +4252,9 @@ test("customize reports a partial reset and identifies committed stores on anima
 	writeVisualSettings({ ...resolveVisualSettings(options).settings, statusPlacement: "hidden" }, options);
 	mkdirSync(join(home, "animations.json"));
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	await customizeAction(ui, "Reset visual, banner and animation defaults");
 	assert.equal(resolveVisualSettings(options).settings.statusPlacement, "auto");
@@ -4369,11 +4269,11 @@ test("named profile applies installed theme, banner, animation and visual settin
 	const visual = { ...resolveVisualSettings(options).settings, statusPlacement: "hidden" as const };
 	saveVisualProfile("night", { themeName: "light", animationPolicy: "performance", banner: { showRose: false, showTextLogo: true, color: "cyan" }, visual }, options);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	const applied: string[] = [];
 	(ctx.ui as unknown as { setTheme(name: string): { success: boolean } }).setTheme = (name) => { applied.push(name); return { success: true }; };
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	const view = ui.overlayView!;
 	view.handleInput("p");
@@ -4396,10 +4296,10 @@ test("named profile applies installed theme, banner, animation and visual settin
 test("saving a profile refuses an active theme that is not installed or resolvable", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	(ctx.ui as unknown as { theme: { name: string } }).theme = { name: "phantom" };
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	const view = ui.overlayView!;
 	view.handleInput("p");
@@ -4420,10 +4320,10 @@ test("saving a profile refuses a malformed or unreadable animation policy store"
 	const home = scopedDoubleEscCancelConfigHome(t);
 	mkdirSync(join(home, "animations.json"));
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	(ctx.ui as unknown as { theme: { name: string } }).theme = { name: "dark" };
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	const view = ui.overlayView!;
 	view.handleInput("p");
@@ -4443,10 +4343,10 @@ test("saving a profile refuses a malformed or unreadable animation policy store"
 test("profile save, replace, delete and reset succeed through the modal and persist to the catalog", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	(ctx.ui as unknown as { theme: { name: string } }).theme = { name: "dark" };
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	const view = ui.overlayView!;
 	view.handleInput("p");
@@ -4499,11 +4399,11 @@ test("named profile reports PARTIAL when animation store fails, and never activa
 	saveVisualProfile("missing", { themeName: "not-installed", animationPolicy: "potato", banner: { showRose: false, showTextLogo: false, color: "green" }, visual }, options);
 	mkdirSync(join(home, "animations.json"));
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	const applied: string[] = [];
 	(ctx.ui as unknown as { setTheme(name: string): { success: boolean } }).setTheme = (name) => { applied.push(name); return { success: true }; };
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	const view = ui.overlayView!;
 	view.handleInput("p");
@@ -4527,17 +4427,17 @@ test("named profile reports PARTIAL when animation store fails, and never activa
 test("customize degrades unavailable theme APIs and refuses noninteractive UI", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
 	(ctx.ui as unknown as { getAllThemes(): unknown }).getAllThemes = () => { throw new Error("theme lookup failed"); };
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	assert.ok(findCustomizeRow(ui, "Themes unavailable; use Pi /settings"), "missing Themes unavailable message");
 	ui.overlayView!.handleInput("\x1b");
 	await pending;
 	const { ctx: rpc, ui: rpcUi } = fakeContext();
 	(rpc as unknown as { mode: string }).mode = "rpc";
-	await commands.get("gentle:customize")!.handler("", rpc);
+	await commands.get("td:customize")!.handler("", rpc);
 	assert.equal(rpcUi.overlayView, undefined);
 	assert.match(rpcUi.notices.at(-1)!, /interactive terminal/);
 });
@@ -4545,7 +4445,7 @@ test("customize degrades unavailable theme APIs and refuses noninteractive UI", 
 test("double-esc-cancel enabled: the first Esc while working is swallowed and shows the hint instead of aborting", (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_DOUBLE_ESC_CANCEL: "on", GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_DOUBLE_ESC_CANCEL: "on", TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	let aborted = 0;
@@ -4561,7 +4461,7 @@ test("double-esc-cancel enabled: a second Esc within the window falls through an
 	let now = 1_000_000;
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_DOUBLE_ESC_CANCEL: "on", GENTLE_PI_CONFIG_HOME: configHome }, { now: () => now });
+	gentleShell(pi, { TOMIDEV_DOUBLE_ESC_CANCEL: "on", TOMIDEV_CONFIG_HOME: configHome }, { now: () => now });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	let aborted = 0;
@@ -4580,7 +4480,7 @@ test("double-esc-cancel enabled: an Esc after the window expires is a fresh firs
 	let now = 1_000_000;
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_DOUBLE_ESC_CANCEL: "on", GENTLE_PI_CONFIG_HOME: configHome }, { now: () => now });
+	gentleShell(pi, { TOMIDEV_DOUBLE_ESC_CANCEL: "on", TOMIDEV_CONFIG_HOME: configHome }, { now: () => now });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	let aborted = 0;
@@ -4598,7 +4498,7 @@ test("double-esc-cancel enabled: an Esc after the window expires is a fresh firs
 test("double-esc-cancel enabled: Esc while idle passes straight through, untouched by this gate", (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_DOUBLE_ESC_CANCEL: "on", GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_DOUBLE_ESC_CANCEL: "on", TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	let aborted = 0;
@@ -4612,7 +4512,7 @@ test("double-esc-cancel enabled: Esc while idle passes straight through, untouch
 test("double-esc-cancel enabled: Esc while autocomplete is visible bypasses this gate entirely", (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_DOUBLE_ESC_CANCEL: "on", GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_DOUBLE_ESC_CANCEL: "on", TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	(editor as unknown as { isShowingAutocomplete(): boolean }).isShowingAutocomplete = () => true;
@@ -4646,7 +4546,7 @@ test("extractQueuedText treats a whitespace-only draft as empty, matching Pi's o
 
 test("working cancel: an aborted turn with a queued message sends it once settled and keeps the draft", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4662,11 +4562,11 @@ test("working cancel: an aborted turn with a queued message sends it once settle
 
 test("vim INSERT Esc only enters NORMAL; NORMAL Esc hands off queued text after settlement", async (t) => {
 	const { pi, handlers, commands, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	try {
-		await commands.get("gentle:vim")!.handler("enable", ctx);
+		await commands.get("td:vim")!.handler("enable", ctx);
 		editor.setText("draft reply");
 		let aborts = 0;
 		editor.onEscape = () => { aborts++; editor.setText(`follow up\n\n${editor.getText()}`); };
@@ -4686,7 +4586,7 @@ test("vim INSERT Esc only enters NORMAL; NORMAL Esc hands off queued text after 
 
 test("working cancel: an aborted turn with no queued messages behaves exactly as before, with no redundant setText", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4709,7 +4609,7 @@ test("working cancel: an aborted turn with no queued messages behaves exactly as
 
 test("working cancel: an unrecognized restore shape leaves Pi's own text untouched and dispatches nothing", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4725,7 +4625,7 @@ test("working cancel: an unrecognized restore shape leaves Pi's own text untouch
 
 test("working cancel: an empty draft with a queued message sends the whole queue and leaves the editor empty", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.onEscape = () => { editor.setText("only queued"); };
@@ -4741,7 +4641,7 @@ test("working cancel: the same dispatch applies to the confirming second Esc whe
 	let now = 1_000_000;
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_DOUBLE_ESC_CANCEL: "on", GENTLE_PI_CONFIG_HOME: configHome }, { now: () => now });
+	gentleShell(pi, { TOMIDEV_DOUBLE_ESC_CANCEL: "on", TOMIDEV_CONFIG_HOME: configHome }, { now: () => now });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4758,7 +4658,7 @@ test("working cancel: the same dispatch applies to the confirming second Esc whe
 
 test("working cancel: queued text is never sent twice even if agent_settled fires again", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4773,7 +4673,7 @@ test("working cancel: queued text is never sent twice even if agent_settled fire
 
 test("working cancel: a new agent_start before the aborted run settles keeps the pending text and sends it once that turn settles", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4794,7 +4694,7 @@ test("working cancel: a new agent_start before the aborted run settles keeps the
 
 test("working cancel: a whitespace-only recognized queue is treated as no queue and never dispatched", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4809,7 +4709,7 @@ test("working cancel: a whitespace-only recognized queue is treated as no queue 
 
 test("working cancel: a failing sendUserMessage on settle is reported, not thrown, and the prompt still leaves the working state", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4826,7 +4726,7 @@ test("working cancel: a failing sendUserMessage on settle is reported, not throw
 
 test("working cancel: a failing send reported through a context without UI still restores the queued text into the editor", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const headless = fakeContext({ hasUI: false });
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
@@ -4843,7 +4743,7 @@ test("working cancel: a failing send reported through a context without UI still
 
 test("working cancel: agent_settled never sends while another turn is still in flight; the text waits for an idle settle", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const busy = fakeContext({ idle: false }).ctx;
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
@@ -4865,7 +4765,7 @@ test("working cancel: agent_settled never sends while another turn is still in f
 
 test("working cancel: two aborts before an idle settle deliver both queued texts, in order, as one message", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const busy = fakeContext({ idle: false }).ctx;
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
@@ -4883,7 +4783,7 @@ test("working cancel: two aborts before an idle settle deliver both queued texts
 
 test("working cancel: pending queued text never crosses a session boundary", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4897,7 +4797,7 @@ test("working cancel: pending queued text never crosses a session boundary", (t)
 
 test("working cancel: agent_settled firing first delivers the pending text without a deliverAs override", (t) => {
 	const { pi, handlers, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4923,7 +4823,7 @@ test("working cancel: agent_settled firing first delivers the pending text witho
 
 test("idle draft: the first Esc shows the clear hint and keeps the text", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4939,7 +4839,7 @@ test("idle draft: the first Esc shows the clear hint and keeps the text", (t) =>
 test("idle draft: a second Esc within the window adds the draft to history and clears it", (t) => {
 	let now = 1_000_000;
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4957,7 +4857,7 @@ test("idle draft: a second Esc within the window adds the draft to history and c
 test("idle draft: an Esc after the window expires is a fresh first press, not a clear", (t) => {
 	let now = 1_000_000;
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4971,7 +4871,7 @@ test("idle draft: an Esc after the window expires is a fresh first press, not a 
 
 test("idle empty editor: Esc passes straight through to Pi's own tree/fork double-Esc", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	let aborted = 0;
@@ -4983,7 +4883,7 @@ test("idle empty editor: Esc passes straight through to Pi's own tree/fork doubl
 
 test("idle draft: Esc while autocomplete is visible bypasses the idle-clear gate", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -4996,7 +4896,7 @@ test("idle draft: Esc while autocomplete is visible bypasses the idle-clear gate
 
 test("working state: a non-empty draft's Esc is decided by the working-cancel gate, never the idle-clear hint", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -5010,7 +4910,7 @@ test("working state: a non-empty draft's Esc is decided by the working-cancel ga
 test("idle draft: editing the text between two Esc presses starts a fresh clear window instead of clearing the edit away", (t) => {
 	let now = 1_000_000;
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("draft reply");
@@ -5030,7 +4930,7 @@ test("idle draft: editing the text between two Esc presses starts a fresh clear 
 test("idle draft: typing and deleting between two Esc presses still invalidates the pending clear", (t) => {
 	let now = 1_000_000;
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
 	const { ctx, ui } = fakeContext();
 	// Esc-only matching: ordinary keystrokes must reach the editor as text.
 	const preciseEscape = { matches: (data: string, keybinding: string) => keybinding === "app.interrupt" && data === "\x1b" };
@@ -5049,7 +4949,7 @@ test("idle draft: typing and deleting between two Esc presses still invalidates 
 test("idle draft: selection-only input and same-character replacement cancel pending clear", (t) => {
 	let now = 1_000_000;
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) }, { now: () => now });
 	const { ctx, ui } = fakeContext();
 	const preciseEscape = { matches: (data: string, keybinding: string) => keybinding === "app.interrupt" && data === "\x1b" };
 	const editor = installedPrompt(ctx, ui, handlers, preciseEscape);
@@ -5071,7 +4971,7 @@ test("idle draft: selection-only input and same-character replacement cancel pen
 
 test("idle draft: a bash-mode draft's Esc bypasses the idle-clear gate entirely", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("!ls");
@@ -5086,7 +4986,7 @@ test("idle draft: a bash-mode draft's Esc bypasses the idle-clear gate entirely"
 
 test("idle draft: a bash-mode draft with leading whitespace still bypasses the idle-clear gate", (t) => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: scopedDoubleEscCancelConfigHome(t) });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	editor.setText("  !ls");
@@ -5098,94 +4998,94 @@ test("idle draft: a bash-mode draft with leading whitespace still bypasses the i
 });
 
 // ---------------------------------------------------------------------------
-// /gentle:double-esc-cancel (issue #1163). Unlike /gentle:background-subagents,
+// /td:double-esc-cancel (issue #1163). Unlike /td:background-subagents,
 // no argument toggles the effective policy rather than merely reporting it.
 // ---------------------------------------------------------------------------
 
-test("gentle:double-esc-cancel is registered and declares user-initiated sub-actions with a toggling no-argument form", () => {
+test("td:double-esc-cancel is registered and declares user-initiated sub-actions with a toggling no-argument form", () => {
 	const { pi, commands } = fakePi();
 	gentleShell(pi, {});
-	const command = commands.get("gentle:double-esc-cancel");
-	assert.ok(command, "gentle:double-esc-cancel must be registered");
+	const command = commands.get("td:double-esc-cancel");
+	assert.ok(command, "td:double-esc-cancel must be registered");
 	assert.match(command!.description ?? "", /status\|enable\|disable/);
 	assert.match(command!.description ?? "", /no argument toggles/);
 });
 
-test("gentle:double-esc-cancel status reports off by default and writes nothing", async (t) => {
+test("td:double-esc-cancel status reports off by default and writes nothing", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
-	await commands.get("gentle:double-esc-cancel")!.handler("status", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("status", ctx);
 	assert.equal(ui.notices.length, 1);
 	assert.match(ui.notices[0]!, /^double-esc-cancel: off \(decided by built-in default\)/);
 	assert.equal(existsSync(join(configHome, "double-esc-cancel.json")), false);
 });
 
-test("gentle:double-esc-cancel enable writes the global file, reports it, and takes effect immediately", async (t) => {
+test("td:double-esc-cancel enable writes the global file, reports it, and takes effect immediately", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
-	await commands.get("gentle:double-esc-cancel")!.handler("enable", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("enable", ctx);
 	assert.match(ui.notices[0]!, /^double-esc-cancel: on \(decided by global file/);
 	assert.match(ui.notices[0]!, /Wrote on to the global file/);
 	assert.deepEqual(
 		JSON.parse(readFileSync(join(configHome, "double-esc-cancel.json"), "utf8")),
-		{ schema: "gentle-pi.double-esc-cancel/v1", policy: "on" },
+		{ schema: "tomidev.double-esc-cancel/v1", policy: "on" },
 	);
 });
 
-test("gentle:double-esc-cancel disable writes off", async (t) => {
+test("td:double-esc-cancel disable writes off", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
-	await commands.get("gentle:double-esc-cancel")!.handler("enable", ctx);
-	await commands.get("gentle:double-esc-cancel")!.handler("disable", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("enable", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("disable", ctx);
 	assert.match(ui.notices[1]!, /^double-esc-cancel: off \(decided by global file/);
 	assert.deepEqual(
 		JSON.parse(readFileSync(join(configHome, "double-esc-cancel.json"), "utf8")),
-		{ schema: "gentle-pi.double-esc-cancel/v1", policy: "off" },
+		{ schema: "tomidev.double-esc-cancel/v1", policy: "off" },
 	);
 });
 
-test("gentle:double-esc-cancel with no argument toggles the effective policy each time", async (t) => {
+test("td:double-esc-cancel with no argument toggles the effective policy each time", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
-	await commands.get("gentle:double-esc-cancel")!.handler("", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("", ctx);
 	assert.match(ui.notices[0]!, /^double-esc-cancel: on /, "off -> on on the first toggle");
-	await commands.get("gentle:double-esc-cancel")!.handler("", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("", ctx);
 	assert.match(ui.notices[1]!, /^double-esc-cancel: off /, "on -> off on the second toggle");
 });
 
-test("gentle:double-esc-cancel reports a malformed global file as fail-closed, not as an ordinary off", async (t) => {
+test("td:double-esc-cancel reports a malformed global file as fail-closed, not as an ordinary off", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	mkdirSync(configHome, { recursive: true });
 	writeFileSync(join(configHome, "double-esc-cancel.json"), "{malformed");
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
-	await commands.get("gentle:double-esc-cancel")!.handler("status", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("status", ctx);
 	assert.match(ui.notices[0]!, /present but malformed/);
 });
 
-test("gentle:double-esc-cancel an unknown sub-action warns and changes nothing", async (t) => {
+test("td:double-esc-cancel an unknown sub-action warns and changes nothing", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
-	await commands.get("gentle:double-esc-cancel")!.handler("toggle", ctx);
-	assert.match(ui.notices[0]!, /Unknown \/gentle:double-esc-cancel sub-action "toggle"/);
+	await commands.get("td:double-esc-cancel")!.handler("toggle", ctx);
+	assert.match(ui.notices[0]!, /Unknown \/td:double-esc-cancel sub-action "toggle"/);
 	assert.equal(existsSync(join(configHome, "double-esc-cancel.json")), false);
 });
 
-test("gentle:double-esc-cancel enable updates the in-memory policy so an already-installed prompt picks it up without re-reading the file", async (t) => {
+test("td:double-esc-cancel enable updates the in-memory policy so an already-installed prompt picks it up without re-reading the file", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	let aborted = 0;
@@ -5193,17 +5093,17 @@ test("gentle:double-esc-cancel enable updates the in-memory policy so an already
 	for (const handler of handlers.get("agent_start") ?? []) handler({}, ctx);
 	editor.handleInput("\x1b");
 	assert.equal(aborted, 1, "off by default: the first Esc still aborts");
-	await commands.get("gentle:double-esc-cancel")!.handler("enable", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("enable", ctx);
 	editor.handleInput("\x1b");
 	assert.equal(aborted, 1, "now on: the same prompt instance must swallow the first Esc instead of aborting");
 	assert.match(stripAnsi(editor.render(60).join("\n")), /esc again to cancel/);
 	editor.dispose();
 });
 
-test("gentle:double-esc-cancel re-syncs the keypress gate from the global file so status, toggle direction, and Esc behavior agree", async (t) => {
+test("td:double-esc-cancel re-syncs the keypress gate from the global file so status, toggle direction, and Esc behavior agree", async (t) => {
 	const configHome = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: configHome });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: configHome });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers, escapeKeybindings);
 	let aborted = 0;
@@ -5211,16 +5111,16 @@ test("gentle:double-esc-cancel re-syncs the keypress gate from the global file s
 	for (const handler of handlers.get("agent_start") ?? []) handler({}, ctx);
 	// Another session (or a hand edit) turns the preference on underneath this one.
 	mkdirSync(configHome, { recursive: true });
-	writeFileSync(join(configHome, "double-esc-cancel.json"), JSON.stringify({ schema: "gentle-pi.double-esc-cancel/v1", policy: "on" }));
-	await commands.get("gentle:double-esc-cancel")!.handler("status", ctx);
+	writeFileSync(join(configHome, "double-esc-cancel.json"), JSON.stringify({ schema: "tomidev.double-esc-cancel/v1", policy: "on" }));
+	await commands.get("td:double-esc-cancel")!.handler("status", ctx);
 	assert.match(ui.notices[0]!, /^double-esc-cancel: on \(decided by global file/);
 	editor.handleInput("\x1b");
 	assert.equal(aborted, 0, "status reported on, so the gate must swallow the first Esc rather than abort");
 	assert.match(stripAnsi(editor.render(60).join("\n")), /esc again to cancel/);
 	// The no-argument toggle flips relative to that same on-disk value: on -> off.
-	await commands.get("gentle:double-esc-cancel")!.handler("", ctx);
+	await commands.get("td:double-esc-cancel")!.handler("", ctx);
 	assert.match(ui.notices[1]!, /^double-esc-cancel: off /);
-	assert.deepEqual(JSON.parse(readFileSync(join(configHome, "double-esc-cancel.json"), "utf8")), { schema: "gentle-pi.double-esc-cancel/v1", policy: "off" });
+	assert.deepEqual(JSON.parse(readFileSync(join(configHome, "double-esc-cancel.json"), "utf8")), { schema: "tomidev.double-esc-cancel/v1", policy: "off" });
 	editor.dispose();
 });
 
@@ -5324,7 +5224,7 @@ test("a turn end never waits for Git", async () => {
 test("explicit registration validates the clone, and a clean registered root shows no Changes", async () => {
 	const { pi, handlers, commands, tools } = fakePi();
 	let bootstrapped = false;
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, {
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, {
 		resolveWorktree: (path) => bootstrapped ? { root: path === "." ? "/repo" : path, commonDir: path === "/foreign" ? "/foreign/git" : "/repo/.git" } : undefined,
 	});
 	const { ctx, ui } = fakeContext();
@@ -5339,7 +5239,7 @@ test("explicit registration validates the clone, and a clean registered root sho
 	await assert.rejects(register.execute("foreign", { path: "/foreign" }, undefined, undefined, ctx), /subagent_run with repository_root/);
 	assert.equal(ctx.sessionManager, manager);
 	assert.equal(ctx.sessionManager.getEntries().length, 1);
-	await commands.get("gentle:changes")!.handler("", ctx);
+	await commands.get("td:changes")!.handler("", ctx);
 	assert.match(ui.notices.join("\n"), /No uncommitted changes/);
 	assert.equal(ui.overlay, undefined);
 	await fire(handlers, "session_shutdown", ctx);
@@ -5351,7 +5251,7 @@ test("a registered worktree opens Changes as its own group", async () => {
  const {ctx,ui,overlayReady}=fakeContext();
  await fire(handlers,"session_start",ctx);
  await tools.get("session_worktree_register")!.execute("r",{path:"/linked"},undefined,undefined,ctx);
- const opened=commands.get("gentle:changes")!.handler("",ctx);
+ const opened=commands.get("td:changes")!.handler("",ctx);
  await overlayReady;
  try {
   const rendered=ui.overlayView!.render(140).join("\n");
@@ -5361,14 +5261,14 @@ test("a registered worktree opens Changes as its own group", async () => {
  } finally { ui.closeOverlay?.(); await opened; await fire(handlers,"session_shutdown",ctx); }
 });
 
-// /gentle:changes opens like Gentle Agents: a full-terminal overlay whose
+// /td:changes opens like Tomidev Agents: a full-terminal overlay whose
 // native fullscreen wrapper still routes mouse events to the changes view.
 test("Changes opens full screen and the wrapper keeps mouse hit-testing aligned", async () => {
  const {pi,handlers,commands}=fakePi([{numstat:"",porcelain:" M file.ts\0?? dirty.ts\0"}]);
  gentleShell(pi,{});
  const {ctx,ui,overlayReady}=fakeContext();
  await fire(handlers,"session_start",ctx);
- const opened=commands.get("gentle:changes")!.handler("",ctx);
+ const opened=commands.get("td:changes")!.handler("",ctx);
  await overlayReady;
  const overlay=ui.overlayView as unknown as { render(width: number): string[]; handleInput(data: string): void; handleMouse(event: unknown): unknown };
  const at=(type: string, x: number, y: number) => ({ type, button: type === "move" ? "none" : "left", x, y, screenX: x, screenY: y, width: 140, height: 40, shift: false, alt: false, ctrl: false });
@@ -5383,7 +5283,7 @@ test("Changes opens full screen and the wrapper keeps mouse hit-testing aligned"
   overlay.handleInput("F");
   assert.match(overlay.render(140)[1]!, /^│ M file\.ts +│$/, "F switches to diff-only inside the fullscreen overlay");
  } finally { ui.closeOverlay?.(); await opened; }
- const reopened=commands.get("gentle:changes")!.handler("",ctx);
+ const reopened=commands.get("td:changes")!.handler("",ctx);
  for (let attempt=0; attempt<100 && ui.overlayView===overlay; attempt++) await new Promise((resolve)=>setTimeout(resolve,5));
  try {
   assert.match(ui.overlayView!.render(140)[1]!, /main · repo/, "diff-only mode is not persisted across openings");
@@ -5445,7 +5345,7 @@ test("registered canonical root governs real Git discovery, status and diff desp
 	const discovery = await run(["worktree", "list", "--porcelain", "-z"]);
 	assert.match(discovery.stdout, new RegExp(`worktree ${selected}`));
 	assert.ok(!discovery.stdout.includes(foreign));
-	installGentleShell(h.pi, isolatedEnv({ GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }), { devBinary: () => undefined, gitRunner: (cwd) => shellGitRunner(cwd, poisoned) });
+	installGentleShell(h.pi, isolatedEnv({ TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }), { devBinary: () => undefined, gitRunner: (cwd) => shellGitRunner(cwd, poisoned) });
 	await fire(h.handlers, "session_start", ctx);
 	t.after(() => fire(h.handlers, "session_shutdown", ctx));
 	assert.equal(ui.widgets.has("gentle-shell-changes"), false, "startup never scans the repository");
@@ -5465,7 +5365,7 @@ test("registered canonical root governs real Git discovery, status and diff desp
 	const bounded = shellGitRunner(selected, poisoned, execFile, DIFF_MAX_BYTES);
 	assert.equal((await bounded(["diff", "HEAD", "--", "tracked.txt"])).truncated, true, "the diff runner stops at its bound instead of buffering everything");
 	assert.ok(await loadFileDiff(bounded, { path: "tracked.txt", added: 70_001, deleted: 1, status: CHANGE_STATUS.MODIFIED }) === DIFF_TOO_LARGE);
-	const opened = h.commands.get("gentle:changes")!.handler("", ctx);
+	const opened = h.commands.get("td:changes")!.handler("", ctx);
 	await overlayReady;
 	const trees = (ui.overlayView as unknown as { children: Array<{ trees: Array<{ root: string; model: { files: Array<{ path: string }> } }> }> }).children[0]!.trees;
 	assert.deepEqual(trees.map((tree) => [tree.root, tree.model.files.map((file) => file.path)]), [[selected, ["selected-only.txt", "tracked.txt"]]], "inherited routing never lists the foreign repository");
@@ -5773,9 +5673,9 @@ test("external editor receives the selected worktree as process cwd", () => {
 
 test("changesShortcut defaults to alt+g and can be overridden or disabled", () => {
 	assert.equal(changesShortcut({}), "alt+g");
-	assert.equal(changesShortcut({ GENTLE_PI_SHELL_CHANGES_KEY: "ctrl+shift+g" }), "ctrl+shift+g");
-	assert.equal(changesShortcut({ GENTLE_PI_SHELL_CHANGES_KEY: "off" }), undefined);
-	assert.equal(changesShortcut({ GENTLE_PI_SHELL_CHANGES_KEY: "" }), undefined);
+	assert.equal(changesShortcut({ TOMIDEV_SHELL_CHANGES_KEY: "ctrl+shift+g" }), "ctrl+shift+g");
+	assert.equal(changesShortcut({ TOMIDEV_SHELL_CHANGES_KEY: "off" }), undefined);
+	assert.equal(changesShortcut({ TOMIDEV_SHELL_CHANGES_KEY: "" }), undefined);
 });
 
 test("gentleShell binds the changes shortcut to the same handler as the command", async () => {
@@ -5789,13 +5689,13 @@ test("gentleShell binds the changes shortcut to the same handler as the command"
 	assert.match(ui.notices.join("\n"), /No uncommitted changes/);
 
 	const silent = fakePi();
-	gentleShell(silent.pi, { GENTLE_PI_SHELL_CHANGES_KEY: "off" });
+	gentleShell(silent.pi, { TOMIDEV_SHELL_CHANGES_KEY: "off" });
 	assert.equal(silent.shortcuts.has("alt+g"), false, "the changes shortcut must not register when disabled");
 });
 
 test("Changes never polls Git in the background; external edits appear at turn end", async () => {
  const {pi,handlers,git}=fakePi([{numstat:"4\t2\texternal.ts\n",porcelain:" M external.ts\0"}]);
- gentleShell(pi,{GENTLE_PI_SHELL_CHANGES_WATCH_MS:"5"});
+ gentleShell(pi,{TOMIDEV_SHELL_CHANGES_WATCH_MS:"5"});
  const {ctx,ui}=fakeContext();
  await fire(handlers,"session_start",ctx);
  await new Promise(resolve=>setTimeout(resolve,30));
@@ -5881,7 +5781,7 @@ test("fetchNanUsage degrades to no snapshot without ever throwing", async () => 
 test("gentleShell fetches NaN quota on session start and shows it in the bar", async () => {
 	const { pi, handlers } = fakePi();
 	const { fetchFn, calls } = fakeFetch(NAN_QUOTA_PAYLOAD);
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: "sk-nan-secret" });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "nan";
 	await fire(handlers, "session_start", ctx);
@@ -5907,7 +5807,7 @@ test("a failed NaN refresh keeps the last valid snapshot", async () => {
 		return { ok: true, json: async () => NAN_QUOTA_PAYLOAD } as Response;
 	}) as typeof fetch;
 	let now = 1_788_600_000_000;
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => now });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => now });
 	const { ctx, ui } = fakeContext({ token: "sk-nan-secret" });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "nan";
 	await fire(handlers, "session_start", ctx);
@@ -5925,7 +5825,7 @@ test("a failed NaN refresh keeps the last valid snapshot", async () => {
 test("gentleShell fetches Codex usage on session start and shows it in the bar", async () => {
 	const { pi, handlers } = fakePi();
 	const { fetchFn, calls } = fakeFetch();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await new Promise((resolve) => setTimeout(resolve, 0));
@@ -5940,7 +5840,7 @@ test("gentleShell fetches Codex usage on session start and shows it in the bar",
 test("a provider switch refreshes the new provider inside the same window", async () => {
 	const { pi, handlers } = fakePi();
 	const { fetchFn, calls } = fakeFetch(NAN_QUOTA_PAYLOAD);
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await new Promise((resolve) => setTimeout(resolve, 0));
@@ -5979,7 +5879,7 @@ function acmeSource(onFetch: (apiKey: string | undefined) => void, plan = "Acme 
 test("gentleShell fetches usage through a source registered before session start", async () => {
 	const { pi, handlers } = fakePi();
 	const seen: Array<string | undefined> = [];
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	pi.events.emit(USAGE_SOURCE_EVENT, acmeSource((apiKey) => seen.push(apiKey)));
 	const { ctx, ui } = fakeContext({ token: "acme-token" });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "acme-cloud";
@@ -5992,7 +5892,7 @@ test("gentleShell fetches usage through a source registered before session start
 test("gentleShell forces one refresh when a usage source registers after session start for the active provider", async () => {
 	const { pi, handlers } = fakePi();
 	let calls = 0;
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: "acme-token" });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "acme-cloud";
 	await fire(handlers, "session_start", ctx);
@@ -6008,7 +5908,7 @@ test("gentleShell forces one refresh when a usage source registers after session
 test("a usage source registered for a different provider does not force a refresh", async () => {
 	const { pi, handlers } = fakePi();
 	let calls = 0;
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: "acme-token" });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "openai-codex";
 	await fire(handlers, "session_start", ctx);
@@ -6022,11 +5922,11 @@ test("a usage source registered for a different provider does not force a refres
 
 test("gentleShell shows the unsupported note for a provider with no built-in or registered source", async () => {
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: undefined });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "acme-cloud";
 	await fire(handlers, "session_start", ctx);
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	const plain = ui.overlayView!.render(90).map(stripAnsi);
 	assert.match(plain[1], /✿ acme-cloud · no subscription usage for this provider/);
@@ -6036,7 +5936,7 @@ test("gentleShell shows the unsupported note for a provider with no built-in or 
 
 test("gentleShell ignores a malformed usage-source registration payload", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	pi.events.emit(USAGE_SOURCE_EVENT, { schema: "wrong-schema", provider: "acme-cloud", fetch: async () => undefined });
 	pi.events.emit(USAGE_SOURCE_EVENT, { schema: USAGE_SOURCE_SCHEMA, provider: "acme-cloud", fetch: "not-a-function" });
 	pi.events.emit(USAGE_SOURCE_EVENT, "not-an-object");
@@ -6065,7 +5965,7 @@ test("a registered source's rejecting fetch never crashes the shell or poisons t
 			throw new Error("acme is down");
 		},
 	});
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: "acme-token" });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "acme-cloud";
 
@@ -6095,7 +5995,7 @@ test("a registered source's rejecting fetch never crashes the shell or poisons t
 	// The panel still explains itself with the generic failure note (the fetch
 	// ran and answered nothing), never a crash, even through the awaited
 	// refresh openUsage runs on open.
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	const plain = ui.overlayView!.render(90).map(stripAnsi);
 	assert.match(plain[1], /✿ acme-cloud · fetch failed · r to retry/);
@@ -6112,7 +6012,7 @@ test("a registered source's rejecting fetch never crashes the shell or poisons t
 test("a registered source resolving usage for another provider is rejected without overwriting that provider's snapshot", async () => {
 	const { pi, handlers } = fakePi();
 	const { fetchFn } = fakeFetch(NAN_QUOTA_PAYLOAD);
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: "sk-nan-secret" });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "nan";
 	await fire(handlers, "session_start", ctx);
@@ -6134,7 +6034,7 @@ test("a registered source resolving usage for another provider is rejected witho
 
 test("gentleShell leaves a generic failure note when a registered source resolves a malformed usage", async () => {
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	pi.events.emit(USAGE_SOURCE_EVENT, {
 		schema: USAGE_SOURCE_SCHEMA,
 		provider: "acme-cloud",
@@ -6146,7 +6046,7 @@ test("gentleShell leaves a generic failure note when a registered source resolve
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	assert.doesNotMatch(renderFooter(ui), /acme-cloud/, "a malformed result must never be recorded");
 
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	const plain = ui.overlayView!.render(90).map(stripAnsi);
 	assert.match(plain[1], /✿ acme-cloud · fetch failed · r to retry/);
@@ -6156,7 +6056,7 @@ test("gentleShell leaves a generic failure note when a registered source resolve
 
 test("a slow fetch from a replaced source never records after its replacement resolves", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: "acme-token" });
 	(ctx as unknown as { model: { provider: string } }).model.provider = "acme-cloud";
 
@@ -6192,7 +6092,7 @@ test("a slow fetch from a replaced source never records after its replacement re
 
 test("gentleShell records SSE rate-limit headers from provider responses", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	for (const handler of handlers.get("after_provider_response") ?? []) {
@@ -6212,7 +6112,7 @@ test("gentleShell prices claude-bridge turns at the Anthropic list price and lab
 	// pi-claude-bridge registers every model with a zero price, so without this
 	// the footer and stats always read $0 on a Claude subscription.
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
 	const entries: unknown[] = [];
 	const { ctx, ui } = fakeContext({ entries, oauth: false });
 	(ctx as unknown as { model: { provider: string; id: string } }).model = { ...ctx.model!, provider: "claude-bridge", id: "claude-opus-5-5" };
@@ -6235,7 +6135,7 @@ test("gentleShell prices claude-bridge turns inside a subagent child, where the 
 	// The parent sums each child's message_end cost over RPC, so a child that
 	// skipped the pricing hook made the Stats `agents` row read $0.000.
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_AGENTS_CHILD: "1" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
+	gentleShell(pi, { TOMIDEV_AGENTS_CHILD: "1" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
 	const { ctx } = fakeContext({ entries: [], oauth: false });
 	(ctx.modelRegistry as unknown as { find: (provider: string, id: string) => unknown }).find = (provider, id) =>
 		provider === "anthropic" && id === "claude-opus-5-5" ? { cost: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 } } : undefined;
@@ -6253,7 +6153,7 @@ test("gentleShell files header usage under the provider that served the response
 	// headers, so the headers alone name `anthropic` while the session runs on
 	// `claude-bridge`.
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
 	const { ctx, ui } = fakeContext();
 	(ctx as unknown as { model: { provider: string } }).model.provider = "claude-bridge";
 	await fire(handlers, "session_start", ctx);
@@ -6262,7 +6162,7 @@ test("gentleShell files header usage under the provider that served the response
 	}
 	assert.match(renderFooter(ui), /claude 5h ▰▰▱▱▱▱▱▱ 25% · week 90%/);
 
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	const plain = ui.overlayView!.render(90).map(stripAnsi).join("\n");
 	assert.match(plain, /✿ claude-bridge ·/);
@@ -6273,7 +6173,7 @@ test("gentleShell files header usage under the provider that served the response
 
 test("gentleShell keeps the header provider when no model served the response", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
 	const { ctx, ui } = fakeContext();
 	(ctx as unknown as { model: { provider: string } }).model.provider = "anthropic";
 	await fire(handlers, "session_start", ctx);
@@ -6285,7 +6185,7 @@ test("gentleShell keeps the header provider when no model served the response", 
 
 test("gentleShell ignores incomplete Codex headers and retains the last real quota without assuming 5h", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch({}, false).fetchFn, now: () => 0 });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const respond = (headers: Record<string, string>) => {
@@ -6305,12 +6205,12 @@ test("gentleShell ignores incomplete Codex headers and retains the last real quo
 	}
 });
 
-test("gentleShell registers /gentle:usage and opens the subscriptions overlay", async () => {
+test("gentleShell registers /td:usage and opens the subscriptions overlay", async () => {
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch().fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch().fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	const plain = ui.overlayView!.render(90).map(stripAnsi);
 	assert.match(plain[0], /Subscriptions/);
@@ -6321,14 +6221,14 @@ test("gentleShell registers /gentle:usage and opens the subscriptions overlay", 
 
 test("usageShortcut defaults to alt+u and can be overridden or disabled", () => {
 	assert.equal(usageShortcut({}), "alt+u");
-	assert.equal(usageShortcut({ GENTLE_PI_SHELL_USAGE_KEY: "ctrl+shift+u" }), "ctrl+shift+u");
-	assert.equal(usageShortcut({ GENTLE_PI_SHELL_USAGE_KEY: "off" }), undefined);
-	assert.equal(usageShortcut({ GENTLE_PI_SHELL_USAGE_KEY: "" }), undefined);
+	assert.equal(usageShortcut({ TOMIDEV_SHELL_USAGE_KEY: "ctrl+shift+u" }), "ctrl+shift+u");
+	assert.equal(usageShortcut({ TOMIDEV_SHELL_USAGE_KEY: "off" }), undefined);
+	assert.equal(usageShortcut({ TOMIDEV_SHELL_USAGE_KEY: "" }), undefined);
 });
 
-test("gentleShell binds the usage shortcut to the same handler as /gentle:usage", async () => {
+test("gentleShell binds the usage shortcut to the same handler as /td:usage", async () => {
 	const { pi, handlers, shortcuts } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch().fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch().fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	const shortcut = shortcuts.get("alt+u");
@@ -6341,7 +6241,7 @@ test("gentleShell binds the usage shortcut to the same handler as /gentle:usage"
 	await opened;
 
 	const silent = fakePi();
-	gentleShell(silent.pi, { GENTLE_PI_SHELL_USAGE_KEY: "off" });
+	gentleShell(silent.pi, { TOMIDEV_SHELL_USAGE_KEY: "off" });
 	assert.equal(silent.shortcuts.has("alt+u"), false, "the usage shortcut must not register when disabled");
 });
 
@@ -6351,9 +6251,9 @@ test("gentleShell draws the review preflight message as a Gentle card", (t) => {
 	const { pi } = fakePi();
 	gentleShell(pi, {});
 	setCardStyle(CARD_STYLE.NEON);
-	const renderer = renderers.get("gentle-pi.review-preflight");
+	const renderer = renderers.get("tomidev.review-preflight");
 	assert.ok(renderer, "renderer not registered");
-	const message = { customType: "gentle-pi.review-preflight", content: "Receipt-driven development is enabled.\n\nCall the gentle_review tool." };
+	const message = { customType: "tomidev.review-preflight", content: "Receipt-driven development is enabled.\n\nCall the gentle_review tool." };
 	const sentinelTheme = { ...plainTheme, bg: (_role: string, text: string) => `\x1b[44m${text}\x1b[49m` };
 	for (const expanded of [true, false]) {
 		assert.doesNotMatch(renderer(message, { expanded }, sentinelTheme).render(80).join("\n"), /\x1b\[44m/);
@@ -6374,12 +6274,21 @@ test("gentleShell draws the review preflight message as a Gentle card", (t) => {
 	assert.deepEqual(renderer(long, { expanded: false }, plainTheme).render(0), []);
 });
 
+test("a review preflight message saved under the pre-rename customType still gets the Gentle card", () => {
+	const { pi } = fakePi();
+	gentleShell(pi, {});
+	const renderer = renderers.get("gentle-pi.review-preflight");
+	assert.ok(renderer, "the legacy customType stays registered so old sessions still render");
+	const lines = renderer!({ customType: "gentle-pi.review-preflight", content: "Receipt-driven development is enabled." }, { expanded: true }, plainTheme).render(60);
+	assert.match(lines.join("\n"), /Gentle AI/);
+});
+
 test("the review preflight card paints the rose INFO frame (border) and title (accent)", () => {
 	const { pi } = fakePi();
 	gentleShell(pi, {});
-	const renderer = renderers.get("gentle-pi.review-preflight")!;
+	const renderer = renderers.get("tomidev.review-preflight")!;
 	const taggedTheme = { ...plainTheme, fg: (color: string, text: string) => `<${color}>${text}</${color}>` };
-	const message = { customType: "gentle-pi.review-preflight", content: "Receipt-driven development is enabled." };
+	const message = { customType: "tomidev.review-preflight", content: "Receipt-driven development is enabled." };
 	const lines = renderer(message, { expanded: true }, taggedTheme).render(60);
 	assert.match(lines[0]!, /^<border>╭<\/border>/);
 	assert.match(lines[0]!, /<accent>✿ Gentle AI<\/accent>/);
@@ -6390,7 +6299,7 @@ test("gentleShell keeps a dev-binary override visible above the editor for the w
 	t.after(() => setCardStyle(found));
 	const { pi, handlers } = fakePi();
 	const deps = { fetch: fakeFetch({}, false).fetchFn, now: () => 0, devBinary: () => ({ state: "active" as const, path: "/Users/me/go/bin/gentle-ai", sha256: "6e53bfc6305a3949deadbeef" }) };
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, deps);
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, deps);
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	setCardStyle(CARD_STYLE.NEON);
@@ -6410,7 +6319,7 @@ test("gentleShell keeps a dev-binary override visible above the editor for the w
 	assert.equal(ui.widgets.has("gentle-shell-dev-binary"), false, "the startup notice leaves with the first prompt");
 
 	const clean = fakePi();
-	gentleShell(clean.pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { ...deps, devBinary: () => undefined });
+	gentleShell(clean.pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { ...deps, devBinary: () => undefined });
 	const fresh = fakeContext();
 	await fire(clean.handlers, "session_start", fresh.ctx);
 	assert.equal(fresh.ui.widgets.has("gentle-shell-dev-binary"), false);
@@ -6421,22 +6330,22 @@ test("gentleShell keeps a dev-binary override visible above the editor for the w
 	assert.deepEqual(factory(fakeTui, plainTheme).render(0), [""], "zero width keeps only the spacer");
 });
 
-test("gentle:commands registers alt+k by default", () => {
+test("td:commands registers alt+k by default", () => {
 	const { pi, shortcuts } = fakePi();
 	gentleShell(pi, {});
 	assert.ok(shortcuts.has("alt+k"));
 });
 
-test("gentle:commands honors GENTLE_PI_COMMANDS_KEY", () => {
+test("td:commands honors TOMIDEV_COMMANDS_KEY", () => {
 	const { pi, shortcuts } = fakePi();
-	gentleShell(pi, { GENTLE_PI_COMMANDS_KEY: "ctrl+p" });
+	gentleShell(pi, { TOMIDEV_COMMANDS_KEY: "ctrl+p" });
 	assert.ok(shortcuts.has("ctrl+p"));
 	assert.equal(shortcuts.has("alt+k"), false);
 });
 
-test("GENTLE_PI_COMMANDS_KEY=off registers no command-palette shortcut", () => {
+test("TOMIDEV_COMMANDS_KEY=off registers no command-palette shortcut", () => {
 	const { pi, shortcuts } = fakePi();
-	gentleShell(pi, { GENTLE_PI_COMMANDS_KEY: "off" });
+	gentleShell(pi, { TOMIDEV_COMMANDS_KEY: "off" });
 	assert.equal(shortcuts.has("alt+k"), false);
 	assert.ok(shortcuts.has("alt+g"), "the unrelated changes shortcut still registers");
 });
@@ -6444,19 +6353,19 @@ test("GENTLE_PI_COMMANDS_KEY=off registers no command-palette shortcut", () => {
 test("saved keymaps replace the shell shortcuts, bind palette commands, and the environment still wins", async () => {
 	const home = mkdtempSync(join(tmpdir(), "gentle-shell-keymaps-"));
 	isolatedConfigHomes.push(home);
-	writeFileSync(join(home, "keymaps.json"), JSON.stringify({ schema: 1, bindings: { commands: "alt+j", changes: null, usage: "alt+y", preset: "alt+p", "jobs.collapse": "alt+b", "command:gentle:profiles": "alt+o", "command:gentle:design": "alt+d" } }));
+	writeFileSync(join(home, "keymaps.json"), JSON.stringify({ schema: 1, bindings: { commands: "alt+j", changes: null, usage: "alt+y", preset: "alt+p", "jobs.collapse": "alt+b", "command:td:profiles": "alt+o", "command:td:design": "alt+d" } }));
 	const { pi, shortcuts, sentMessages } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	for (const key of ["alt+j", "alt+y", "alt+p", "alt+b", "alt+o", "alt+d"]) assert.ok(shortcuts.has(key), key);
 	for (const key of ["alt+k", "alt+g", "alt+u", "alt+l", "ctrl+shift+j"]) assert.equal(shortcuts.has(key), false, key);
 	const { ctx, ui } = fakeContext();
 	await shortcuts.get("alt+o")!.handler(ctx);
-	assert.deepEqual(sentMessages.at(-1), { content: "/gentle:profiles", options: { expandPromptTemplates: true } });
+	assert.deepEqual(sentMessages.at(-1), { content: "/td:profiles", options: { expandPromptTemplates: true } });
 	await shortcuts.get("alt+d")!.handler(ctx);
 	assert.equal(sentMessages.length, 1, "a key bound to a command that is not registered runs nothing");
-	assert.deepEqual(ui.notices.at(-1), "alt+d runs /gentle:design, which is not available in this session.");
+	assert.deepEqual(ui.notices.at(-1), "alt+d runs /td:design, which is not available in this session.");
 	const envWins = fakePi();
-	gentleShell(envWins.pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_COMMANDS_KEY: "ctrl+p" });
+	gentleShell(envWins.pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_COMMANDS_KEY: "ctrl+p" });
 	assert.ok(envWins.shortcuts.has("ctrl+p"));
 	assert.equal(envWins.shortcuts.has("alt+j"), false);
 });
@@ -6466,7 +6375,7 @@ test("a malformed keymaps.json keeps every default key and is reported once at s
 	isolatedConfigHomes.push(home);
 	writeFileSync(join(home, "keymaps.json"), "{");
 	const { pi, shortcuts, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	assert.ok(shortcuts.has("alt+k") && shortcuts.has("alt+g"));
 	const { ctx, ui } = fakeContext();
 	for (const handler of handlers.get("session_start") ?? []) await handler({}, ctx);
@@ -6475,11 +6384,11 @@ test("a malformed keymaps.json keeps every default key and is reported once at s
 	assert.equal(readFileSync(join(home, "keymaps.json"), "utf8"), "{");
 });
 
-test("/gentle:commands shows only curated, registered commands, grouped, by their labels", async () => {
+test("/td:commands shows only curated, registered commands, grouped, by their labels", async () => {
 	const { pi, commands } = fakePi();
 	gentleShell(pi, {});
 	const { ctx, ui, overlayReady } = fakeContext();
-	const opened = commands.get("gentle:commands")!.handler("", ctx);
+	const opened = commands.get("td:commands")!.handler("", ctx);
 	await overlayReady;
 	const lines = ui.overlayView!.render(100);
 	const rendered = lines.join("\n");
@@ -6492,8 +6401,8 @@ test("/gentle:commands shows only curated, registered commands, grouped, by thei
 	assert.match(rendered, /Browse changes/);
 	assert.match(rendered, /Gentle AI status/);
 	assert.match(rendered, /Refresh skill registry/);
-	assert.doesNotMatch(rendered, /gentle:profiles|gentle:changes|gentle:status|skill-registry:refresh/, "raw command names must not leak; only labels are shown");
-	assert.doesNotMatch(rendered, /gentle:not-in-catalog/);
+	assert.doesNotMatch(rendered, /td:profiles|td:changes|td:status|skill-registry:refresh/, "raw command names must not leak; only labels are shown");
+	assert.doesNotMatch(rendered, /td:not-in-catalog/);
 	assert.doesNotMatch(rendered, /skill:foo/);
 	const changesLine = lines.find((line) => line.includes("Browse changes"));
 	assert.match(changesLine ?? "", /alt\+g/, "expected the configured alt+g shortcut hint next to Browse changes");
@@ -6505,10 +6414,10 @@ test("the palette shows saved keys, marks ones waiting for a reload, and assigns
 	const home = mkdtempSync(join(tmpdir(), "gentle-shell-keymaps-"));
 	isolatedConfigHomes.push(home);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
-	writeFileSync(join(home, "keymaps.json"), JSON.stringify({ schema: 1, bindings: { "command:gentle:profiles": "alt+o" } }));
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
+	writeFileSync(join(home, "keymaps.json"), JSON.stringify({ schema: 1, bindings: { "command:td:profiles": "alt+o" } }));
 	const { ctx, ui, overlayReady } = fakeContext();
-	const opened = commands.get("gentle:commands")!.handler("", ctx);
+	const opened = commands.get("td:commands")!.handler("", ctx);
 	await overlayReady;
 	const lines = ui.overlayView!.render(100);
 	assert.match(lines.find((line) => line.includes("Models and profiles")) ?? "", /alt\+o \(reload\)/);
@@ -6517,17 +6426,17 @@ test("the palette shows saved keys, marks ones waiting for a reload, and assigns
 	ui.overlayView!.handleInput("\t");
 	ui.overlayView!.handleInput("\x1bx");
 	await opened;
-	assert.deepEqual(JSON.parse(readFileSync(join(home, "keymaps.json"), "utf8")).bindings, { "command:gentle:profiles": "alt+o", "command:gentle:status": "alt+x" });
-	assert.equal(ui.notices.at(-1), "/gentle:status: alt+x. Run /reload to apply it.");
+	assert.deepEqual(JSON.parse(readFileSync(join(home, "keymaps.json"), "utf8")).bindings, { "command:td:profiles": "alt+o", "command:td:status": "alt+x" });
+	assert.equal(ui.notices.at(-1), "/td:status: alt+x. Run /reload to apply it.");
 });
 
 test("assigning a typing key from the palette is refused and saves nothing", async () => {
 	const home = mkdtempSync(join(tmpdir(), "gentle-shell-keymaps-"));
 	isolatedConfigHomes.push(home);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const opened = commands.get("gentle:commands")!.handler("", ctx);
+	const opened = commands.get("td:commands")!.handler("", ctx);
 	await overlayReady;
 	ui.overlayView!.handleInput("\t");
 	ui.overlayView!.handleInput("a");
@@ -6540,7 +6449,7 @@ test("selecting a command from the palette by its label sends the underlying com
 	const { pi, commands, sentMessages } = fakePi();
 	gentleShell(pi, {});
 	const { ctx, ui, overlayReady } = fakeContext();
-	const opened = commands.get("gentle:commands")!.handler("", ctx);
+	const opened = commands.get("td:commands")!.handler("", ctx);
 	await overlayReady;
 	// "mod" only matches the "Models and profiles" label (it contains "mod"
 	// via "Models"); nothing else in the fixture does.
@@ -6548,37 +6457,37 @@ test("selecting a command from the palette by its label sends the underlying com
 	assert.match(ui.overlayView!.render(100).join("\n"), /Models and profiles/);
 	ui.overlayView!.handleInput("\r");
 	await opened;
-	assert.deepEqual(sentMessages, [{ content: "/gentle:profiles", options: { expandPromptTemplates: true } }]);
+	assert.deepEqual(sentMessages, [{ content: "/td:profiles", options: { expandPromptTemplates: true } }]);
 });
 
 test("escaping the palette sends no message", async () => {
 	const { pi, commands, sentMessages } = fakePi();
 	gentleShell(pi, {});
 	const { ctx, ui, overlayReady } = fakeContext();
-	const opened = commands.get("gentle:commands")!.handler("", ctx);
+	const opened = commands.get("td:commands")!.handler("", ctx);
 	await overlayReady;
 	ui.overlayView!.handleInput("\x1b");
 	await opened;
 	assert.deepEqual(sentMessages, []);
 });
 
-test("/gentle:commands notifies when nothing in the catalog is registered", async () => {
+test("/td:commands notifies when nothing in the catalog is registered", async () => {
 	const { pi, commands } = fakePi(undefined, [
 		{ name: "skill:foo", description: "A skill", source: "skill", sourceInfo: FAKE_SOURCE_INFO },
-		{ name: "gentle:not-in-catalog", description: "Not curated", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
+		{ name: "td:not-in-catalog", description: "Not curated", source: "extension", sourceInfo: FAKE_SOURCE_INFO },
 	]);
 	gentleShell(pi, {});
 	const { ctx, ui } = fakeContext();
-	await commands.get("gentle:commands")!.handler("", ctx);
+	await commands.get("td:commands")!.handler("", ctx);
 	assert.match(ui.notices.join("\n"), /No Gentle commands are registered\./);
 	assert.equal(ui.overlay, undefined);
 });
 
-test("/gentle:commands does nothing in a headless context", async () => {
+test("/td:commands does nothing in a headless context", async () => {
 	const { pi, commands, sentMessages } = fakePi();
 	gentleShell(pi, {});
 	const { ctx, ui } = fakeContext({ hasUI: false });
-	await commands.get("gentle:commands")!.handler("", ctx);
+	await commands.get("td:commands")!.handler("", ctx);
 	assert.equal(ui.overlay, undefined);
 	assert.deepEqual(sentMessages, []);
 });
@@ -6600,7 +6509,7 @@ test("resolving the overlay through closeOverlay sends nothing and does not thro
 	const { pi, commands, sentMessages } = fakePi();
 	gentleShell(pi, {});
 	const { ctx, ui, overlayReady } = fakeContext();
-	const opened = commands.get("gentle:commands")!.handler("", ctx);
+	const opened = commands.get("td:commands")!.handler("", ctx);
 	await overlayReady;
 	ui.closeOverlay?.();
 	await opened;
@@ -6612,7 +6521,7 @@ test("resolving the overlay through closeOverlay sends nothing and does not thro
 // global active profile.
 
 function writeProfilesStore(home: string, profiles: Record<string, unknown>, active?: string): void {
-	writeFileSync(join(home, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, ...(active ? { active } : {}), profiles }));
+	writeFileSync(join(home, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, ...(active ? { active } : {}), profiles }));
 }
 
 async function settle(): Promise<void> {
@@ -6625,7 +6534,7 @@ test("gentleShell refreshes the active profile's subagent providers alongside th
 	writeProfilesStore(home, { team: { reviewer: { model: "nan/glm5.3" } } }, "team");
 	const { pi, handlers } = fakePi();
 	const { fetchFn, calls } = fakeFetch(NAN_QUOTA_PAYLOAD);
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await settle();
@@ -6645,14 +6554,14 @@ test("a pinned profile's subagent providers are the refreshed ones, not the glob
 		rmSync(commonDir, { recursive: true, force: true });
 	});
 	mkdirSync(join(commonDir, "gentle-ai"), { recursive: true });
-	writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "pinned" }));
+	writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "pinned" }));
 	writeProfilesStore(home, {
 		team: { reviewer: { model: "openai-codex/gpt-5.5" } },
 		pinned: { reviewer: { model: "nan/glm5.3" } },
 	}, "team");
 	const { pi, handlers } = fakePi();
 	const { fetchFn, calls } = fakeFetch(NAN_QUOTA_PAYLOAD);
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000, resolveWorktree: () => ({ root: "/repo", commonDir }) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000, resolveWorktree: () => ({ root: "/repo", commonDir }) });
 	const { ctx } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await settle();
@@ -6665,7 +6574,7 @@ test("a bare routing model id resolves through the model registry only when exac
 	writeProfilesStore(home, { team: { reviewer: { model: "glm5.3" } } }, "team");
 	const { pi, handlers } = fakePi();
 	const { fetchFn, calls } = fakeFetch(NAN_QUOTA_PAYLOAD);
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx } = fakeContext({ token: JWT });
 	(ctx as unknown as { modelRegistry: { getAll(): Array<{ id: string; provider: string }> } }).modelRegistry.getAll = () => [{ id: "gpt-5.5", provider: "openai-codex" }, { id: "glm5.3", provider: "nan" }];
 	await fire(handlers, "session_start", ctx);
@@ -6674,7 +6583,7 @@ test("a bare routing model id resolves through the model registry only when exac
 
 	const ambiguous = fakePi();
 	const ambiguousFetch = fakeFetch(NAN_QUOTA_PAYLOAD);
-	gentleShell(ambiguous.pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: ambiguousFetch.fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(ambiguous.pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: ambiguousFetch.fetchFn, now: () => 1_788_600_000_000 });
 	const ambiguousCtx = fakeContext({ token: JWT });
 	(ambiguousCtx.ctx as unknown as { modelRegistry: { getAll(): Array<{ id: string; provider: string }> } }).modelRegistry.getAll = () => [{ id: "glm5.3", provider: "nan" }, { id: "glm5.3", provider: "openai-codex" }];
 	await fire(ambiguous.handlers, "session_start", ambiguousCtx.ctx);
@@ -6688,7 +6597,7 @@ test("a usage source registered after session start refreshes a subagent provide
 	writeProfilesStore(home, { team: { watcher: { model: "acme-cloud/acme" } } }, "team");
 	const { pi, handlers } = fakePi();
 	const seen: Array<string | undefined> = [];
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { now: () => 1_788_600_000_000 });
 	const { ctx } = fakeContext({ token: "acme-token" });
 	await fire(handlers, "session_start", ctx);
 	await settle();
@@ -6703,10 +6612,10 @@ test("the subscriptions panel shows targeted providers with no data and a generi
 	t.after(() => rmSync(home, { recursive: true, force: true }));
 	writeProfilesStore(home, { team: { reviewer: { model: "nan/glm5.3" } } }, "team");
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(NAN_QUOTA_PAYLOAD, false).fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(NAN_QUOTA_PAYLOAD, false).fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	const plain = ui.overlayView!.render(90).map(stripAnsi);
 	assert.match(plain.find((line) => line.includes("nan")) ?? "", /nan · fetch failed · r to retry/, "a targeted provider whose fetch answered nothing says so, generically");
@@ -6736,7 +6645,7 @@ test("a stalled provider times out without hanging the overlay, and a late answe
 	const { fetchFn } = fakeFetch(NAN_QUOTA_PAYLOAD);
 	gentleShell(
 		pi,
-		{ GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off", GENTLE_PI_SHELL_USAGE_TIMEOUT_MS: "25" },
+		{ TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off", TOMIDEV_SHELL_USAGE_TIMEOUT_MS: "25" },
 		{ fetch: fetchFn, now: () => 1_788_600_000_000 },
 	);
 	pi.events.emit(USAGE_SOURCE_EVENT, {
@@ -6755,7 +6664,7 @@ test("a stalled provider times out without hanging the overlay, and a late answe
 
 	// The stalled fetch is still pending, yet the panel opens right away and
 	// shows whatever the store already holds.
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(ui.overlayView, "the overlay must open while a provider is still stalled");
 	assert.match(ui.overlayView!.render(90).map(stripAnsi).find((line) => /^│ nan · updated just now/.test(line)) ?? "", /nan/, "the healthy provider's snapshot lands while the other provider is stalled");
@@ -6795,7 +6704,7 @@ test("a settled provider repaints the overlay before the stalled provider's wind
 	}) as typeof fetch;
 	gentleShell(
 		pi,
-		{ GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off", GENTLE_PI_SHELL_USAGE_TIMEOUT_MS: "100" },
+		{ TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off", TOMIDEV_SHELL_USAGE_TIMEOUT_MS: "100" },
 		{ fetch: nanFetch, now: () => 1_788_600_000_000 },
 	);
 	pi.events.emit(USAGE_SOURCE_EVENT, {
@@ -6816,7 +6725,7 @@ test("a settled provider repaints the overlay before the stalled provider's wind
 		frames += 1;
 	};
 	try {
-		const opened = commands.get("gentle:usage")!.handler("", ctx);
+		const opened = commands.get("td:usage")!.handler("", ctx);
 		await settle();
 		// Both providers are pending; releasing only the healthy one must repaint
 		// the overlay at once, with the refresh still in flight.
@@ -6850,7 +6759,7 @@ test("the refresh timeout composes with a source's own abort signal instead of r
 		captured = (init?.signal ?? undefined) as AbortSignal | undefined;
 		return await new Promise<Response>(() => {});
 	}) as typeof fetch;
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off", GENTLE_PI_SHELL_USAGE_TIMEOUT_MS: "100" }, { fetch: spyFetch, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off", TOMIDEV_SHELL_USAGE_TIMEOUT_MS: "100" }, { fetch: spyFetch, now: () => 1_788_600_000_000 });
 	const hangingSource = (caller: AbortController): unknown => ({
 		schema: USAGE_SOURCE_SCHEMA,
 		provider: "acme-cloud",
@@ -6891,7 +6800,7 @@ test("a provider aborted while its credential resolves never starts its fetch", 
 		fetchCalls += 1;
 		return { ok: true, json: async () => ({}) } as Response;
 	}) as typeof fetch;
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off", GENTLE_PI_SHELL_USAGE_TIMEOUT_MS: "25" }, { fetch: spyFetch, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off", TOMIDEV_SHELL_USAGE_TIMEOUT_MS: "25" }, { fetch: spyFetch, now: () => 1_788_600_000_000 });
 	pi.events.emit(USAGE_SOURCE_EVENT, {
 		schema: USAGE_SOURCE_SCHEMA,
 		provider: "acme-cloud",
@@ -6920,12 +6829,12 @@ test("the panel keeps a headers-only subagent provider pending instead of a fals
 	writeProfilesStore(home, { team: { reviewer: { model: "anthropic/claude-x" } } }, "team");
 	const { pi, handlers, commands } = fakePi();
 	const { fetchFn, calls } = fakeFetch(NAN_QUOTA_PAYLOAD);
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await settle();
 	assert.deepEqual(calls.map((call) => call.url), [CODEX_USAGE_URL], "anthropic has no usage endpoint to fetch; only the session's own provider is fetched");
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	const plain = ui.overlayView!.render(90).map(stripAnsi);
 	assert.match(plain.find((line) => line.includes("anthropic")) ?? "", /anthropic · usage arrives with the first response/);
@@ -6939,10 +6848,10 @@ test("after a profile switch the panel stops presenting the old profile's provid
 	t.after(() => rmSync(home, { recursive: true, force: true }));
 	writeProfilesStore(home, { team: { reviewer: { model: "nan/glm5.3" } }, solo: {} }, "team");
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(NAN_QUOTA_PAYLOAD).fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(NAN_QUOTA_PAYLOAD).fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(ui.overlayView!.render(90).map(stripAnsi).some((line) => /^│ nan ·/.test(line)), "the team profile's nan route is current scope");
 	ui.closeOverlay?.();
@@ -6952,7 +6861,7 @@ test("after a profile switch the panel stops presenting the old profile's provid
 	// slice 3b-ii): a new global default would leave its frozen routing in place.
 	bindSessionProfile("shell-session", "solo", {});
 	t.after(() => resetSessionProfileBindingsForTesting());
-	const reopened = commands.get("gentle:usage")!.handler("", ctx);
+	const reopened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.equal(ui.overlayView!.render(90).map(stripAnsi).some((line) => line.includes("nan")), false, "a provider recorded under the previous profile's routing is not current scope");
 	ui.closeOverlay?.();
@@ -6969,13 +6878,13 @@ test("an open session keeps its frozen profile in the status and Usage scope whe
 	mkdirSync(join(commonDir, "gentle-ai"), { recursive: true });
 	writeProfilesStore(home, { team: { reviewer: { model: "nan/glm5.3" } }, solo: { reviewer: { model: "openai-codex/gpt-5.5" } } }, "team");
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(NAN_QUOTA_PAYLOAD).fetchFn, now: () => 1_788_600_000_000, resolveWorktree: () => ({ root: "/repo", commonDir }) });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(NAN_QUOTA_PAYLOAD).fetchFn, now: () => 1_788_600_000_000, resolveWorktree: () => ({ root: "/repo", commonDir }) });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	assert.equal(readFrozenInheritedProfile("shell-session")?.profile?.name, "team", "the session froze the global active profile at start");
 	writeProfilesStore(home, { team: { reviewer: { model: "nan/glm5.3" } }, solo: { reviewer: { model: "openai-codex/gpt-5.5" } } }, "solo");
-	writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "solo" }));
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "solo" }));
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(openPanelLines(ui).some((line) => /^│ nan ·/.test(line)), "Usage keeps the frozen profile's nan route");
 	ui.closeOverlay?.();
@@ -6997,13 +6906,13 @@ test("active profile reader: a bound session shows its frozen profile, and follo
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const commonDir = join(root, "git");
 	mkdirSync(join(commonDir, "gentle-ai"), { recursive: true });
-	writeFileSync(join(root, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, other: {} } }));
-	const pin = (profile: string) => writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile }));
+	writeFileSync(join(root, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, other: {} } }));
+	const pin = (profile: string) => writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile }));
 	pin("other");
-	const frozen = createActiveProfileReader({ GENTLE_PI_CONFIG_HOME: root });
+	const frozen = createActiveProfileReader({ TOMIDEV_CONFIG_HOME: root });
 	frozen.bind(root, () => ({ root, commonDir }), "session-frozen");
 	assert.equal(frozen(), "other (local)");
-	const follow = createActiveProfileReader({ GENTLE_PI_CONFIG_HOME: root, GENTLE_PI_PROFILE_FOLLOW: "1" });
+	const follow = createActiveProfileReader({ TOMIDEV_CONFIG_HOME: root, TOMIDEV_PROFILE_FOLLOW: "1" });
 	follow.bind(root, () => ({ root, commonDir }), "session-follow");
 	assert.equal(follow(), "other (local)");
 	rmSync(join(commonDir, "gentle-ai", "profile-pin.json"));
@@ -7029,11 +6938,11 @@ test("a failed refresh says so beside the retained snapshot and clears on the ne
 		return { ok: true, json: async () => NAN_QUOTA_PAYLOAD } as Response;
 	}) as typeof fetch;
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => now });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => now });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await settle();
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(openPanelLines(ui).some((line) => /^│ nan · updated just now/.test(line)), "the good snapshot is recorded");
 	assert.equal(openPanelLines(ui).some((line) => line.includes("fetch failed")), false, "a successful refresh carries no failure note");
@@ -7044,7 +6953,7 @@ test("a failed refresh says so beside the retained snapshot and clears on the ne
 	now += 6 * 60_000;
 	await fire(handlers, "agent_end", ctx);
 	await settle();
-	const reopened = commands.get("gentle:usage")!.handler("", ctx);
+	const reopened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	const afterFailure = openPanelLines(ui);
 	assert.ok(afterFailure.some((line) => /^│ nan · updated 6m ago/.test(line)), "the retained snapshot still headlines the provider, honestly stale");
@@ -7057,7 +6966,7 @@ test("a failed refresh says so beside the retained snapshot and clears on the ne
 	now += 6 * 60_000;
 	await fire(handlers, "agent_end", ctx);
 	await settle();
-	const recovered = commands.get("gentle:usage")!.handler("", ctx);
+	const recovered = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(openPanelLines(ui).some((line) => /^│ nan · updated just now/.test(line)));
 	assert.equal(openPanelLines(ui).some((line) => line.includes("fetch failed")), false, "a successful refresh clears the failure note");
@@ -7102,12 +7011,12 @@ test("a replaced source's late failure cannot mark the provider failed after its
 	};
 	let bCalls = 0;
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch().fetchFn, now: () => now });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch().fetchFn, now: () => now });
 	pi.events.emit(USAGE_SOURCE_EVENT, sourceA);
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await settle();
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(openPanelLines(ui).some((line) => line.includes("acme-cloud") && line.includes("40%")), "the original source's snapshot is showing");
 
@@ -7127,11 +7036,11 @@ test("a replaced source's late failure cannot mark the provider failed after its
 
 test("a valid response-header snapshot clears a prior refresh failure", async (_t) => {
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(USAGE_PAYLOAD, false).fetchFn, now: () => 1_788_600_000_000 });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(USAGE_PAYLOAD, false).fetchFn, now: () => 1_788_600_000_000 });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await settle();
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(openPanelLines(ui).some((line) => line.includes("✿ openai-codex · fetch failed")), "the failed refresh is visible first");
 
@@ -7152,7 +7061,7 @@ test("the panel's scope is resolved on refresh, not on every render", async (t) 
 	writeProfilesStore(home, { team: { reviewer: { model: "nan/glm5.3" } } }, "team");
 	let resolutions = 0;
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, {
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, {
 		fetch: fakeFetch(NAN_QUOTA_PAYLOAD).fetchFn,
 		now: () => 1_788_600_000_000,
 		resolveWorktree: (cwd: string) => {
@@ -7163,7 +7072,7 @@ test("the panel's scope is resolved on refresh, not on every render", async (t) 
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await settle();
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(openPanelLines(ui).some((line) => line.includes("nan")), "the panel renders the scoped providers");
 	const before = resolutions;
@@ -7189,11 +7098,11 @@ test("an older overlapping refresh cannot mark a provider failed after a newer o
 		}
 		return { ok: true, json: async () => USAGE_PAYLOAD } as Response; // the newer refresh succeeds
 	}) as typeof fetch;
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => now });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fetchFn, now: () => now });
 	const { ctx, ui } = fakeContext({ token: JWT });
 	await fire(handlers, "session_start", ctx);
 	await settle();
-	const opened = commands.get("gentle:usage")!.handler("", ctx);
+	const opened = commands.get("td:usage")!.handler("", ctx);
 	await settle();
 	assert.ok(openPanelLines(ui).some((line) => line.includes("✿ openai-codex · pro")), "the newer refresh's snapshot is showing");
 
@@ -7210,10 +7119,10 @@ test("active profile reader prefers a session binding, labels it (session), and 
 	const root = mkdtempSync(join(tmpdir(), "shell-profile-session-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const path = join(root, "profiles.json");
-	writeFileSync(path, JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, work: {} } }));
+	writeFileSync(path, JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, work: {} } }));
 	resetSessionProfileBindingsForTesting();
 	bindSessionProfile("session-1", "work", { worker: { model: "zai/glm-4.7" } });
-	const read = createActiveProfileReader({ GENTLE_PI_CONFIG_HOME: root });
+	const read = createActiveProfileReader({ TOMIDEV_CONFIG_HOME: root });
 	assert.equal(read(), "team", "an unbound reader still reads the global active profile");
 	read.bind(root, () => undefined, "session-1");
 	assert.equal(read(), "work (session)", "a bound session outranks the global active profile");
@@ -7229,10 +7138,10 @@ test("active profile reader prefers a session binding, labels it (session), and 
 test("active profile reader keeps the pin label when a different session is bound", (t) => {
 	const root = mkdtempSync(join(tmpdir(), "shell-profile-session-pin-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
-	writeFileSync(join(root, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, work: {} } }));
+	writeFileSync(join(root, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "team", profiles: { team: {}, work: {} } }));
 	resetSessionProfileBindingsForTesting();
 	bindSessionProfile("session-other", "work", { worker: { model: "zai/glm-4.7" } });
-	const read = createActiveProfileReader({ GENTLE_PI_CONFIG_HOME: root });
+	const read = createActiveProfileReader({ TOMIDEV_CONFIG_HOME: root });
 	read.bind(root, () => ({ root, commonDir: root }), "session-1");
 	assert.equal(read(), "team", "no pin file and no binding for this session: the global active profile governs");
 	clearSessionProfileBinding("session-other");
@@ -7255,14 +7164,14 @@ test("an explicit session binding routes the Usage scope ahead of the pin and th
 		solo: { reviewer: { model: "openai-codex/gpt-5.5" } },
 		bound: { reviewer: { model: "nan/glm5.3" } },
 	}, "team");
-	writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "solo" }));
+	writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "solo" }));
 	resetSessionProfileBindingsForTesting();
 	bindSessionProfile("shell-session", "bound", { reviewer: { model: "nan/glm5.3" } });
 	try {
 		const { pi, commands } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(NAN_QUOTA_PAYLOAD).fetchFn, now: () => 1_788_600_000_000, resolveWorktree: () => ({ root: "/repo", commonDir }) });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { fetch: fakeFetch(NAN_QUOTA_PAYLOAD).fetchFn, now: () => 1_788_600_000_000, resolveWorktree: () => ({ root: "/repo", commonDir }) });
 		const { ctx, ui } = fakeContext({ token: JWT });
-		const opened = commands.get("gentle:usage")!.handler("", ctx);
+		const opened = commands.get("td:usage")!.handler("", ctx);
 		await settle();
 		const lines = openPanelLines(ui).join("\n");
 		assert.ok(lines.split("\n").some((line) => /^│ nan ·/.test(line)), "the Usage panel refreshes the session binding's nan provider");
@@ -7276,21 +7185,21 @@ test("an explicit session binding routes the Usage scope ahead of the pin and th
 
 // S9: the config home each of these reads resolves, per case. The OS home is
 // a temporary folder in every case, so no case can reach the real one.
-// "unset" and "empty" both name ~/.pi/gentle-ai: an empty GENTLE_PI_CONFIG_HOME
+// "unset" and "empty" both name ~/.pi/gentle-ai: an empty TOMIDEV_CONFIG_HOME
 // counts as unset (#2201; it used to name the current folder). "bundled" stands
 // in for this package running from a bundled install (testing overlay) whose
-// prefix the launcher passed; the user's own GENTLE_PI_CONFIG_HOME is then not
+// prefix the launcher passed; the user's own TOMIDEV_CONFIG_HOME is then not
 // this install's.
 type ConfigHomeCase = "unset" | "empty" | "bundled";
 function configHomeCase(t: { after: (fn: () => void) => void }, kind: ConfigHomeCase): { env: NodeJS.ProcessEnv; dir: string; userConfig: string } {
 	const base = realpathSync(mkdtempSync(join(tmpdir(), `config-home-${kind}-`)));
-	const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, GENTLE_PI_CONFIG_HOME: process.env.GENTLE_PI_CONFIG_HOME, GENTLE_SHELL_PREFIX: process.env.GENTLE_SHELL_PREFIX, GENTLE_SHELL_CONFIG_HOME: process.env.GENTLE_SHELL_CONFIG_HOME };
+	const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, TOMIDEV_CONFIG_HOME: process.env.TOMIDEV_CONFIG_HOME, TOMIDEV_PREFIX: process.env.TOMIDEV_PREFIX, TOMIDEV_SHELL_CONFIG_HOME: process.env.TOMIDEV_SHELL_CONFIG_HOME };
 	const cwd = process.cwd();
 	process.env.HOME = join(base, "home");
 	process.env.USERPROFILE = join(base, "home");
-	delete process.env.GENTLE_PI_CONFIG_HOME;
-	delete process.env.GENTLE_SHELL_PREFIX;
-	delete process.env.GENTLE_SHELL_CONFIG_HOME;
+	delete process.env.TOMIDEV_CONFIG_HOME;
+	delete process.env.TOMIDEV_PREFIX;
+	delete process.env.TOMIDEV_SHELL_CONFIG_HOME;
 	t.after(() => {
 		process.chdir(cwd);
 		setBundledInstallForTesting(undefined);
@@ -7305,17 +7214,17 @@ function configHomeCase(t: { after: (fn: () => void) => void }, kind: ConfigHome
 	if (kind === "empty") {
 		mkdirSync(join(base, "cwd"));
 		process.chdir(join(base, "cwd"));
-		return { env: { GENTLE_PI_CONFIG_HOME: "" }, dir: join(base, "home", ".pi", "gentle-ai"), userConfig };
+		return { env: { TOMIDEV_CONFIG_HOME: "" }, dir: join(base, "home", ".pi", "gentle-ai"), userConfig };
 	}
 	const prefix = join(base, "prefix");
 	mkdirSync(prefix);
 	setBundledInstallForTesting({ root: prefix });
-	return { env: { GENTLE_SHELL_PREFIX: prefix, GENTLE_PI_CONFIG_HOME: userConfig }, dir: join(prefix, "config", "gentle-ai"), userConfig };
+	return { env: { TOMIDEV_PREFIX: prefix, TOMIDEV_CONFIG_HOME: userConfig }, dir: join(prefix, "config", "gentle-ai"), userConfig };
 }
 
 function profileStore(dir: string, active: string, names: string[]) {
 	mkdirSync(dir, { recursive: true });
-	writeFileSync(join(dir, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active, profiles: Object.fromEntries(names.map((name) => [name, {}])) }));
+	writeFileSync(join(dir, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active, profiles: Object.fromEntries(names.map((name) => [name, {}])) }));
 }
 
 for (const kind of ["unset", "empty", "bundled"] as const) {
@@ -7333,7 +7242,7 @@ for (const kind of ["unset", "empty", "bundled"] as const) {
 		profileStore(dir, "team", ["team", "other"]);
 		const repo = join(dir, "..", `repo-${kind}`);
 		mkdirSync(join(repo, ".pi", "gentle-ai"), { recursive: true });
-		writeFileSync(join(repo, ".pi", "gentle-ai", "profile.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "other" }));
+		writeFileSync(join(repo, ".pi", "gentle-ai", "profile.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "other" }));
 		const read = createActiveProfileReader(env);
 		read.bind(repo, () => ({ root: repo, commonDir: join(repo, ".git-common") }));
 		read.refresh();
@@ -7411,14 +7320,14 @@ async function mobilePlacementFixture(t: TestContext, headerPlacement: "top" | "
 	const home = scopedDoubleEscCancelConfigHome(t);
 	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement, statusPlacement, density }, { gentlePiConfigHome: home });
 	const { pi, handlers, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { activeProfile: () => undefined });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { activeProfile: () => undefined });
 	const { ctx, ui, overlayReady } = fakeContext();
 	(ctx.model as unknown as { provider: string }).provider = "test";
 	await fire(handlers, "session_start", ctx);
 	const node = Symbol.for("@earendil-works/pi-tui/layout-node");
 	const root = { render: () => ["conversation"], invalidate() {}, [node]: () => ({ type: "vstack", entries: [] }) };
 	const tui = { mode: "fullscreen", terminal: { rows: 32, columns }, layoutRoot: root, requestRender() {} };
-	const statuses = new Map([["gentle:mode", "Permissions: SUPER-YOLO"], ["gentle:yolo", SUPER_YOLO_STATUS_TEXT]]);
+	const statuses = new Map([["td:mode", "Permissions: SUPER-YOLO"], ["td:yolo", SUPER_YOLO_STATUS_TEXT]]);
 	const footer = (ui.footerFactory as (tui: unknown, theme: ShellBarTheme, data: unknown) => { render(width: number): string[]; dispose(): void })(tui, plainTheme, {
 		getGitBranch: () => "main", getExtensionStatuses: () => statuses, getAvailableProviderCount: () => 1, onBranchChange: () => () => {},
 	});
@@ -7529,7 +7438,7 @@ test("mobile below-input keeps the modern Panel editor and one lower status bar"
 
 test("mobile placement changes move one bar live without losing Panel or duplicating permission", async (t) => {
 	const f = await mobilePlacementFixture(t, "top", "auto", 120);
-	const pending = f.commands.get("gentle:customize")!.handler("", f.ctx);
+	const pending = f.commands.get("td:customize")!.handler("", f.ctx);
 	await f.overlayReady;
 	try {
 		for (const placement of ["split", "below-input", "top"] as const) {
@@ -7556,7 +7465,7 @@ test("mobile below-input retains Changes when the chrome bar owns the footer", a
 	writeCardStyle(CARD_STYLE.FLOAT, { gentlePiConfigHome: home });
 	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: "below-input", surface: "tinted" }, { gentlePiConfigHome: home });
 	const { pi, handlers } = fakePi([{ numstat: "2\t0\tlib/live.ts\n", porcelain: " M lib/live.ts\0" }]);
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" }, { activeProfile: () => undefined });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" }, { activeProfile: () => undefined });
 	const { ctx, ui } = fakeContext();
 	(ctx.model as unknown as { provider: string }).provider = "test";
 	await fire(handlers, "session_start", ctx);
@@ -7622,7 +7531,7 @@ test("the installed editor draws the panel frame in the wide and mobile IDE chro
 	}
 });
 
-test("mobile folds live work into one row above the editor that opens /gentle:panel as a sheet", async () => {
+test("mobile folds live work into one row above the editor that opens /td:panel as a sheet", async () => {
 	const { pi, handlers, commands } = fakePi();
 	gentleShell(pi, {});
 	const { ctx, ui } = fakeContext();
@@ -7654,7 +7563,7 @@ test("mobile folds live work into one row above the editor that opens /gentle:pa
 		const header = state.parts.get("header")!;
 		assert.match(stripAnsi(header.render(56).join("\n")), /main.*ctx/, "the mobile top bar carries the branch and counters");
 		assert.deepEqual(state.parts.get("statusbar")!.render(56), [], "top has no separate lower bar");
-		void commands.get("gentle:panel")!.handler("", ctx);
+		void commands.get("td:panel")!.handler("", ctx);
 		await new Promise((resolve) => setImmediate(resolve));
 		const sheet = openPanelLines(ui);
 		assert.match(sheet[0]!, /^ ✿ Panel +esc back $/);
@@ -7668,7 +7577,7 @@ test("mobile folds live work into one row above the editor that opens /gentle:pa
 	}
 });
 
-test("a tap on a mobile work row led by an agent opens /gentle:agents instead of the panel sheet", async () => {
+test("a tap on a mobile work row led by an agent opens /td:agents instead of the panel sheet", async () => {
 	const { pi, handlers } = fakePi();
 	gentleShell(pi, {});
 	const { ctx, ui } = fakeContext();
@@ -7704,9 +7613,9 @@ test("a tap on a mobile work row led by an agent opens /gentle:agents instead of
 test("customize presets set the visibility, mark the current one, and keep the placements and the density", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	await customizeAction(ui, "Header placement: below-input");
 	assert.match(ui.overlayView!.render(90).join("\n"), /Preset\s+○ Light\s+● Neutral\s+○ Power user/, "the default density and visibility are the Neutral preset");
@@ -7749,7 +7658,7 @@ test("customize presets survive session switches and a fresh extension with the 
 		// The helper treats an explicit empty override as isolated, while the
 		// production resolver treats it as unset and uses the launcher marker.
 		const launcher = "launcher" in scenario && scenario.launcher;
-		const env = { GENTLE_PI_CONFIG_HOME: launcher ? "" : home, ...(launcher ? { GENTLE_SHELL_CONFIG_HOME: home } : {}), GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" };
+		const env = { TOMIDEV_CONFIG_HOME: launcher ? "" : home, ...(launcher ? { TOMIDEV_SHELL_CONFIG_HOME: home } : {}), TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" };
 		const session = (id: string) => {
 			const result = fakeContext({ entries: [assistantEntry({ input: 1000, output: 200, cost: 0.5 })] });
 			result.ctx.sessionManager.getSessionId = () => id;
@@ -7778,7 +7687,7 @@ test("customize presets survive session switches and a fresh extension with the 
 				assert.equal(/▾ STATS/.test(rail), scenario.settings.visibility.stats, "the restored shell applies Stats visibility");
 				const header = ui.widgets.get("gentle-shell-below-input-header") as (tui: unknown, theme: ShellBarTheme) => { render(width: number): string[] };
 				assert.match(stripAnsi(header(tui, plainTheme).render(180).join("\n")), /ctx.*45%/, "the restored shell keeps the below-input header");
-				const pending = shell.commands.get("gentle:customize")!.handler("", ctx);
+				const pending = shell.commands.get("td:customize")!.handler("", ctx);
 				await overlayReady;
 				try {
 					assert.ok(findCustomizeRow(ui, "Status placement: auto"));
@@ -7795,7 +7704,7 @@ test("customize presets survive session switches and a fresh extension with the 
 		let active = session("selection");
 		try {
 			await fire(original.handlers, "session_start", active.ctx);
-			const pending = original.commands.get("gentle:customize")!.handler("", active.ctx);
+			const pending = original.commands.get("td:customize")!.handler("", active.ctx);
 			await active.overlayReady;
 			try {
 				await customizeAction(active.ui, "Header placement: below-input");
@@ -7833,7 +7742,7 @@ test("without the top-header IDE chrome the rail keeps the permission mode and t
 	gentleShell(pi, {});
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
-	const statuses = new Map([["gentle:mode", "Permissions: AUTO"], ["mcp", "MCP: 3 servers"]]);
+	const statuses = new Map([["td:mode", "Permissions: AUTO"], ["mcp", "MCP: 3 servers"]]);
 	const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 180 }, requestRender() {} };
 	const factory = ui.footerFactory as (tui: unknown, theme: ShellBarTheme, data: unknown) => { dispose(): void };
 	const footer = factory(tui, plainTheme, { getGitBranch: () => "main", getExtensionStatuses: () => statuses, getAvailableProviderCount: () => 1, onBranchChange: () => () => {} });
@@ -7867,7 +7776,7 @@ test("a hidden Todos section stays hidden in the mobile work row and the panel s
 	try {
 		const workRow = { render: (width: number) => editor.render(width).filter((row) => /▸/.test(stripAnsi(row))) };
 		assert.match(stripAnsi(workRow.render(56)[0]!), /Secret plan task/);
-		void commands.get("gentle:panel")!.handler("", ctx);
+		void commands.get("td:panel")!.handler("", ctx);
 		await new Promise((resolve) => setImmediate(resolve));
 		const sheet = ui.overlayView!.render(56);
 		const options = ui.customOptions!.at(-1) as { overlayOptions?: { anchor?: string } };
@@ -7876,7 +7785,7 @@ test("a hidden Todos section stays hidden in the mobile work row and the panel s
 		(ui.overlayView as unknown as { handleInput(data: string): void }).handleInput("\x1b");
 		state.visibility = { todo: false };
 		assert.deepEqual(workRow.render(56), [], "the work row honors the Todos switch");
-		void commands.get("gentle:panel")!.handler("", ctx);
+		void commands.get("td:panel")!.handler("", ctx);
 		await new Promise((resolve) => setImmediate(resolve));
 		assert.doesNotMatch(stripAnsi(ui.overlayView!.render(56).join("\n")), /TODOS|Secret plan/, "the sheet honors the Todos switch");
 		(ui.overlayView as unknown as { handleInput(data: string): void }).handleInput("\x1b");
@@ -7893,7 +7802,7 @@ test("Status at the bottom keeps Agents and Todos as cards and the chrome bars o
 	const home = mkdtempSync(join(tmpdir(), "shell-light-"));
 	try {
 		writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, statusPlacement: "bottom" }, { gentlePiConfigHome: home });
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 		const { ctx, ui } = fakeContext();
 		await fire(handlers, "session_start", ctx);
 		const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 180 }, requestRender() {} };
@@ -7934,7 +7843,7 @@ test("an agent question keeps its row above the framed editor while the rail hid
 	const home = scopedDoubleEscCancelConfigHome(t);
 	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: "below-input" }, { gentlePiConfigHome: home });
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui } = fakeContext();
 	const editor = installedPrompt(ctx, ui, handlers);
 	const state = sidebarState(fakeTui as unknown as TUI);
@@ -7962,9 +7871,9 @@ test("an agent question keeps its row above the framed editor while the rail hid
 	}
 });
 
-test("rail Status sections fold on a header click and the Changes row opens /gentle:changes", async () => {
+test("rail Status sections fold on a header click and the Changes row opens /td:changes", async () => {
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+	gentleShell(pi, { TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 180 }, requestRender() {} };
@@ -7983,11 +7892,11 @@ test("rail Status sections fold on a header click and the Changes row opens /gen
 		assert.ok(rows().some((line) => /^▸ INTEGRATIONS/.test(line)) && !rows().some((line) => /MCP: 3 servers/.test(line)), "a click folds the section");
 		click(rows().findIndex((line) => /^▸ INTEGRATIONS/.test(line)));
 		assert.ok(rows().some((line) => /MCP: 3 servers/.test(line)), "a second click unfolds it");
-		const changesRow = rows().findIndex((line) => /\/gentle:changes/.test(line));
+		const changesRow = rows().findIndex((line) => /\/td:changes/.test(line));
 		const notices = ui.notices.length;
 		assert.equal(click(changesRow)?.handled, true, "the Changes row is clickable");
 		for (let i = 0; i < 5 && !ui.overlayView && ui.notices.length === notices; i++) await new Promise((resolve) => setTimeout(resolve, 10));
-		assert.ok(ui.overlayView || ui.notices.length > notices, "the click runs /gentle:changes (its view, or its note when nothing changed)");
+		assert.ok(ui.overlayView || ui.notices.length > notices, "the click runs /td:changes (its view, or its note when nothing changed)");
 		(ui.overlayView as unknown as { handleInput?(data: string): void } | undefined)?.handleInput?.("\x1b");
 	} finally {
 		footer.dispose();
@@ -8013,7 +7922,7 @@ test("the work row reacts to hover and the panel sheet closes from a click on es
 	try {
 		editor.render(56);
 		assert.deepEqual(editor.handleMouse?.(pointer("move", 3, 0)), { handled: true, render: true }, "hovering the work row repaints it as clickable");
-		const opened = commands.get("gentle:panel")!.handler("", ctx);
+		const opened = commands.get("td:panel")!.handler("", ctx);
 		await new Promise((resolve) => setImmediate(resolve));
 		const sheet = ui.overlayView as unknown as { render(width: number): string[]; handleMouse(event: unknown): unknown };
 		const first = stripAnsi(sheet.render(56)[1]!);
@@ -8034,7 +7943,7 @@ test("a render of the Status part at another width never moves the rail's click 
 	// Below the input the rail keeps the Session section, whose row wraps at a narrow width.
 	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: "below-input" }, { gentlePiConfigHome: home });
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 180 }, requestRender() {} };
@@ -8061,7 +7970,7 @@ test("a render of the Status part at another width never moves the rail's click 
 test("alt+l cycles the visual presets Light → Neutral → Power user → Light and saves each pick", async (t) => {
 	const home = scopedDoubleEscCancelConfigHome(t);
 	const { pi, handlers, shortcuts } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const shortcut = shortcuts.get("alt+l");
@@ -8076,15 +7985,15 @@ test("alt+l cycles the visual presets Light → Neutral → Power user → Light
 	assert.deepEqual(seen, [VISUAL_PRESET.POWER_USER, VISUAL_PRESET.LIGHT, VISUAL_PRESET.NEUTRAL]);
 	assert.match(ui.notices.at(-1) ?? "", /Preset: Neutral/);
 	// A hand-tuned visibility mix starts the cycle from Neutral; the density never decides the preset.
-	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, visibility: { ...DEFAULT_VISUAL_SETTINGS.visibility, rdd: false } }, { gentlePiConfigHome: home });
+	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, visibility: { ...DEFAULT_VISUAL_SETTINGS.visibility, todo: false } }, { gentlePiConfigHome: home });
 	await shortcut.handler(ctx);
 	assert.equal(preset(), VISUAL_PRESET.NEUTRAL);
 
 	const silent = fakePi();
-	gentleShell(silent.pi, { GENTLE_PI_SHELL_PRESET_KEY: "off" });
-	assert.equal(silent.shortcuts.has("alt+l"), false, "GENTLE_PI_SHELL_PRESET_KEY=off drops the shortcut");
+	gentleShell(silent.pi, { TOMIDEV_SHELL_PRESET_KEY: "off" });
+	assert.equal(silent.shortcuts.has("alt+l"), false, "TOMIDEV_SHELL_PRESET_KEY=off drops the shortcut");
 	const moved = fakePi();
-	gentleShell(moved.pi, { GENTLE_PI_SHELL_PRESET_KEY: "alt+o" });
+	gentleShell(moved.pi, { TOMIDEV_SHELL_PRESET_KEY: "alt+o" });
 	assert.ok(moved.shortcuts.has("alt+o"));
 });
 
@@ -8093,7 +8002,7 @@ test("the Stats section (Power user) follows its visibility switch, at any densi
 	const render = async (stats: boolean, density: (typeof DENSITY)[keyof typeof DENSITY] = DENSITY.COMFORTABLE) => {
 		writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, density, visibility: { ...DEFAULT_VISUAL_SETTINGS.visibility, stats } }, { gentlePiConfigHome: home });
 		const { pi, handlers } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 		const { ctx, ui } = fakeContext({ entries: [assistantEntry({ input: 1000, output: 200, cost: 0.5 }), assistantEntry({ input: 500, output: 100, cost: 0.25 })] });
 		await fire(handlers, "session_start", ctx);
 		const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 180 }, requestRender() {} };
@@ -8116,7 +8025,7 @@ test("Stats reads what subagents spent from the Agents rail section", async (t) 
 	const home = scopedDoubleEscCancelConfigHome(t);
 	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, visibility: { ...DEFAULT_VISUAL_SETTINGS.visibility, stats: true } }, { gentlePiConfigHome: home });
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_SHELL_CHANGES_WATCH_MS: "off" });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_SHELL_CHANGES_WATCH_MS: "off" });
 	const { ctx, ui } = fakeContext({ entries: [assistantEntry({ input: 1000, output: 200, cost: 0.5 })] });
 	await fire(handlers, "session_start", ctx);
 	const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 180 }, requestRender() {} };
@@ -8141,13 +8050,13 @@ test("Stats reads what subagents spent from the Agents rail section", async (t) 
 test("Customize groups every setting like Layout while navigation keeps stores unchanged", async (t) => {
  const home = scopedDoubleEscCancelConfigHome(t);
  const { pi, commands } = fakePi();
- gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+ gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
  const { ctx, ui, overlayReady } = fakeContext();
- const pending = commands.get("gentle:customize")!.handler("", ctx);
+ const pending = commands.get("td:customize")!.handler("", ctx);
  await overlayReady;
  const snapshot = () => JSON.stringify(readdirSync(home).sort().map(name => [name, readFileSync(join(home, name), "utf8")]));
  const before = snapshot();
- for (const [label, setting] of [["Banner rose:", "Banner rose"], ["Banner text logo:", "Banner text logo"], ["Theme:", "Theme"], ["Vim:", "Vim"], ["YOLO:", "YOLO"], ["Session permissions:", "Session permissions"], ["Default permissions:", "Default permissions"], ["Prompt history capture:", "History capture"], ["Audio notifications:", "Enabled"], ["Success:", "Success"], ["Section changes:", "changes"]]) {
+ for (const [label, setting] of [["Banner dog:", "Banner dog"], ["Banner text logo:", "Banner text logo"], ["Theme:", "Theme"], ["Vim:", "Vim"], ["YOLO:", "YOLO"], ["Session permissions:", "Session permissions"], ["Default permissions:", "Default permissions"], ["Prompt history capture:", "History capture"], ["Audio notifications:", "Enabled"], ["Success:", "Success"], ["Section changes:", "changes"]]) {
   assert.ok(findCustomizeRow(ui, label), label);
   const lines = ui.overlayView!.render(180);
   assert.equal(lines.filter(line => line.split("│").some(part => part.trimStart().replace(/^▸\s*/, "").startsWith(`${setting} `) && /[●○]/.test(part))).length, 1, `${setting} has one options line`);
@@ -8163,7 +8072,7 @@ test("#2890: a wide top header shows the whole header row above the conversation
 	const home = scopedDoubleEscCancelConfigHome(t);
 	writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: "top" }, { gentlePiConfigHome: home });
 	const { pi, handlers } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }, { activeProfile: () => "team" });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }, { activeProfile: () => "team" });
 	const { ctx, ui } = fakeContext();
 	await fire(handlers, "session_start", ctx);
 	const node = Symbol.for("@earendil-works/pi-tui/layout-node");
@@ -8191,9 +8100,9 @@ test("customize Layout → Surface switches the chrome between tinted and transp
 	const previous = chromeSurface();
 	t.after(() => setChromeSurface(previous));
 	const { pi, commands } = fakePi();
-	gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 	const { ctx, ui, overlayReady } = fakeContext();
-	const pending = commands.get("gentle:customize")!.handler("", ctx);
+	const pending = commands.get("td:customize")!.handler("", ctx);
 	await overlayReady;
 	await customizeAction(ui, "Surface: transparent");
 	assert.equal(resolveVisualSettings({ gentlePiConfigHome: home }).settings.surface, "transparent");
@@ -8223,7 +8132,7 @@ test("a wide top header is the split title row's panel row with the whole header
 		writeCardStyle(CARD_STYLE.FLOAT, { gentlePiConfigHome: home });
 		writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: header, statusPlacement: status, surface: "tinted" }, { gentlePiConfigHome: home });
 		const { pi, handlers } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }, { activeProfile: () => "team" });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }, { activeProfile: () => "team" });
 		const { ctx, ui } = fakeContext();
 		await fire(handlers, "session_start", ctx);
 		const painted = { ...plainTheme, bg: (role: string, text: string) => `\x1b[48;5;${role === "customMessageBg" ? 171 : 120}m${text}\x1b[49m` };
@@ -8285,7 +8194,7 @@ test("Status bottom at a wide width keeps the bar design, shows Agents and Todos
 		const home = scopedDoubleEscCancelConfigHome(t);
 		writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: header, statusPlacement: "bottom" }, { gentlePiConfigHome: home });
 		const { pi, handlers } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }, { activeProfile: () => "team" });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }, { activeProfile: () => "team" });
 		const { ctx, ui } = fakeContext();
 		await fire(handlers, "session_start", ctx);
 		const painted = { ...plainTheme, bg: (role: string, text: string) => `\x1b[48;5;${role === "customMessageBg" ? 171 : 120}m${text}\x1b[49m` };
@@ -8319,13 +8228,13 @@ test("beside the rail no header placement repeats the raw permission-mode status
 		const home = scopedDoubleEscCancelConfigHome(t);
 		writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: header }, { gentlePiConfigHome: home });
 		const { pi, handlers } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home }, { activeProfile: () => "team" });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home }, { activeProfile: () => "team" });
 		const { ctx, ui } = fakeContext();
 		await fire(handlers, "session_start", ctx);
 		const node = Symbol.for("@earendil-works/pi-tui/layout-node");
 		const root = { render: () => ["transcript"], invalidate() {}, [node]: () => ({ type: "vstack", entries: [] }) };
 		const tui = { mode: "fullscreen", terminal: { rows: 40, columns: 160 }, layoutRoot: root, requestRender() {} };
-		const statuses = new Map([["gentle:mode", "Permissions: SUPER-YOLO"], ["gentle:yolo", "💥 SUPER YOLO ON — no permission prompts; private paths stay blocked"], ["gentle-pi", "🧠 gentle-pi · ready"]]);
+		const statuses = new Map([["td:mode", "Permissions: SUPER-YOLO"], ["td:yolo", "💥 SUPER YOLO ON — no permission prompts; private paths stay blocked"], ["gentle-pi", "🧠 gentle-pi · ready"]]);
 		const factory = ui.footerFactory as (tui: unknown, theme: ShellBarTheme, data: unknown) => { render(width: number): string[]; dispose(): void };
 		const footer = factory(tui, plainTheme as unknown as ShellBarTheme, { getGitBranch: () => "main", getExtensionStatuses: () => statuses, getAvailableProviderCount: () => 1, onBranchChange: () => () => {} });
 		t.after(() => footer.dispose());
@@ -8337,11 +8246,11 @@ test("beside the rail no header placement repeats the raw permission-mode status
 	}
 });
 
-test("repeated [ Panel ] or /gentle:panel opens never stack sheets: one stays open until it closes", async () => {
+test("repeated [ Panel ] or /td:panel opens never stack sheets: one stays open until it closes", async () => {
 	const { pi, commands } = fakePi();
 	gentleShell(pi, {});
 	const { ctx, ui } = fakeContext();
-	const open = () => commands.get("gentle:panel")!.handler("", ctx);
+	const open = () => commands.get("td:panel")!.handler("", ctx);
 	const before = ui.customOptions!.length;
 	const first = open();
 	const again = [open(), open(), open()];
@@ -8364,7 +8273,7 @@ test("on a transparent rail a click on a section card's title folds that section
 		writeCardStyle(style, { gentlePiConfigHome: home });
 		writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: "split" }, { gentlePiConfigHome: home });
 		const { pi, handlers } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 		const { ctx, ui } = fakeContext();
 		await fire(handlers, "session_start", ctx);
 		const painted = { ...plainTheme, bg: (_role: string, text: string) => `\x1b[48;5;22m${text}\x1b[49m` };
@@ -8410,7 +8319,7 @@ test("on a transparent rail hovering a section card's title paints it in the hov
 		writeCardStyle(style, { gentlePiConfigHome: home });
 		writeVisualSettings({ ...DEFAULT_VISUAL_SETTINGS, headerPlacement: "split" }, { gentlePiConfigHome: home });
 		const { pi, handlers } = fakePi();
-		gentleShell(pi, { GENTLE_PI_CONFIG_HOME: home });
+		gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
 		const { ctx, ui } = fakeContext();
 		await fire(handlers, "session_start", ctx);
 		// The hover role as real SGR, the way a terminal theme paints it.
@@ -8446,4 +8355,35 @@ test("on a transparent rail hovering a section card's title paints it in the hov
 		assert.equal((plain(row).match(/[▾▸✿]/g) ?? []).length, 1, `${style}: one glyph, the section's own`);
 		await fire(handlers, "session_shutdown", ctx);
 	}
+});
+
+test("session start moves an active Gentleman-Cute theme to tomidev once", async (t) => {
+	const home = scopedDoubleEscCancelConfigHome(t);
+	const { pi, handlers } = fakePi();
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home });
+	const { ctx, ui } = fakeContext({ theme: { ...plainTheme, name: "Gentleman-Cute" } as typeof plainTheme });
+	const api = ctx.ui as unknown as { getTheme(name: string): unknown; setTheme(name: string): { success: boolean } };
+	api.getTheme = (name) => ["Gentleman-Cute", "tomidev"].includes(name) ? { name } : undefined;
+	const applied: string[] = [];
+	api.setTheme = (name) => { applied.push(name); return { success: true }; };
+	await fire(handlers, "session_start", ctx);
+	assert.deepEqual(applied, ["tomidev"]);
+	assert.ok(existsSync(join(home, "theme-migration-tomidev.json")));
+	assert.ok(ui.notices.some((notice) => String(notice).includes("Gentleman-Cute to tomidev") || JSON.stringify(notice).includes("Gentleman-Cute to tomidev")));
+	await fire(handlers, "session_start", ctx);
+	assert.deepEqual(applied, ["tomidev"], "the migration runs only once");
+});
+
+test("session start never migrates the theme inside a subagent child", async (t) => {
+	const home = scopedDoubleEscCancelConfigHome(t);
+	const { pi, handlers } = fakePi();
+	gentleShell(pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_AGENTS_CHILD: "1" });
+	const { ctx } = fakeContext({ theme: { ...plainTheme, name: "Gentleman-Cute" } as typeof plainTheme });
+	const api = ctx.ui as unknown as { getTheme(name: string): unknown; setTheme(name: string): { success: boolean } };
+	api.getTheme = (name) => ({ name });
+	const applied: string[] = [];
+	api.setTheme = (name) => { applied.push(name); return { success: true }; };
+	await fire(handlers, "session_start", ctx);
+	assert.deepEqual(applied, []);
+	assert.equal(existsSync(join(home, "theme-migration-tomidev.json")), false);
 });

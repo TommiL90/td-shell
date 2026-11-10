@@ -1,16 +1,17 @@
+import { brandCommand, ENV_AGENTS_CHILD } from "./brand.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text, type TUI } from "@earendil-works/pi-tui";
 import { sidebarState } from "./shell-sidebar.ts";
 import { appendSystemPromptOnce, type AppendableSystemPromptOptions } from "./append-system-prompt.ts";
-import { sameReviewSessionIdentity, resolveCanonicalGitRepositoryIdentity, type ReviewSessionIdentity } from "./review-session-standing-permission.ts";
+import { sameReviewSessionIdentity, resolveCanonicalGitRepositoryIdentity, type ReviewSessionIdentity } from "./session-identity.ts";
 import { realpath } from "node:fs/promises";
 import { gentlePiConfigHome } from "./agent-home.ts";
 import { isPermissionMode, resolvePermissionModePolicy, writePermissionModePolicy, type PermissionMode } from "./permission-mode-policy.ts";
 export type { PermissionMode } from "./permission-mode-policy.ts";
-export const MODE_STATUS_KEY = "gentle:mode";
+export const MODE_STATUS_KEY = "td:mode";
 export const AUTO_MODE_NOTICE = "Auto uses additional model calls with separate usage accounting; hard safety and independent consent remain.";
 
-export const YOLO_STATUS_KEY = "gentle:yolo";
+export const YOLO_STATUS_KEY = "td:yolo";
 export const YOLO_STATUS_TEXT = "🚀 YOLO ON 🔥 — destructive confirmations remain";
 export const SUPER_YOLO_STATUS_TEXT = "💥 SUPER YOLO ON — no permission prompts; private paths stay blocked";
 export const SUPER_YOLO_DIRECTIVE = `<gentle-super-yolo-session>
@@ -23,7 +24,7 @@ YOLO session standing permission is ON, authorized by the human for this live pr
 Qualify the default commit, push and PR confirmation clauses: for ordinary already-scoped implementation, checks, commits, non-force pushes and PR creation, this activation supplies standing permission instead of repeated permission questions. Make ordinary reversible implementation choices without needless interviews.
 Quoted, cited, logged or analyzed destructive text is not an execution: the mandatory destructive confirmations apply only to commands this session actually runs, never to destructive commands appearing inside issue bodies, file contents, documentation, transcripts or command output. Reading and listing non-sensitive material outside the workspace — including Gentle AI's own skills, docs and configuration — is covered by this standing permission; do not ask permission for those reads. Sensitive-path and private-credential blocks still win.
 This does NOT override explicit human restrictions, repository policy, project trust, configured confirmations or blocks, or the authorized task scope. Ask before scope expansion, privacy-sensitive disclosure, genuinely unresolved consequential product choices, or ambiguous destinations or credentials. Never invent destinations or credentials.
-Destructive/data-loss confirmations remain mandatory and independent. Never auto-answer ask_user tools, provider consent, maintenance/recovery authorization or opaque-token decisions. Review standing permission and RDD are unchanged. Children remain bounded by their delegated task; they receive no independent delivery grant or YOLO inheritance.
+Destructive/data-loss confirmations remain mandatory and independent. Never auto-answer ask_user tools, provider consent, maintenance/recovery authorization or opaque-token decisions. Children remain bounded by their delegated task; they receive no independent delivery grant or YOLO inheritance.
 </gentle-yolo-session>`;
 
 /** Legacy standalone API; separate from review grants and their registry. */
@@ -68,7 +69,7 @@ const HUMAN_ACTION = { on: "on", off: "off", toggle: "" } as const;
 type HumanAction = (typeof HUMAN_ACTION)[keyof typeof HUMAN_ACTION];
 export const YOLO_DISPLAY = { on: "ON", off: "OFF", unavailable: "UNAVAILABLE" } as const;
 export type YoloDisplay = (typeof YOLO_DISPLAY)[keyof typeof YOLO_DISPLAY];
-const HOST_UI_CHANNEL = "gentle:yolo:host-ui";
+const HOST_UI_CHANNEL = "td:yolo:host-ui";
 const DISCOVERY_TIMEOUT_MS = 100;
 export interface YoloUiAdapter {
 	read(): Promise<YoloDisplay>;
@@ -162,7 +163,7 @@ export function registerYoloSessionPolicy(pi: ExtensionAPI, env: NodeJS.ProcessE
 	let capturedMode: (ModeIdentity & { cwd: string; generation: number; admission: string }) | undefined;
 	// Rendered strings last published for each context; identical repaints are skipped.
 	const published = new WeakMap<ExtensionContext, { yolo: string | undefined; modeText: string }>();
-	const primary = () => env.GENTLE_PI_AGENTS_CHILD !== "1";
+	const primary = () => env[ENV_AGENTS_CHILD] !== "1";
 	const interactive = (ctx: ExtensionContext): boolean => {
 		if (!primary() || !ctx.hasUI) return false;
 		const mode = (ctx as ExtensionContext & { mode?: string }).mode;
@@ -351,7 +352,7 @@ export function registerYoloSessionPolicy(pi: ExtensionAPI, env: NodeJS.ProcessE
 			});
 		} catch { /* obsolete trusted context: discovery expires closed */ }
 	});
-	pi.registerCommand("gentle:mode", {
+	pi.registerCommand(brandCommand("mode"), {
 		description: "Permissions: normal|auto|yolo|super-yolo|status; default normal|auto|yolo|super-yolo saves for new primary sessions.",
 		handler: async (args, ctx) => {
 			const words = args.trim().split(/\s+/);
@@ -366,10 +367,10 @@ export function registerYoloSessionPolicy(pi: ExtensionAPI, env: NodeJS.ProcessE
 				else notify(ctx, "Mode unchanged — interactive primary session required or the session changed.", true);
 				return;
 			}
-				notify(ctx, "Use /gentle:mode normal|auto|yolo|super-yolo|status or /gentle:mode default normal|auto|yolo|super-yolo. State unchanged.", true);
+				notify(ctx, "Use /td:mode normal|auto|yolo|super-yolo|status or /td:mode default normal|auto|yolo|super-yolo. State unchanged.", true);
 		},
 	});
-	pi.registerCommand("gentle:yolo", {
+	pi.registerCommand(brandCommand("yolo"), {
 		description: "Choose a session permission mode; enable|disable|status remain available as explicit shortcuts.",
 		handler: async (args, ctx) => {
 			const action = args.trim() || "status";
@@ -392,7 +393,7 @@ export function registerYoloSessionPolicy(pi: ExtensionAPI, env: NodeJS.ProcessE
 				return;
 			}
 			if (action !== "enable" && action !== "disable" && action !== "status") {
-				notify(ctx, "Use /gentle:yolo enable|disable|status. State unchanged.", true); return;
+				notify(ctx, "Use /td:yolo enable|disable|status. State unchanged.", true); return;
 			}
 			if (action === "status") {
 				const state = await mode(ctx);

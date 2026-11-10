@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { CARD_STYLE, type CardStyle } from "./shell-card.ts";
 // means the borderless float style; a malformed or unreadable one also reads
 // as float, and the writer refuses to replace it so a hand edit is never lost.
 // There is no environment override.
-export const CARD_STYLE_SCHEMA = "gentle-pi.card-style/v1";
+export const CARD_STYLE_SCHEMA = brandSchema("card-style", 1);
 const CARD_STYLE_FILE = "card-style.json";
 interface CardStyleOptions { gentlePiConfigHome?: string }
 export interface CardStyleResolution {
@@ -26,7 +27,7 @@ export function parseCardStyleFile(raw: string): CardStyle | undefined {
 	try {
 		const value: unknown = JSON.parse(raw);
 		if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-		if (Object.keys(value).length !== 2 || !("schema" in value) || value.schema !== CARD_STYLE_SCHEMA || !("style" in value)) return undefined;
+		if (Object.keys(value).length !== 2 || !("schema" in value) || !isBrandSchema(value.schema, "card-style", 1) || !("style" in value)) return undefined;
 		return isCardStyle(value.style) ? value.style : undefined;
 	} catch { return undefined; }
 }

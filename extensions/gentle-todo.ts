@@ -32,6 +32,7 @@ import {
 	type TodoParams,
 	type TodoState,
 } from "../lib/shell-todo.ts";
+import { ENV_AGENTS_CHILD } from "../lib/brand.ts";
 
 // Gentle Todo: the task list the model keeps while it works, drawn as a
 // Gentle Shell card above the editor. Three things keep it current that a
@@ -77,8 +78,8 @@ const TOOL_PARAMETERS = {
 } as const;
 
 export function todoEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-	if (env.GENTLE_PI_AGENTS_CHILD === "1") return false;
-	const value = env.GENTLE_PI_TODO?.trim().toLowerCase();
+	if (env[ENV_AGENTS_CHILD] === "1") return false;
+	const value = env.TOMIDEV_TODO?.trim().toLowerCase();
 	return !(value === "0" || value === "false" || value === "off");
 }
 

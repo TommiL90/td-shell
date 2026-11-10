@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { inferOddPhase } from "../lib/odd-phase-inference.ts";
 
-// Deterministic, conservative tool -> ODD phase mapping for the Gentle Shell
+// Deterministic, conservative tool -> ODD phase mapping for the Tomidev Shell
 // working label. Unknown tools and ambiguous shell commands never change it.
 
 test("read-only file tools infer exploring", () => {
@@ -30,9 +30,9 @@ test("edits and writes to other paths infer implementing", () => {
 	assert.equal(inferOddPhase("edit", undefined), "implementing");
 });
 
-test("native review tools infer checking", () => {
+test("retired review tools infer no phase: the review tool surface is gone", () => {
 	for (const tool of ["gentle_review", "gentle_review_scope", "gentle_review_capture", "gentle_review_capture_group"]) {
-		assert.equal(inferOddPhase(tool, {}), "checking", tool);
+		assert.equal(inferOddPhase(tool, {}), undefined, tool);
 	}
 });
 

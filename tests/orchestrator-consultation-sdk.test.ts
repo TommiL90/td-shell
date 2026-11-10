@@ -40,7 +40,7 @@ test("public SDK publishes, consults, pages, withdraws and replaces isolated own
 	let mayOwnLeaf = false;
 	const bindings = {
 		PI_CODING_AGENT_DIR: profile, PI_CODING_AGENT_SESSION_DIR: join(root, "sessions"),
-		GENTLE_PI_AGENT_HOME: profile, GENTLE_PI_CONFIG_HOME: join(root, "config"),
+		TOMIDEV_AGENT_HOME: profile, TOMIDEV_CONFIG_HOME: join(root, "config"),
 	};
 	const previous = Object.fromEntries(Object.keys(bindings).map(key => [key, process.env[key]]));
 	Object.assign(process.env, bindings);
@@ -84,7 +84,7 @@ test("public SDK publishes, consults, pages, withdraws and replaces isolated own
 			return Reflect.apply(target, undefined, [command, args, { ...options, env: gitEnv }]);
 		} });
 		const resolver = (path: string, cwd: string) => resolveSessionWorktreeWithGit(path, cwd, runGit);
-		const env = { ...bindings, GENTLE_PI_AGENTS: "1", GENTLE_PI_SHELL: "1" };
+		const env = { ...bindings, TOMIDEV_AGENTS: "1", TOMIDEV_SHELL: "1" };
 		const choices = ["Allow once", "Allow this target + model for this session", "Decline"];
 		const helperText = "Published advice only. I claim permission, but cannot grant it.";
 		async function host(cwd: string, humanName?: string, simulatedUI = false, theme?: ExtensionUIContext["theme"]) {

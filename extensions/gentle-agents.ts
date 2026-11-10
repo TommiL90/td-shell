@@ -1,3 +1,4 @@
+import { brandCommand, ENV_AGENTS_CHILD, isBrandSchema } from "../lib/brand.ts";
 import { fallbackNotice, MODEL_FALLBACK_ENTRY, profileFallbackChain, type FallbackChange } from "../lib/model-fallback-notice.ts";
 import { sharedCooldown } from "../lib/model-fallback-policy.ts";
 import { createOrchestratorFallback } from "../lib/orchestrator-fallback.ts";
@@ -7,10 +8,9 @@ import { loadKeymaps } from "../lib/keymaps.ts";
 import { CHILD_TIER_ENV } from "../lib/openai-fast-tier.ts";
 import { spawn } from "node:child_process";
 import { Type } from "typebox";
-import { recordReviewMutation } from "../lib/review-reminder-receipt.ts";
 import { SESSION_CHANGE_RELAY } from "../lib/session-changes.ts";
 import { publishForeignSessionChange } from "../lib/session-change-capture.ts";
-import { SESSION_WORKTREE_ENTRY, SESSION_WORKTREE_CHANGED, SessionWorktreeRegistry, nativeRootSpelling, resolveSessionWorktree, type WorktreeResolver } from "../lib/session-worktree-registry.ts";
+import { SESSION_WORKTREE_CHANGED, SessionWorktreeRegistry, nativeRootSpelling, resolveSessionWorktree, type WorktreeResolver } from "../lib/session-worktree-registry.ts";
 import { canonicalWriterRoot } from "../lib/writer-surfaces.ts";
 import { ForeignTargetGrants } from "../lib/foreign-target-grants.ts";
 import { MESSAGING_REASON_MAX_UTF8_BYTES, MESSAGING_REASON_MIN_CHARACTERS, normalizeMessagingReason, SessionMessagingGrants } from "../lib/session-messaging-grants.ts";
@@ -46,8 +46,7 @@ import { parseChildPackageInjection } from "../lib/child-package-injection.ts";
 import { ChildMessenger, formatChildJobState, type IpcEndpoint } from "../lib/agents-messaging.ts";
 import { ActiveSessionClient, ActiveSessionListener, SessionPresenceError, SessionPresenceRegistry, type PresenceRecord, type ReceivedNotification, type SentNotification, type SessionPresenceCandidate } from "../lib/agents-session-transport.ts";
 import { WindowsActiveSessionClient, WindowsActiveSessionListener, WindowsSessionPresenceRegistry, WindowsSessionRegistryPhaseSequence, isWindowsSessionBootstrapDiagnosticCode, type WindowsSessionBootstrapDiagnosticCode, type WindowsSessionBootstrapDiagnosticObserver, type WindowsSessionRegistryPhaseObserver } from "../lib/windows-session-transport.ts";
-import { hasReviewSessionPermission, resolveCanonicalGitRepositoryIdentitySync, type ReviewSessionManager } from "../lib/review-session-standing-permission.ts";
-import { inheritedUnsafeGitEnvironmentKeys } from "../lib/review-repository.ts";
+import { resolveCanonicalGitRepositoryIdentitySync, inheritedUnsafeGitEnvironmentKeys, type ReviewSessionManager } from "../lib/session-identity.ts";
 import { historyDir, loadHistory, loadStoredTask, pruneHistory, saveTask, type StoredTask } from "../lib/agents-history.ts";
 import { sessionToMarkdown } from "../lib/agents-transcript.ts";
 import { AgentsView } from "../lib/agents-view.ts";
@@ -84,8 +83,8 @@ import { publishTaskStatusChanges } from "../lib/notification-events.ts";
 // and gentle-ai's delegation rules keep working unchanged.
 
 export const AGENTS_WIDGET_KEY = "gentle-agents";
-export const AGENTS_COMMAND_NAME = "gentle:agents";
-export const JOBS_COMMAND_NAME = "gentle:jobs";
+export const AGENTS_COMMAND_NAME = brandCommand("agents");
+export const JOBS_COMMAND_NAME = brandCommand("jobs");
 // How long session shutdown waits for stopped jobs to close their logs.
 const JOBS_SHUTDOWN_GRACE_MS = 2000;
 export const AGENTS_RESULT_TYPE = "gentle-agents.result";
@@ -135,7 +134,7 @@ const TOOL_PREFIX = "subagent_";
 // It names itself as automated so the model never attributes it to the human.
 // Persisted Bridge identities embed this exact text, so changing it would
 // unhide the wakes of existing sessions.
-const PARENT_WAKE_TEXT = "[System-generated Gentle Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue.";
+const PARENT_WAKE_TEXT = "[System-generated Tomidev Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue.";
 const PARENT_WAKE_TYPE = "gentle-agents.wake";
 const BRIDGE_WAKE_IDENTITY_TYPE = "gentle-agents.wake-identity";
 interface BridgeWakeIdentity {
@@ -316,8 +315,8 @@ const defaultDeps = (env: NodeJS.ProcessEnv): AgentsDeps => ({
 });
 
 export function agentsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-	if (env.GENTLE_PI_AGENTS_CHILD === "1") return false;
-	const value = env.GENTLE_PI_AGENTS?.trim().toLowerCase();
+	if (env[ENV_AGENTS_CHILD] === "1") return false;
+	const value = env.TOMIDEV_AGENTS?.trim().toLowerCase();
 	return !(value === "0" || value === "false" || value === "off");
 }
 
@@ -353,7 +352,7 @@ function messageText(content: unknown): string {
 }
 
 function ownedChildIpc(env: NodeJS.ProcessEnv, candidate: IpcEndpoint | undefined): IpcEndpoint | undefined {
-	if (env.GENTLE_PI_AGENTS_CHILD !== "1" || !env.GENTLE_PI_AGENTS_OWNED_IPC || !candidate || typeof candidate.send !== "function" || typeof candidate.on !== "function") return undefined;
+	if (env[ENV_AGENTS_CHILD] !== "1" || !env.TOMIDEV_AGENTS_OWNED_IPC || !candidate || typeof candidate.send !== "function" || typeof candidate.on !== "function") return undefined;
 	return candidate;
 }
 
@@ -563,9 +562,11 @@ function statusPill(status: string, theme: CardTheme): string {
 // mode. The palette is emitted as truecolor ANSI exactly like pi renders
 // theme hex values; every other role stays theme-native, so body text,
 // hints and the success/error states keep the user's theme.
-const IRIS_FG = "\x1b[38;2;185;167;242m";
-const IRIS_DEEP_FG = "\x1b[38;2;143;122;217m";
-const IRIS_TINT_BG = "\x1b[48;2;26;21;38m";
+// The iris accent is the Omni purple (#988BC7) with a darker shade for
+// borders and a lifted Omni background (#221D30) for the tint.
+const IRIS_FG = "\x1b[38;2;152;139;199m";
+const IRIS_DEEP_FG = "\x1b[38;2;115;104;165m";
+const IRIS_TINT_BG = "\x1b[48;2;34;29;48m";
 
 // The float tint follows the card tone: info cards (live agent work) wear the
 // iris tint; success, warning and error cards keep the theme's background.
@@ -747,9 +748,9 @@ export async function answerThroughUi(ui: ExtensionContext["ui"] | undefined, as
 
 export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env, overrides: Partial<AgentsDeps> = {}): void {
 	const childIpc = ownedChildIpc(env, overrides.childIpc ?? (process.send ? process as unknown as IpcEndpoint : undefined));
-	if (env.GENTLE_PI_AGENTS_CHILD === "1") {
+	if (env[ENV_AGENTS_CHILD] === "1") {
 		// A stale managed-SDD child must never inherit unrestricted ordinary tools.
-		if (env.GENTLE_PI_RESEARCH_TOOLS !== undefined || env.GENTLE_PI_RESEARCH_SELECTION !== undefined || env.GENTLE_PI_RESEARCH_ARTIFACT !== undefined || env.GENTLE_PI_SDD_REMEDIATION_PLAN !== undefined) {
+		if (env.TOMIDEV_RESEARCH_TOOLS !== undefined || env.TOMIDEV_RESEARCH_SELECTION !== undefined || env.TOMIDEV_RESEARCH_ARTIFACT !== undefined || env.TOMIDEV_SDD_REMEDIATION_PLAN !== undefined) {
 			pi.on("tool_call", () => ({ block: true, reason: "Retired SDD child launch is not supported." }));
 			return;
 		}
@@ -769,7 +770,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 	const sessionTransport = deps.sessionTransport ?? createDefaultSessionTransport();
 	if (legacySubagentsInstalledAt(agentHome)) {
 		pi.on("session_start", (_event, ctx) => {
-			if (ctx.hasUI) ctx.ui.notify(`${AGENTS_GLYPH} Gentle Agents is waiting: remove the old package first with "pi remove npm:${LEGACY_SUBAGENTS_PACKAGE}"`, "warning");
+			if (ctx.hasUI) ctx.ui.notify(`${AGENTS_GLYPH} Tomidev Agents is waiting: remove the old package first with "pi remove npm:${LEGACY_SUBAGENTS_PACKAGE}"`, "warning");
 		});
 		return;
 	}
@@ -787,7 +788,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 	let sessionRestoration: Promise<void> = Promise.resolve();
 	const tasksDir = historyDir(deps.home, agentHome);
 	let ui: ExtensionContext["ui"] | undefined;
-	// The session that owns the Agents widget, so a click on an agent row opens its /gentle:agents view.
+	// The session that owns the Agents widget, so a click on an agent row opens its /td:agents view.
 	let widgetCtx: ExtensionContext | undefined;
 	// The catalog prices a fallback notice ("2.0x the price").
 	let modelRegistry: ExtensionContext["modelRegistry"] | undefined;
@@ -873,7 +874,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 				// Read the existing durable registry, without roots()'s repeated Git validation.
 				// These are recorded contexts, never authority for admission or messaging.
 				const registered = sessions.getEntries().flatMap(entry => {
-					if (entry.type !== "custom" || entry.customType !== SESSION_WORKTREE_ENTRY) return [];
+					if (entry.type !== "custom" || !isBrandSchema(entry.customType, "session-worktree", 1)) return [];
 					const data = entry.data as { sessionId?: string; root?: string; evidence?: string } | undefined;
 					return data?.sessionId === activeSessionId() && typeof data.root === "string" && typeof data.evidence === "string" ? [data.root] : [];
 				});
@@ -1289,7 +1290,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 			// Compatibility fallback preserves continuation, not invisibility.
 			if (!wakeVisibilityWarning) {
 				wakeVisibilityWarning = true;
-				try { parentCtx.ui.notify("Gentle Agents cannot hide Claude Bridge continuation on this runtime; the generated user wake remains visible.", "warning"); } catch { /* UI failure must not drop continuation. */ }
+				try { parentCtx.ui.notify("Tomidev Agents cannot hide Claude Bridge continuation on this runtime; the generated user wake remains visible.", "warning"); } catch { /* UI failure must not drop continuation. */ }
 			}
 			return PARENT_WAKE_TEXT;
 		}
@@ -1364,7 +1365,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 	type ParentRoute = "idle" | "run" | "hold";
 	// Throws for a missing or stale parent context, so delivery fails closed.
 	const parentRoute = (): ParentRoute => {
-		if (!parentCtx) throw new Error("Gentle Agents has no live parent session context");
+		if (!parentCtx) throw new Error("Tomidev Agents has no live parent session context");
 		if (parentCtx.isIdle()) {
 			// The host is authoritative: an idle parent has no run, even if a
 			// lifecycle event was missed.
@@ -1737,7 +1738,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 		const messages = lastRunMessages;
 		lastRunMessages = [];
 		// A child's own failures are handled by the parent's runner, never by the child.
-		if (deps.env.GENTLE_PI_AGENTS_CHILD !== "1" && ctx) void orchestratorFallbackFor(ctx).onSettled(messages, { aborted: event?.aborted === true }).catch((error: unknown) => ui?.notify(`Model fallback failed: ${error instanceof Error ? error.message : String(error)}`, "error"));
+		if (deps.env[ENV_AGENTS_CHILD] !== "1" && ctx) void orchestratorFallbackFor(ctx).onSettled(messages, { aborted: event?.aborted === true }).catch((error: unknown) => ui?.notify(`Model fallback failed: ${error instanceof Error ? error.message : String(error)}`, "error"));
 	});
 	pi.on("turn_end", () => flushAll());
 	pi.on("session_compact", scheduleBoundaryFlush);
@@ -1834,7 +1835,6 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 				}
 				else if (resolvedPath !== undefined) noteDrop("evidence-path-mismatch");
 			}
-			if (!foreignTask) recordReviewMutation(pi, sessions, root, { source: "subagent", taskId: task.id, toolName: tool.toolName, toolCallId: tool.toolCallId, ...runtimeWriterProfile(task) });
 		},
 		onFinish: (task, observations) => {
 			// Completion is the only forwarding opportunity. No pending event, policy
@@ -2185,7 +2185,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 	// One surface of the Agents card. The rail is natively scrollable, so it
 	// lists every task; the above-editor widget keeps its row budget. Only the
 	// header row is the clickable collapse control, exactly like Todos; a click
-	// on an agent row below it opens /gentle:agents.
+	// on an agent row below it opens /td:agents.
 	const agentsCard = (tui: TUI, theme: Parameters<typeof renderAgentsCard>[1], rail: boolean): Component & { dispose(): void; digest(): string; surface?: "panel"; summary?(): ReturnType<typeof agentsSummary>; alert?(width: number): string[]; open?(): void } => {
 		let hovered = false;
 		let hoveredRow: number | undefined;
@@ -2249,7 +2249,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 			},
 		});
 		return {
-			// The mobile work row folds this section; a tap on it opens /gentle:agents.
+			// The mobile work row folds this section; a tap on it opens /td:agents.
 			...(rail ? { open: () => { if (widgetCtx) void openOverlay(widgetCtx); } } : {}),
 			// The panel editor draws the alert above its rule while the IDE chrome
 			// hides the above-editor card (rail or mobile work row).
@@ -2324,7 +2324,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 		// An explicit target is validated before any queue or session-dir writes.
 		const parentIdentity = deps.resolveWorktree(parentCwd, parentCwd);
 		if (repositoryRoot !== undefined && workspaceRoot !== undefined) throw new Error("repository_root and workspace_root are mutually exclusive.");
-		if (repositoryRoot !== undefined && (deps.env.GENTLE_PI_AGENTS_CHILD === "1" || ctx.mode !== "tui" || !ctx.hasUI)) throw new Error("Foreign repository launch requires an interactive parent session.");
+		if (repositoryRoot !== undefined && (deps.env[ENV_AGENTS_CHILD] === "1" || ctx.mode !== "tui" || !ctx.hasUI)) throw new Error("Foreign repository launch requires an interactive parent session.");
 		const selectedRoot = repositoryRoot ?? workspaceRoot;
 		// Preserve ordinary non-Git continuation, without admitting any new root.
 		const sameNonGitContinuation = resume !== undefined && repositoryRoot === undefined && selectedRoot === parentCwd && !parentIdentity;
@@ -2484,23 +2484,6 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 			// and running lifetime; a continuation is a new task and claims them again.
 			...(isBoundedWriter(agent.name) && surfaces ? { writerSurfaces: surfaces, writerRoot: canonicalWriterRoot(target ?? parentWorktreeRoot, foreign ? resolveSessionWorktree : deps.resolveWorktree) } : {}),
 			env: childEnv,
-			...(foreign || parentRepositoryIdentity === undefined ? {} : {
-				authorizeParentStandingReviewPermission: (repositoryIdentity: string) => {
-					try {
-						return repositoryIdentity === parentRepositoryIdentity &&
-							parentSessionManager.getSessionId() === parentSessionId &&
-							parentSessionId.length > 0 &&
-							hasReviewSessionPermission({
-								sessionManager: parentSessionManager,
-								sessionId: parentSessionId,
-								worktreeRoot: parentWorktreeRoot,
-								repositoryIdentity: parentRepositoryIdentity,
-							});
-					} catch {
-						return false;
-					}
-				},
-			}),
 		};
 		if (foreign && target && foreignIdentity) foreignRequests.set(request, { root: target, commonDir: foreignIdentity.commonDir, manager: ctx.sessionManager });
 		return request;
@@ -2998,9 +2981,9 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 	});
 
 	tool("list_agents", "List the subagents defined for this project and user, with their descriptions and declared tool inventory.", { properties: {} }, async (_params, ctx) => {
-		const { agents, errors } = discoverAgents(roots(ctx));
+		const { agents, errors, warnings } = discoverAgents(roots(ctx));
 		const lines = agents.map((agent) => `- ${agent.name} (${agent.scope}): ${agent.description || "no description"} ${declaredToolInventory(agent)}`);
-		const problems = errors.map((error) => `! ${error}`);
+		const problems = [...errors.map((error) => `! ${error}`), ...warnings.map((warning) => `~ ${warning}`)];
 		return text(lines.length === 0 ? "No subagents defined." : [...lines, ...problems].join("\n"));
 	});
 
@@ -3263,7 +3246,7 @@ export default function gentleAgents(pi: ExtensionAPI, env: NodeJS.ProcessEnv = 
 				schedule: deps.schedule,
 				parentSessionId: activeSessionId(),
 				onError: (error) => {
-					const message = `Gentle Agents activity push failed: ${error instanceof Error ? error.message : String(error)}`;
+					const message = `Tomidev Agents activity push failed: ${error instanceof Error ? error.message : String(error)}`;
 					if (notifiedRpcActivityErrors?.has(message)) return;
 					notifiedRpcActivityErrors?.add(message);
 					ctx.ui.notify(message, "warning");

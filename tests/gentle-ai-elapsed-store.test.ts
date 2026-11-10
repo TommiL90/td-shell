@@ -23,7 +23,7 @@ test("timing entry parsing accepts well-formed records and rejects the rest", ()
 test("replay keeps the last timing entry per tool call and ignores foreign entries", () => {
 	const entries: GentleAiTimingEntry[] = [
 		{ type: "message", customType: undefined, data: null },
-		{ type: "custom", customType: "gentle-pi.session-worktree/v1", data: { root: "/x" } },
+		{ type: "custom", customType: "tomidev.session-worktree/v1", data: { root: "/x" } },
 		entry({ toolCallId: "a", startedAt: 1 }),
 		entry({ toolCallId: "a", startedAt: 1, endedAt: 9 }),
 		entry({ toolCallId: "b", startedAt: 2 }),
@@ -67,7 +67,7 @@ test("a fresh ledger restores timings recorded by a previous one", () => {
 	assert.deepEqual(second.lookup("call-1"), { toolCallId: "call-1", startedAt: 1_000 });
 });
 
-test("extension events persist the coordinator outer call timing and ignore foreign tools", async () => {
+test("retired review tools persist no coordinator call timing, and foreign tools are ignored", async () => {
  const { createGentleAiExtension } = await import("../extensions/gentle-ai.ts");
  const entries: Array<{ type: string; customType: string; data: unknown }> = [];
  const handlers = new Map<string, Array<(event: any, ctx: any) => unknown>>();
@@ -75,13 +75,13 @@ test("extension events persist the coordinator outer call timing and ignore fore
   on(name: string, handler: (event: any, ctx: any) => unknown) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); } };
  const manager = { getSessionId: () => "coordinator-timing-fixture", getCwd: () => process.cwd(), getEntries: () => entries, getBranch: () => [], getSessionFile: () => undefined };
  const ctx = { cwd: process.cwd(), hasUI: false, sessionManager: manager, ui: { notify() {}, setStatus() {}, setWidget() {} } };
- createGentleAiExtension({ nativeReviewCli: null, candidateViews: null, processEnv: { GENTLE_PI_AGENTS_CHILD: "1", GENTLE_AI_TELEMETRY: "0" } })(pi as never);
+ createGentleAiExtension({ nativeReviewCli: null, candidateViews: null, processEnv: { TOMIDEV_AGENTS_CHILD: "1", GENTLE_AI_TELEMETRY: "0" } })(pi as never);
  for (const handler of handlers.get("session_start") ?? []) await handler({ reason: "new" }, ctx);
  for (const [stage, name, id] of [["tool_execution_start", "gentle_review_run", "outer"], ["tool_execution_end", "gentle_review_run", "outer"], ["tool_execution_start", "foreign", "foreign"], ["tool_execution_end", "foreign", "foreign"]]) {
   for (const handler of handlers.get(stage) ?? []) await handler({ toolName: name, toolCallId: id }, ctx);
  }
  const timing = readGentleAiTimings(entries).get("outer");
- assert.ok(timing); assert.ok(typeof timing.endedAt === "number" && timing.endedAt >= timing.startedAt);
+ assert.equal(timing, undefined, "retired review tools record no elapsed timing");
  assert.equal(readGentleAiTimings(entries).has("foreign"), false);
  for (const handler of handlers.get("session_shutdown") ?? []) await handler({}, ctx);
 });

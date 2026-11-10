@@ -6,6 +6,7 @@ import { activeTodoTitle, herdrAgentLabel } from "../lib/herdr-activity.ts";
 import { HERDR_TASK_SUMMARY_CHANGED, resolveHerdrTaskSummarySettings } from "../lib/herdr-task-summary-policy.ts";
 import { NOTIFICATION_ATTENTION_EVENT } from "../lib/notification-events.ts";
 import { replayTodo } from "../lib/shell-todo.ts";
+import { ENV_AGENTS_CHILD } from "../lib/brand.ts";
 
 // One-second watch plus a nine-second deadline leaves room for tick alignment.
 const REFRESH_MS = 9000;
@@ -21,7 +22,7 @@ interface Options {
 export function createAgentStatusExtension(options: Options = {}) {
 	return (pi: ExtensionAPI): void => {
 		const env = options.env ?? process.env;
-		if (env.GENTLE_PI_AGENTS_CHILD === "1") return;
+		if (env[ENV_AGENTS_CHILD] === "1") return;
 		const home = resolve(options.gentlePiConfigHome ?? gentlePiConfigHome(env));
 		const now = options.now ?? Date.now;
 		let owner: string | undefined;

@@ -89,6 +89,7 @@ interface PackageJson {
 	description?: string;
 	keywords?: string[];
 	version?: string;
+	private?: boolean;
 	files?: string[];
 	scripts?: Record<string, string>;
 	dependencies?: Record<string, string>;
@@ -127,7 +128,7 @@ test("public docs and metadata advertise ODD and review without retired phase wo
 		const source = readFileSync(join(PACKAGE_ROOT, path), "utf8");
 		assert.match(source, /ODD|Organic Driven Development/, path);
 		assert.match(source, /review/i, path);
-		assert.doesNotMatch(source, /\bSDD\b|OpenSpec|\/gentle-sdd-init|\/gentle:install-sdd|\/gentle:sdd-preflight|\/sdd-/i, path);
+		assert.doesNotMatch(source, /\bSDD\b|OpenSpec|\/gentle-sdd-init|\/td:install-sdd|\/td:sdd-preflight|\/sdd-/i, path);
 	}
 });
 
@@ -232,7 +233,7 @@ test("package verification excludes the retired init extension while retaining O
 	assert.equal(existsSync(join(PACKAGE_ROOT, "extensions", "sdd-init.ts")), false);
 	assert.doesNotMatch(verifier, /^\s*"extensions\/sdd-init\.ts",?$/m);
 	assert.match(verifier, /existsSync\(join\(root, "extensions\/sdd-init\.ts"\)\)/);
-	for (const resource of ["extensions/gentle-ai.ts", "extensions/skill-registry.ts", "assets/orchestrator.md", "assets/orchestrator-delegation.md", "assets/orchestrator-delegation-reference.md", "assets/agents/gentle-ai-worker.md", "assets/agents/review-risk.md", "assets/chains/4r-review.chain.md"]) {
+	for (const resource of ["extensions/gentle-ai.ts", "extensions/skill-registry.ts", "assets/orchestrator.md", "assets/orchestrator-delegation.md", "assets/orchestrator-delegation-reference.md", "assets/agents/gentle-ai-worker.md", "assets/agents/review-risk.md"]) {
 		assert.ok(verifier.includes(`"${resource}"`), `${resource} must remain required`);
 	}
 });
@@ -243,37 +244,31 @@ test("package verification names the native review runtime boundary and packaged
 
 	assert.ok(manifest.files?.includes("lib/"), "the published package must include the native review runtime module directory");
 	assert.ok(manifest.files?.includes("runtime/"), "the published package must include generated JavaScript runtime modules");
-	assert.match(verifier, /"lib\/native-review-cli\.ts"/, "package verification must require the native review adapter from the packaged runtime");
-	assert.match(verifier, /"runtime\/native-review-cli\.mjs"/, "package verification must require the generated native review adapter");
+	assert.doesNotMatch(verifier, /"lib\/native-review-cli\.ts"/, "package verification must exclude native review after RDD removal");
+	assert.doesNotMatch(verifier, /"runtime\/native-review-cli\.mjs"/, "package verification must exclude native review after RDD removal");
 	assert.match(verifier, /build-runtime-modules\.mjs.*--check/s, "package verification must reject generated-runtime drift");
-	assert.match(verifier, /"tests\/fixtures\/native-review-cli\/v2\.1\.3\/start\.json"/, "package verification must retain the pinned native decoder fixture");
-	assert.match(
-		readFileSync(join(PACKAGE_ROOT, "extensions", "gentle-ai.ts"), "utf8"),
-		/createNativeReviewCli\(\)/,
-		"the production extension must construct its native client from the packaged runtime module",
-	);
 });
 
-test("double-click installers are attached to the release only after the verified publication", () => {
+test("double-click installers are attached to the release only after the verified release tag", () => {
 	const workflow = readFileSync(join(PACKAGE_ROOT, ".github", "workflows", "publish.yml"), "utf8");
 	const job = workflow.match(/^ {2}installers:\n([\s\S]*?)(?=^ {2}[A-Za-z0-9_-]+:\n|(?![\s\S]))/m)?.[1];
 	assert.ok(job, "publish.yml has an installers job");
-	assert.match(job, /^ {4}needs: publish$/m, "installers wait for the verified npm publication");
-	assert.match(job, /^ {4}if: github\.repository == 'Gentleman-Programming\/gentle-shell'$/m);
-	assert.match(job, /^ {6}contents: write$/m, "only this job may write the release");
+	assert.match(job, /^ {4}needs: release$/m, "installers wait for the verified release tag");
+	assert.match(job, /^ {4}if: github\.repository == 'TommiL90\/tomidev-shell'$/m);
+	assert.match(job, /^ {6}contents: write$/m, "only the release jobs may write the release");
 	assert.match(job, /ref: \$\{\{ github\.sha \}\}/, "the installers come from the verified release commit");
 	assert.match(job, /persist-credentials: false/);
 	assert.match(job, /node scripts\/build-installer-bundles\.mjs --out "\$\{RUNNER_TEMP\}\/installers"/);
-	assert.match(job, /RELEASE_TAG: \$\{\{ needs\.publish\.outputs\.tag \}\}/, "the tag the publish job verified, not the raw input");
+	assert.match(job, /RELEASE_TAG: \$\{\{ needs\.release\.outputs\.tag \}\}/, "the tag the release job verified, not the raw input");
 	assert.match(job, /package-manager-cache: false/);
-	assert.match(workflow, /^ {4}outputs:\n {6}tag: \$\{\{ steps\.release\.outputs\.tag \}\}$/m, "publish exports its verified tag");
+	assert.match(workflow, /^ {4}outputs:\n {6}tag: \$\{\{ steps\.release\.outputs\.tag \}\}$/m, "the release job exports its verified tag");
 	assert.match(job, /gh release upload "\$\{RELEASE_TAG\}" "\$\{RUNNER_TEMP\}"\/installers\/\* --repo "\$\{GITHUB_REPOSITORY\}" --clobber/);
-	const publish = workflow.match(/^ {2}publish:\n([\s\S]*?)(?=^ {2}installers:\n)/m)?.[1];
-	assert.ok(publish);
-	assert.doesNotMatch(publish, /contents: write/, "the npm publication job keeps read-only contents");
+	const release = workflow.match(/^ {2}release:\n([\s\S]*?)(?=^ {2}installers:\n)/m)?.[1];
+	assert.ok(release);
+	assert.doesNotMatch(release, /npm publish|id-token: write|environment: npm/, "the release job never publishes to npm");
 });
 
-test("npm publication is bound to the exact package tag and triggering commit", () => {
+test("the GitHub release is bound to the exact package tag and triggering commit, and never publishes to npm", () => {
 	const workflow = readFileSync(join(PACKAGE_ROOT, ".github", "workflows", "publish.yml"), "utf8");
 	const packageJson = readPackageJson();
 	const dispatchBlock = workflow.match(
@@ -284,11 +279,12 @@ test("npm publication is bound to the exact package tag and triggering commit", 
 		...dispatchBlock.matchAll(/^ {6}([A-Za-z0-9_-]+):$/gm),
 	].map((match) => match[1]);
 
+	assert.match(workflow, /^name: Release$/m, "the workflow creates a GitHub release, not an npm publication");
 	assert.match(workflow, /on:\n\s+workflow_dispatch:\s*\n/);
 	assert.deepEqual(inputNames, ["tag"], "the trusted workflow must expose exactly one caller input");
 	assert.match(workflow, /inputs:\n\s+tag:/, "the trusted main workflow must accept only the release tag");
 	assert.match(workflow, /RELEASE_TAG: \$\{\{ inputs\.tag \}\}/);
-	assert.doesNotMatch(workflow, /checkout-ref|dist-tag.*inputs|inputs\.(?!tag)/, "the release workflow must not accept checkout or dist-tag inputs");
+	assert.doesNotMatch(workflow, /checkout-ref|dist-tag|inputs\.(?!tag)/, "the release workflow must not accept checkout or dist-tag inputs");
 	assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/, "checkout must use the immutable event SHA");
 	assert.match(workflow, /persist-credentials: false/, "the release checkout must not retain GitHub credentials");
 	assert.match(workflow, /DEFAULT_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/);
@@ -304,23 +300,25 @@ test("npm publication is bound to the exact package tag and triggering commit", 
 	assert.match(workflow, /git checkout --detach "\$\{tag_commit\}"/);
 	assert.match(workflow, /git rev-parse "\$\{GITHUB_SHA\}\^\{commit\}"/);
 	assert.match(workflow, /git rev-parse ['"]HEAD\^\{commit\}['"]/);
-	assert.match(workflow, /Reverify protected release authority and publish/);
+	assert.match(workflow, /Reverify protected release authority/);
 	assert.match(workflow, /Release authority changed after verification/);
-	assert.match(workflow, /id-token: write/, "trusted publishing requires OIDC");
-	assert.match(workflow, /node-version: "24"/, "trusted publishing must use a supported Node.js version");
-	assert.match(workflow, /const minimum = \[11, 5, 1\]/, "trusted publishing must reject npm versions below 11.5.1");
-	assert.match(workflow, /packageJson\.repository\?\.type !== expectedRepository\.type/);
+	assert.match(workflow, /gh release view "\$\{RELEASE_TAG\}"/, "an existing release for the tag is reused");
+	assert.match(workflow, /gh release create "\$\{RELEASE_TAG\}" --repo "\$\{GITHUB_REPOSITORY\}" --verify-tag/, "the release is created for the verified tag when it is missing");
+	assert.doesNotMatch(workflow, /npm publish|id-token: write|environment: npm|registry-url|NODE_AUTH_TOKEN|--provenance|pnpm publish|--no-git-checks/, "no npm or registry publication");
+	assert.match(workflow, /node-version: "24"/);
 	assert.match(workflow, /packageJson\.repository\?\.url !== expectedRepository\.url/);
 	assert.deepEqual(
 		packageJson.repository,
 		{
 			type: "git",
-			url: "git+https://github.com/Gentleman-Programming/gentle-shell.git",
+			url: "git+https://github.com/TommiL90/tomidev-shell.git",
 		},
-		"trusted publishing requires the exact case-sensitive npm repository identity",
+		"the release repository is the fork, as its Git source is",
 	);
-	assert.match(workflow, /npm publish --provenance --access public/);
-	assert.doesNotMatch(workflow, /pnpm publish|--no-git-checks|NODE_AUTH_TOKEN/);
+});
+
+test("the package is private, so npm publish is refused: the distribution comes from the Git tag", () => {
+	assert.equal(readPackageJson().private, true);
 });
 
 test("Pi delivery relay is absent from the packaged extension", () => {
@@ -343,6 +341,8 @@ test("generated runtime modules and packed-package checks are deterministic", ()
 	assert.match(generator, /Generated by scripts\/build-runtime-modules\.mjs/);
 	const ordinaryPostinstall = readNamedFunction(packedRunner, "testHookedPackedRunner");
 	assert.match(ordinaryPostinstall, /\["install"[^\]]*"--ignore-scripts=false"/s, "ordinary packed install must explicitly enable postinstall");
+	assert.match(ordinaryPostinstall, /\["install"[^\]]*"--foreground-scripts"/s, "ordinary packed install must capture actual hook output");
+	assert.match(ordinaryPostinstall, /assertPackedPostinstallOutput\(installOutput, packageRoot\)/, "npm exit zero must not substitute for postinstall execution evidence");
 	assert.doesNotMatch(ordinaryPostinstall, /\["install"[^\]]*"--ignore-scripts"(?!\=false)/s);
 	for (const name of [
 		"testSdkLifecyclePackedSession",
@@ -364,23 +364,40 @@ test("generated runtime modules and packed-package checks are deterministic", ()
 	assert.match(runNpmWithEnv, /execFileSync\(invocation\.file, \[\.\.\.invocation\.prefix, \.\.\.arguments_\]/);
 	assert.match(runNpmWithEnv, /\.\.\.options, env/);
 	assert.doesNotMatch(packedRunner, /shell\s*:\s*true/);
-	assert.match(packedRunner, /review", "capabilities", "--contract", "gentle-ai\.review-integration\/v2"/);
+	const launchSmoke = readNamedFunction(packedRunner, "runPackedLaunchSmoke");
+	assert.match(launchSmoke, /assertOwnedRegularFile\(packageRoot, "bin\/tomidev\.mjs"\)/);
+	assert.match(launchSmoke, /\[launcher, "--link", "--no-extensions", "--list-models"\]/);
+	assert.match(launchSmoke, /assert\.equal\(rejected\?\.exitStatus, 2/);
+	for (const proof of ["assertPackedAssets(packageRoot", "assertNoNativeInstallerArtifacts(packageRoot", "unhookedProbeSource(packageRoot", "sdkLifecycleProbeSource(packageRoot", "parseSdkLifecycleChildReceipt(probe.stdout, probe.stderr)", 'assert.equal(lifecycle?.status, "complete"']) {
+		assert.ok(ordinaryPostinstall.includes(proof), `default packed E2E must retain ${proof}`);
+	}
+	assert.match(ordinaryPostinstall, /assert\.deepEqual\(packageManifest\.bin, \{ tomidev: "bin\/tomidev\.mjs" \}\)/);
+	assert.match(ordinaryPostinstall, /assert\.equal\(readFileSync\(join\(agentHome, "settings\.json"\), "utf8"\), originalSettings\)/);
+	const registration = readNamedFunction(packedRunner, "unhookedProbeSource");
+	assert.match(registration, /registrations\.tools\.includes\(name\)/);
+	assert.match(registration, /registrations\.commands\.includes\(name\)/);
+	assert.match(registration, /discoverAgents\(\{ cwd: project/);
+	const lifecycleReceipt = readNamedFunction(packedRunner, "parseSdkLifecycleChildReceipt");
+	for (const invariant of ["parsed.sessionsStarted !== 2", "parsed.presenceAfterStart !== 2", "parsed.presenceAfterFirstDispose !== 1", "parsed.presenceAfterSecondDispose !== 0", "parsed.disposedSessions !== 2", "parsed.modelInvocationCount !== 0", "parsed.extensionErrorCount !== 0", "stderr.length !== 0"]) {
+		assert.ok(lifecycleReceipt.includes(invariant), `packed lifecycle must reject ${invariant}`);
+	}
+	assert.doesNotMatch(packedRunner, /nativeReviewAbandonAuthorization|decodeReviewCapabilitiesV2/);
 	assert.doesNotMatch(packedRunner, /git-commit-transaction|transaction runner/i);
 });
 
-test("package manifest ships and runs the checked-in package-local Gentle AI installer", () => {
+test("package postinstall only applies fullscreen settings without provisioning a review runtime", () => {
 	const packageJson = readPackageJson();
 	const verifier = readFileSync(join(PACKAGE_ROOT, "scripts", "verify-package-files.mjs"), "utf8");
 	const reference = readFileSync(join(PACKAGE_ROOT, "docs", "readme-reference.md"), "utf8");
 
 	assert.equal(packageJson.scripts?.postinstall, "node scripts/install-gentle-ai.mjs");
-	assert.match(reference, /run `node scripts\/install-gentle-ai\.mjs`/, "missing-binary recovery documentation must use the package postinstall entrypoint");
-	assert.match(reference, /installed `gentle-pi` package directory/, "recovery documentation must name the package working directory");
-	assert.match(reference, /if `GENTLE_PI_SKIP_GENTLE_AI_INSTALL` is set, remove or unset it before/i, "recovery documentation must prevent the installer skip from repeating");
+	assert.match(reference, /postinstall, setup and upgrades do not provision Gentle AI or require Go/);
+	assert.match(reference, /now applies only fullscreen settings/);
+	assert.doesNotMatch(readFileSync(join(PACKAGE_ROOT, "scripts", "install-gentle-ai.mjs"), "utf8"), /gentle-ai-installer|installGentleAi|TOMIDEV_SKIP/);
 	assert.ok(packageJson.files?.includes("scripts/"));
 	assert.match(verifier, /"scripts\/install-gentle-ai\.mjs"/);
-	assert.match(verifier, /"scripts\/gentle-ai-installer\.mjs"/);
-	assert.match(verifier, /"lib\/gentle-ai-binary\.ts"/);
+	assert.doesNotMatch(verifier, /"scripts\/gentle-ai-installer\.mjs"/);
+	assert.doesNotMatch(verifier, /"lib\/gentle-ai-binary\.ts"/);
 });
 
 test("package manifest installs pi-pretty through a wrapper without bundling native optional dependencies", () => {
@@ -431,20 +448,13 @@ test("package manifest installs pi-pretty through a wrapper without bundling nat
 	);
 });
 
-test("package verification binds the published Gentle AI v4.4.0 runtime pin", () => {
-	const installer = readFileSync(join(PACKAGE_ROOT, "scripts", "gentle-ai-installer.mjs"), "utf8");
-	const binary = readFileSync(join(PACKAGE_ROOT, "lib", "gentle-ai-binary.ts"), "utf8");
+test("package verification excludes the removed gentle-ai binary installer after RDD removal", () => {
 	const verifier = readFileSync(join(PACKAGE_ROOT, "scripts", "verify-package-files.mjs"), "utf8");
 
-	assert.match(installer, /INSTALLER_VERSION = "4\.4\.0"/);
-	assert.match(installer, /GENTLE_AI_WINDOWS_SOURCE_PACKAGE.*GENTLE_AI_WINDOWS_SOURCE_MODULE/);
-	assert.match(installer, /GENTLE_AI_WINDOWS_SOURCE_MODULE_CHECKSUM = "h1:cAQAzIsbocYcQfOzA1CmgGpGgiCivUNcPjdfJE8RJ6g="/);
-	assert.match(installer, /GOTOOLCHAIN: "local"/);
-	assert.match(installer, /GOSUMDB: "sum\.golang\.org"/);
-	assert.match(binary, /GENTLE_AI_VERSION = INSTALLER_VERSION/);
-	assert.match(binary, /GO_SUMDB_SOURCE_BUILD/);
-	assert.match(binary, /GENTLE_AI_WINDOWS_SOURCE_MODULE_CHECKSUM/);
-	assert.match(verifier, /v4\.4\.0/);
+	assert.equal(existsSync(join(PACKAGE_ROOT, "scripts", "gentle-ai-installer.mjs")), false);
+	assert.equal(existsSync(join(PACKAGE_ROOT, "lib", "gentle-ai-binary.ts")), false);
+	assert.doesNotMatch(verifier, /"scripts\/gentle-ai-installer\.mjs"/);
+	assert.doesNotMatch(verifier, /"lib\/gentle-ai-binary\.ts"/);
 });
 
 
@@ -709,13 +719,13 @@ test("packaged agents reach the agent runtime with their declared tool allowlist
 
 function withIsolatedAssetHome(run: (agentHome: string) => void): void {
 	const temporary = mkdtempSync(join(tmpdir(), "gentle-asset-owners-"));
-	const previous = process.env.GENTLE_PI_AGENT_HOME;
+	const previous = process.env.TOMIDEV_AGENT_HOME;
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporary;
+		process.env.TOMIDEV_AGENT_HOME = temporary;
 		run(temporary);
 	} finally {
-		if (previous === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previous;
 		rmSync(temporary, { recursive: true, force: true });
 	}
 }
@@ -737,11 +747,11 @@ test("ODD delegation assets retain applicable test-first checks and independent 
 	assert.match(support, /A test file merely existing is not proof of applicability or RED/i);
 	assert.match(support, /no meaningful RED[\s\S]*proportionate ordinary functional or structural verification/i);
 	assert.match(support, /Use only exact commands authorized by the parent/i);
-	assert.match(explorer, /read-only explorer for generic ODD work/);
-	assert.match(verifier, /read-only technical verifier for generic ODD work/);
+	assert.match(explorer, /read-only explorer for (?:generic ODD work|Tomidev Shell tasks)/);
+	assert.match(verifier, /read-only technical verifier for (?:generic ODD work|Tomidev Shell tasks)/);
 	assert.match(worker, /allowed edit surfaces/i);
 	assert.match(worker, /work-unit commit/i);
-	assert.match(worker, /review lifecycle.*parent/i);
+	assert.match(worker, /(?:review lifecycle|Code review).*parent/i);
 });
 
 // A package agent whose frontmatter another tool rewrote (inline tools, model
@@ -902,9 +912,9 @@ const EXPECTED_OWNER_ASSETS: Record<PackageAssetOwner, readonly string[]> = {
 		"gentle-ai/support/strict-tdd.md", "gentle-ai/support/strict-tdd-verify.md",
 	],
 	review: [
-		"agents/jd-fix-agent.md", "agents/jd-judge-a.md", "agents/jd-judge-b.md",
+		"agents/jd-judge-a.md", "agents/jd-judge-b.md",
 		"agents/review-readability.md", "agents/review-reliability.md",
-		"agents/review-resilience.md", "agents/review-risk.md", "chains/4r-review.chain.md",
+		"agents/review-resilience.md", "agents/review-risk.md",
 	],
 };
 
@@ -944,10 +954,10 @@ test("all-assets installation covers every retained packaged file with explicit 
 		assert.equal(getPackageAssetOwner(key), undefined, "unknown assets must not default to SDD");
 	}
 	withIsolatedAssetHome((agentHome) => {
-		assert.deepEqual(installPackageAssets(agentHome, false), { agents: 10, chains: 1, support: 2, skipped: 0 });
+		assert.deepEqual(installPackageAssets(agentHome, false), { agents: 9, chains: 0, support: 2, skipped: 0 });
 		assert.deepEqual(Object.keys(installedAssetManifest(agentHome).assets).sort(), packaged);
-		assert.deepEqual(installPackageAssets(agentHome, false), { agents: 0, chains: 0, support: 0, skipped: 13 });
-		assert.deepEqual(installPackageAssets(agentHome, true), { agents: 10, chains: 1, support: 2, skipped: 0 });
+		assert.deepEqual(installPackageAssets(agentHome, false), { agents: 0, chains: 0, support: 0, skipped: 11 });
+		assert.deepEqual(installPackageAssets(agentHome, true), { agents: 9, chains: 0, support: 2, skipped: 0 });
 	});
 });
 
@@ -1121,7 +1131,7 @@ test("forced package installation preserves same-path user-authored agents and s
 	// hash-proven package-managed copies, never user content.
 	const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-refuter-home-"));
 	const temporaryProject = mkdtempSync(join(tmpdir(), "gentle-pi-refuter-project-"));
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const samePathUserAgent = join(temporaryAgentHome, "agents", RETIRED_REFUTER_FILE);
 	const userShadow = join(temporaryAgentHome, "subagents", RETIRED_REFUTER_FILE);
 	const projectOverride = join(temporaryProject, ".pi", "agents", RETIRED_REFUTER_FILE);
@@ -1137,7 +1147,7 @@ test("forced package installation preserves same-path user-authored agents and s
 	].join("\n");
 
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 		mkdirSync(dirname(projectOverride), { recursive: true });
 		writeFileSync(projectOverride, "project override must stay\n");
 		mkdirSync(dirname(userShadow), { recursive: true });
@@ -1164,9 +1174,9 @@ test("forced package installation preserves same-path user-authored agents and s
 		);
 	} finally {
 		if (previousAgentHome === undefined) {
-			delete process.env.GENTLE_PI_AGENT_HOME;
+			delete process.env.TOMIDEV_AGENT_HOME;
 		} else {
-			process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+			process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		}
 		rmSync(temporaryAgentHome, { recursive: true, force: true });
 		rmSync(temporaryProject, { recursive: true, force: true });
@@ -1203,7 +1213,7 @@ test("v0.14 ownership evidence is bundled and matches the self-contained bounded
 
 test("first forced sync migrates untouched v0.13 assets, preserves routing, and owns new assets", () => {
 	const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-v013-upgrade-"));
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const installedReviewRisk = join(temporaryAgentHome, "agents", REVIEW_RISK_FILE);
 	const installedExemplar = join(temporaryAgentHome, "agents", MANAGED_EXEMPLAR_FILE);
 	const managedAssetsManifest = join(
@@ -1218,7 +1228,7 @@ test("first forced sync migrates untouched v0.13 assets, preserves routing, and 
 	);
 
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 		mkdirSync(dirname(installedReviewRisk), { recursive: true });
 		writeFileSync(installedReviewRisk, routedLegacySource);
 		assert.equal(existsSync(managedAssetsManifest), false, "v0.13 had no ownership manifest");
@@ -1254,8 +1264,8 @@ test("first forced sync migrates untouched v0.13 assets, preserves routing, and 
 		);
 
 		const userEditedMigration = migrated.replace(
-			"Run this selected lens exactly once against the supplied `initial_review_tree`.",
-			"Run this selected lens exactly once against the supplied `initial_review_tree` with a user-authored note.",
+			"You are **R1 Risk**, a read-only specialized code reviewer for Tomidev Shell.",
+			"You are **R1 Risk**, a read-only specialized code reviewer for Tomidev Shell with a user-authored note.",
 		);
 		assert.notEqual(userEditedMigration, migrated, "the fixture must exercise post-migration drift");
 		writeFileSync(installedReviewRisk, userEditedMigration);
@@ -1271,9 +1281,9 @@ test("first forced sync migrates untouched v0.13 assets, preserves routing, and 
 		assert.equal(postEditManifest.assets[`agents/${REVIEW_RISK_FILE}`], undefined);
 	} finally {
 		if (previousAgentHome === undefined) {
-			delete process.env.GENTLE_PI_AGENT_HOME;
+			delete process.env.TOMIDEV_AGENT_HOME;
 		} else {
-			process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+			process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		}
 		rmSync(temporaryAgentHome, { recursive: true, force: true });
 	}
@@ -1281,7 +1291,7 @@ test("first forced sync migrates untouched v0.13 assets, preserves routing, and 
 
 test("first forced sync migrates untouched v0.14 review contracts and preserves routing", () => {
 	const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-v014-upgrade-"));
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const installedReviewRisk = join(temporaryAgentHome, "agents", REVIEW_RISK_FILE);
 	const legacySource = readFileSync(V014_REVIEW_RISK_FIXTURE, "utf8");
 	const routedLegacySource = legacySource.replace(
@@ -1290,7 +1300,7 @@ test("first forced sync migrates untouched v0.14 review contracts and preserves 
 	);
 
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 		mkdirSync(dirname(installedReviewRisk), { recursive: true });
 		writeFileSync(installedReviewRisk, routedLegacySource);
 
@@ -1300,7 +1310,7 @@ test("first forced sync migrates untouched v0.14 review contracts and preserves 
 		assert.notEqual(migrated, routedLegacySource);
 		assert.match(migrated, /^model: private\/v014-model$/m);
 		assert.match(migrated, /^thinking: high$/m);
-		assert.match(migrated, /initial_review_tree/);
+		assert.match(migrated, /requesting-code-review/);
 		assert.doesNotMatch(migrated, /Full 4R runs at most two complete sweeps per lens/);
 		const currentPackageSource = readFileSync(
 			join(PACKAGE_ROOT, "assets", "agents", REVIEW_RISK_FILE),
@@ -1311,15 +1321,15 @@ test("first forced sync migrates untouched v0.14 review contracts and preserves 
 			currentPackageSource,
 		);
 	} finally {
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		rmSync(temporaryAgentHome, { recursive: true, force: true });
 	}
 });
 
 test("first forced sync preserves a body-edited v0.13 asset byte-for-byte", () => {
 	const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-v013-edited-"));
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const installedReviewRisk = join(temporaryAgentHome, "agents", REVIEW_RISK_FILE);
 	const editedLegacySource = readFileSync(V013_REVIEW_RISK_FIXTURE, "utf8").replace(
 		"Find security risks; do not fix them.",
@@ -1327,7 +1337,7 @@ test("first forced sync preserves a body-edited v0.13 asset byte-for-byte", () =
 	);
 
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 		mkdirSync(dirname(installedReviewRisk), { recursive: true });
 		writeFileSync(installedReviewRisk, editedLegacySource);
 
@@ -1340,9 +1350,9 @@ test("first forced sync preserves a body-edited v0.13 asset byte-for-byte", () =
 		assert.equal(manifest.assets[`agents/${REVIEW_RISK_FILE}`], undefined);
 	} finally {
 		if (previousAgentHome === undefined) {
-			delete process.env.GENTLE_PI_AGENT_HOME;
+			delete process.env.TOMIDEV_AGENT_HOME;
 		} else {
-			process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+			process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		}
 		rmSync(temporaryAgentHome, { recursive: true, force: true });
 	}
@@ -1350,7 +1360,7 @@ test("first forced sync preserves a body-edited v0.13 asset byte-for-byte", () =
 
 test("forced package installation refreshes an asset recorded as package-managed", () => {
 	const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-malformed-refuter-"));
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const installedExemplar = join(temporaryAgentHome, "agents", MANAGED_EXEMPLAR_FILE);
 	const managedAssetsManifest = join(
 		temporaryAgentHome,
@@ -1365,7 +1375,7 @@ test("forced package installation refreshes an asset recorded as package-managed
 	);
 
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 		installPackageAssets(PACKAGE_ROOT, true);
 		assert.ok(existsSync(installedExemplar), "a missing package asset must install");
 		assert.ok(
@@ -1389,9 +1399,9 @@ test("forced package installation refreshes an asset recorded as package-managed
 		assert.doesNotMatch(refreshed.source, /^  - bash$/m);
 	} finally {
 		if (previousAgentHome === undefined) {
-			delete process.env.GENTLE_PI_AGENT_HOME;
+			delete process.env.TOMIDEV_AGENT_HOME;
 		} else {
-			process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+			process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		}
 		rmSync(temporaryAgentHome, { recursive: true, force: true });
 	}
@@ -1402,7 +1412,7 @@ function assertManagedAgentUserEditIsPreserved(
 	editSource: (source: string) => string,
 ): void {
 	const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-managed-edit-"));
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const installedExemplar = join(temporaryAgentHome, "agents", MANAGED_EXEMPLAR_FILE);
 	const managedAssetsManifest = join(
 		temporaryAgentHome,
@@ -1411,7 +1421,7 @@ function assertManagedAgentUserEditIsPreserved(
 	);
 
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 		installPackageAssets(PACKAGE_ROOT, true);
 		const installedSource = readFileSync(installedExemplar, "utf8");
 		const userEditedSource = editSource(installedSource);
@@ -1435,9 +1445,9 @@ function assertManagedAgentUserEditIsPreserved(
 		);
 	} finally {
 		if (previousAgentHome === undefined) {
-			delete process.env.GENTLE_PI_AGENT_HOME;
+			delete process.env.TOMIDEV_AGENT_HOME;
 		} else {
-			process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+			process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		}
 		rmSync(temporaryAgentHome, { recursive: true, force: true });
 	}
@@ -1464,15 +1474,15 @@ test("forced package installation preserves a thinking-only edit to a managed ag
 test("forced package installation preserves an ordinary body edit to a managed agent", () => {
 	assertManagedAgentUserEditIsPreserved("an ordinary body edit", (source) =>
 		source.replace(
-			"You are the read-only explorer for generic ODD work.",
-			"Preserve this user-authored body change. You are the read-only explorer for generic ODD work.",
+			"You are the read-only explorer for Tomidev Shell tasks.",
+			"Preserve this user-authored body change. You are the read-only explorer for Tomidev Shell tasks.",
 		),
 	);
 });
 
 test("package model assignment keeps only package-managed agents owned", () => {
 	const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-model-ownership-"));
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const installedExemplar = join(temporaryAgentHome, "agents", MANAGED_EXEMPLAR_FILE);
 	const userAgent = join(temporaryAgentHome, "agents", "user-router.md");
 	const managedAssetsManifest = join(
@@ -1483,7 +1493,7 @@ test("package model assignment keeps only package-managed agents owned", () => {
 	const userAgentSource = "---\nname: user-router\n---\nuser-owned body\n";
 
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 		installPackageAssets(PACKAGE_ROOT, true);
 		writeFileSync(userAgent, userAgentSource);
 
@@ -1526,22 +1536,19 @@ test("package model assignment keeps only package-managed agents owned", () => {
 		);
 	} finally {
 		if (previousAgentHome === undefined) {
-			delete process.env.GENTLE_PI_AGENT_HOME;
+			delete process.env.TOMIDEV_AGENT_HOME;
 		} else {
-			process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+			process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		}
 		rmSync(temporaryAgentHome, { recursive: true, force: true });
 	}
 });
 
-test("jd-fix-agent packaged allowlist includes write tools", () => {
-	const frontmatter = readAgentFrontmatter(
-		join(PACKAGE_ROOT, "assets", "agents", "jd-fix-agent.md"),
+test("jd-fix-agent is removed from the packaged assets", () => {
+	assert.equal(
+		existsSync(join(PACKAGE_ROOT, "assets", "agents", "jd-fix-agent.md")),
+		false,
 	);
-
-	for (const tool of ["read", "edit", "write", "bash"]) {
-		assert.match(frontmatter, new RegExp(`^  - ${tool}$`, "m"));
-	}
 });
 
 test("deleted SDD definitions remain absent from the installed catalog", () => {
@@ -1662,7 +1669,8 @@ test("gentle-ai-worker packages the exact scoped writer contract", () => {
 	assert.match(memorySafety, /raw untrusted repository/);
 
 	const testDiscipline = readMarkdownSection(source, "Test discipline");
-	assert.match(testDiscipline, /Apply the ODD test-first policy by default for behavior changes with applicable runnable deterministic tests and a clear expected outcome/);
+	assert.match(testDiscipline, /Apply the project test policy, filling undefined aspects with the builtin test-first policy for behavior changes with applicable runnable deterministic tests and a clear expected outcome on the project's acceptance criteria/);
+	assert.match(testDiscipline, /`checks\.md` `C#` items in the fallback/);
 	assert.match(testDiscipline, /Test presence alone does not establish applicability; no TUI toggle or per-task chat choice is needed/);
 	assert.match(testDiscipline, /RED[\s\S]*GREEN[\s\S]*PRESERVE[\s\S]*REFACTOR/);
 	assert.match(testDiscipline, /no meaningful RED[\s\S]*proportionate ordinary functional or structural verification/);
@@ -1677,10 +1685,10 @@ test("gentle-ai-worker packages the exact scoped writer contract", () => {
 
 test("package installation gives gentle-ai-worker a loader-compatible scoped identity", () => {
 	const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-agent-home-"));
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 		installPackageAssets(PACKAGE_ROOT, true, ["delegation"]);
 
 		const installedAgentsDir = join(temporaryAgentHome, "agents");
@@ -1714,14 +1722,14 @@ test("package installation gives gentle-ai-worker a loader-compatible scoped ide
 		assert.doesNotMatch(source, /^name:\s*(?:worker|generic-writer)$/m);
 	} finally {
 		if (previousAgentHome === undefined) {
-			delete process.env.GENTLE_PI_AGENT_HOME;
+			delete process.env.TOMIDEV_AGENT_HOME;
 		} else {
-			process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+			process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		}
 		rmSync(temporaryAgentHome, { recursive: true, force: true });
 	}
 
-	assert.equal(process.env.GENTLE_PI_AGENT_HOME, previousAgentHome);
+	assert.equal(process.env.TOMIDEV_AGENT_HOME, previousAgentHome);
 	assert.ok(
 		!existsSync(temporaryAgentHome),
 		"the integration test must delete only its temporary agent home",
@@ -1735,7 +1743,7 @@ test("agent home resolver centralizes Gentle and Pi agent-dir precedence", () =>
 	try {
 		assert.equal(
 			resolveGentlePiAgentHome({
-				GENTLE_PI_AGENT_HOME: explicitGentleHome,
+				TOMIDEV_AGENT_HOME: explicitGentleHome,
 				PI_CODING_AGENT_DIR: piAgentDir,
 			}),
 			explicitGentleHome,
@@ -1743,7 +1751,7 @@ test("agent home resolver centralizes Gentle and Pi agent-dir precedence", () =>
 		assert.equal(resolveGentlePiAgentHome({ PI_CODING_AGENT_DIR: piAgentDir }), piAgentDir);
 		assert.equal(resolveGentlePiAgentHome({}), join(homedir(), ".pi", "agent"));
 		assert.equal(
-			resolveGentlePiAgentHome({ GENTLE_PI_AGENT_HOME: "", PI_CODING_AGENT_DIR: piAgentDir }),
+			resolveGentlePiAgentHome({ TOMIDEV_AGENT_HOME: "", PI_CODING_AGENT_DIR: piAgentDir }),
 			piAgentDir,
 			"an empty explicit override falls through like Pi Subagents does",
 		);
@@ -1759,13 +1767,13 @@ test("agent home resolver centralizes Gentle and Pi agent-dir precedence", () =>
 });
 
 test("asset installation uses PI_CODING_AGENT_DIR as the Pi agent home when no explicit Gentle override is set", () => {
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const previousPiAgentDir = process.env.PI_CODING_AGENT_DIR;
 	const temporaryPiAgentDir = mkdtempSync(join(tmpdir(), "gentle-pi-agent-dir-"));
 	const explicitGentleHome = mkdtempSync(join(tmpdir(), "gentle-pi-explicit-home-"));
 
 	try {
-		delete process.env.GENTLE_PI_AGENT_HOME;
+		delete process.env.TOMIDEV_AGENT_HOME;
 		process.env.PI_CODING_AGENT_DIR = temporaryPiAgentDir;
 
 		installPackageAssets(PACKAGE_ROOT, true, ["delegation"]);
@@ -1778,15 +1786,15 @@ test("asset installation uses PI_CODING_AGENT_DIR as the Pi agent home when no e
 			"the explicit override fixture must still be untouched before it is selected",
 		);
 
-		process.env.GENTLE_PI_AGENT_HOME = explicitGentleHome;
+		process.env.TOMIDEV_AGENT_HOME = explicitGentleHome;
 		installPackageAssets(PACKAGE_ROOT, true, ["delegation"]);
 		assert.ok(
 			existsSync(join(explicitGentleHome, "agents", "gentle-ai-explore.md")),
-			"GENTLE_PI_AGENT_HOME remains the explicit test/operator override",
+			"TOMIDEV_AGENT_HOME remains the explicit test/operator override",
 		);
 	} finally {
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		if (previousPiAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = previousPiAgentDir;
 		rmSync(temporaryPiAgentDir, { recursive: true, force: true });
@@ -1795,13 +1803,13 @@ test("asset installation uses PI_CODING_AGENT_DIR as the Pi agent home when no e
 });
 
 test("global model routing uses PI_CODING_AGENT_DIR for package-installed agents", () => {
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const previousPiAgentDir = process.env.PI_CODING_AGENT_DIR;
 	const temporaryPiAgentDir = mkdtempSync(join(tmpdir(), "gentle-pi-model-agent-dir-"));
 	const temporaryProject = mkdtempSync(join(tmpdir(), "gentle-pi-model-project-"));
 
 	try {
-		delete process.env.GENTLE_PI_AGENT_HOME;
+		delete process.env.TOMIDEV_AGENT_HOME;
 		process.env.PI_CODING_AGENT_DIR = temporaryPiAgentDir;
 		installPackageAssets(PACKAGE_ROOT, true, ["delegation"]);
 
@@ -1816,8 +1824,8 @@ test("global model routing uses PI_CODING_AGENT_DIR for package-installed agents
 			effort: "high",
 		});
 	} finally {
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		if (previousPiAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = previousPiAgentDir;
 		rmSync(temporaryPiAgentDir, { recursive: true, force: true });
@@ -1826,7 +1834,7 @@ test("global model routing uses PI_CODING_AGENT_DIR for package-installed agents
 });
 
 test("normal and forced installation copy generic agents with complete role contracts", () => {
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const expectedTools = {
 		"gentle-ai-explore": ["read", "grep", "find", "codegraph", "web_enable", "web_search", "source_check", "fetch_content", "get_search_content", "mcp__codegraph__codegraph_explore"],
 		"gentle-ai-verify": ["read", "grep", "find", "bash", "mcp__codegraph__codegraph_explore"],
@@ -1835,7 +1843,7 @@ test("normal and forced installation copy generic agents with complete role cont
 	try {
 		for (const force of [false, true]) {
 			const temporaryAgentHome = mkdtempSync(join(tmpdir(), "gentle-pi-generic-agents-"));
-			process.env.GENTLE_PI_AGENT_HOME = temporaryAgentHome;
+			process.env.TOMIDEV_AGENT_HOME = temporaryAgentHome;
 			try {
 				installPackageAssets(PACKAGE_ROOT, force, ["delegation"]);
 
@@ -1846,7 +1854,7 @@ test("normal and forced installation copy generic agents with complete role cont
 					assert.equal(source, readFileSync(packagedPath, "utf8"));
 					assert.equal(installedName, name);
 					assert.deepEqual(installedTools, tools);
-					assert.match(source, /generic ODD work/);
+					assert.match(source, /(?:generic ODD work|Tomidev Shell tasks)/);
 					assert.match(source, /Do not (?:fix findings, delegate to child agents|delegate to child agents, commit)/);
 					if (name === "gentle-ai-explore") {
 						assert.match(source, /cwd-scoped `codegraph` tool/);
@@ -1858,7 +1866,7 @@ test("normal and forced installation copy generic agents with complete role cont
 					}
 					assert.match(source, /Do not (?:edit, write|edit, write, or fix findings)/);
 					assert.match(source, /compressed (?:handoff|evidence handoff)/);
-					assert.match(source, /Do not use review lenses\. RDD review remains independent and parent-owned\./);
+					assert.match(source, /Do not use review lenses\. (?:RDD review|Code review) remains independent and parent-owned\./);
 					if (name === "gentle-ai-verify") {
 						assert.match(source, /exact test, build, lint, or spec example commands explicitly authorized by the parent/);
 						assert.match(source, /only outputs the parent explicitly identified as expected/);
@@ -1871,8 +1879,8 @@ test("normal and forced installation copy generic agents with complete role cont
 			}
 		}
 	} finally {
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 	}
 });
 
@@ -1931,8 +1939,8 @@ test("orchestrator routes generic roles without static RDD lens routing", () => 
 	}
 
 	const core = readFileSync(join(PACKAGE_ROOT, "assets", "orchestrator.md"), "utf8");
-	assert.match(core, /injects the mirrored provider-bundle review execution contract/);
-	assert.match(core, /this package invents no lifecycle instructions/);
+	assert.match(core, /# Tomidev Shell Orchestrator/);
+	assert.doesNotMatch(core, /injects the mirrored provider-bundle review execution contract/);
 });
 
 test("pi-pretty wrapper uses cached ESM loading for compiled and pnpm symlink installs", () => {
@@ -1948,7 +1956,7 @@ test("pi-pretty wrapper uses cached ESM loading for compiled and pnpm symlink in
 	assert.match(wrapper, /quietToolsEnabled/);
 });
 
-test("Gentle Shell v4.7.0 package manifest declares the release version", () => {
+test("Tomidev Shell v4.7.0 package manifest declares the release version", () => {
 	const packageJson = readPackageJson();
 	assert.equal(packageJson.version, "4.7.0", "the release manifest must be explicitly pinned to v4.7.0");
 	assert.equal(packageJson.scripts?.test, "node scripts/run-test-suite.mjs");
@@ -1968,27 +1976,22 @@ test("Gentle Shell v4.7.0 package manifest declares the release version", () => 
 	assert.doesNotMatch(runtime, /execFileSync\("(?:npm|pnpm)", \["publish"/);
 });
 
-test("bounded review keeps the Judgment Day skill contract at canon metadata version 1.7", () => {
+test("consensus skill contract has metadata version 1.0", () => {
 	const frontmatter = readAgentFrontmatter(
-		join(PACKAGE_ROOT, "skills", "judgment-day", "SKILL.md"),
+		join(PACKAGE_ROOT, "skills", "consensus", "SKILL.md"),
 	);
 
-	assert.match(frontmatter, /^  version: "1\.7"$/m);
-	assert.doesNotMatch(frontmatter, /^  version: "1\.4"$/m);
+	assert.match(frontmatter, /^  version: "1\.0"$/m);
 });
 
-test("technical reference documents dynamic Gentle AI RDD ownership and the installed permission boundary", () => {
-	const reference = readFileSync(join(PACKAGE_ROOT, "docs", "readme-reference.md"), "utf8");
-	for (const clause of [
-		"Gentle AI dynamically supplies runtime-specific RDD instructions",
-		"does not define an RDD lifecycle",
-		"Dangerous-command safety remains independent and authoritative.",
-		"package-managed isolated installation",
-		"Project and user overrides may shadow a package asset",
-	]) {
-		assert.ok(reference.includes(clause), `technical reference missing dynamic RDD clause: ${clause}`);
+test("technical reference documents Tomidev code review, consensus and independent verification", () => {
+	for (const path of ["README.md", "docs/readme-reference.md"]) {
+		const reference = readFileSync(join(PACKAGE_ROOT, path), "utf8");
+		for (const clause of ["requesting-code-review", "final checkpoint", "review-risk", "review-readability", "review-reliability", "review-resilience", "blind judges", "3 rounds", "Full Lean", "gentle-ai-verify", "INCOMPLETE"]) {
+			assert.ok(reference.includes(clause), `${path} missing review clause: ${clause}`);
+		}
+		assert.doesNotMatch(reference, /gentle_review|\bRDD\b|Judgment Day/);
 	}
-	assert.doesNotMatch(reference, /New ordinary review uses compact `gentle_review` `start -> finalize -> validate`\./);
 });
 
 

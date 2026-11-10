@@ -1,4 +1,5 @@
 import type { ServiceTier } from "./model-routing-authority.ts";
+import { ENV_PREFIX } from "./brand.ts";
 
 // Conservative intersection of the installed catalog and OpenAI's Fast list.
 const FAST_MODELS = new Set([
@@ -6,8 +7,8 @@ const FAST_MODELS = new Set([
 	"gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra",
 ]);
 
-export const PROFILE_TIER_EVENT = "gentle-pi:profile-tier";
-export const CHILD_TIER_ENV = "GENTLE_PI_AGENT_SERVICE_TIER";
+export const PROFILE_TIER_EVENT = "td:profile-tier";
+export const CHILD_TIER_ENV = `${ENV_PREFIX}AGENT_SERVICE_TIER`;
 
 export function supportsOpenAIFast(model: { provider?: string; api?: string; id?: string } | null | undefined): boolean {
 	return !!model && typeof model.id === "string" && FAST_MODELS.has(model.id) && (

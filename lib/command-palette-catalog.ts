@@ -1,3 +1,4 @@
+import { brandCommand } from "./brand.ts";
 import type { CommandPaletteGroup, CommandPaletteItem } from "./command-palette.ts";
 
 // The curated command set for the command palette: an OpenCode-style
@@ -20,37 +21,33 @@ export const COMMAND_PALETTE_CATALOG: readonly CommandPaletteCatalogGroup[] = [
 	{
 		title: "Configuration",
 		items: [
-			{ command: "gentle:profiles", label: "Models and profiles" },
-			{ command: "gentle:persona", label: "Switch persona" },
-			{ command: "gentle:review-mode", label: "Review mode (receipt-driven development)" },
-			{ command: "gentle:background-subagents", label: "Background subagents" },
-			{ command: "gentle:double-esc-cancel", label: "Require double Esc to cancel" },
-			{ command: "gentle:customize", label: "Customization · appearance + audio notifications" },
-			{ command: "gentle:animations", label: "Animation mode" },
-			{ command: "gentle:vim", label: "Vim opt-in · Pi slash commands" },
-			{ command: "gentle:telemetry", label: "Telemetry" },
-			{ command: "gentle:dev-binary", label: "Gentle AI dev binary" },
+			{ command: brandCommand("profiles"), label: "Models and profiles" },
+			{ command: brandCommand("background-subagents"), label: "Background subagents" },
+			{ command: brandCommand("double-esc-cancel"), label: "Require double Esc to cancel" },
+			{ command: brandCommand("customize"), label: "Customization · appearance + audio notifications" },
+			{ command: brandCommand("animations"), label: "Animation mode" },
+			{ command: brandCommand("vim"), label: "Vim opt-in · Pi slash commands" },
+			{ command: brandCommand("telemetry"), label: "Telemetry" },
 		],
 	},
 	{
 		title: "Session",
 		items: [
-			{ command: "gentle:guide", label: "Guided tour of Gentle Shell" },
-			{ command: "gentle:yolo", label: "🚀 YOLO 🔥 session permission" },
-			{ command: "gentle:changes", label: "Browse changes" },
-			{ command: "gentle:agents", label: "Subagents" },
-			{ command: "gentle:jobs", label: "Background jobs" },
-			{ command: "gentle:usage", label: "Subscription usage" },
-			{ command: "gentle:review-session-permission", label: "Review session permission" },
-			{ command: "gentle:voice", label: "Voice dictation · local Parakeet" },
-			{ command: "gentle:design", label: "Design · HTML artboards" },
+			{ command: brandCommand("yolo"), label: "🚀 YOLO 🔥 session permission" },
+			{ command: brandCommand("changes"), label: "Browse changes" },
+			{ command: brandCommand("agents"), label: "Subagents" },
+			{ command: brandCommand("jobs"), label: "Background jobs" },
+			{ command: brandCommand("usage"), label: "Subscription usage" },
+			{ command: brandCommand("voice"), label: "Voice dictation · local Parakeet" },
+			{ command: brandCommand("design"), label: "Design · HTML artboards" },
 		],
 	},
 	{
 		title: "Diagnostics",
 		items: [
-			{ command: "gentle:status", label: "Gentle AI status" },
-			{ command: "gentle:doctor", label: "Doctor" },
+			{ command: brandCommand("status"), label: "Gentle AI status" },
+			{ command: brandCommand("doctor"), label: "Doctor" },
+			{ command: brandCommand("context"), label: "Context input breakdown" },
 		],
 	},
 	{

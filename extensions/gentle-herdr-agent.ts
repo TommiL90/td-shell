@@ -3,13 +3,14 @@ import { posix, win32 } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { HERDR_REPORTER_ENV } from "../lib/gentle-shell-launcher.ts";
 import { herdrAgentLabel, herdrDetected } from "../lib/herdr-activity.ts";
+import { BRAND_NAME, ENV_AGENTS_CHILD } from "../lib/brand.ts";
 
 // Gentle Shell's own Herdr agent integration (gentle-shell#2705). Herdr's
 // managed Pi bridge always reports `agent: "pi"`, so the launcher stops
 // loading it and sets HERDR_REPORTER_ENV; this extension then reports the
 // same lifecycle under Herdr's documented custom-agent contract: its own
 // stable source (never `herdr:`) and its own agent name. One reporter per pane.
-const SOURCE = "gentle-shell";
+const SOURCE = BRAND_NAME;
 
 type AgentState = "working" | "blocked" | "idle";
 type HerdrRequest = { id: string; method: string; params: Record<string, unknown> };
@@ -48,7 +49,7 @@ function socketTransport(env: NodeJS.ProcessEnv): (request: HerdrRequest) => Pro
 export function createHerdrAgentExtension(options: HerdrAgentOptions = {}) {
 	return (pi: ExtensionAPI): void => {
 		const env = options.env ?? process.env;
-		if (env[HERDR_REPORTER_ENV] !== "1" || env.GENTLE_PI_AGENTS_CHILD === "1" || !herdrDetected(env)) return;
+		if (env[HERDR_REPORTER_ENV] !== "1" || env[ENV_AGENTS_CHILD] === "1" || !herdrDetected(env)) return;
 		const agent = herdrAgentLabel(env);
 		const paneId = env.HERDR_PANE_ID!;
 		const send = options.send ?? socketTransport(env);

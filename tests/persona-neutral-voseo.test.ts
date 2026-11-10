@@ -1,119 +1,52 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { __testing } from "../extensions/gentle-ai.ts";
+import { __testing, createGentleAiExtension } from "../extensions/gentle-ai.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-// These tests assert that the composed main-agent prompt (built by buildGentlePrompt)
-// does not encourage Rioplatense voseo in neutral mode, and does include the expected
-// voseo/Rioplatense markers in gentleman mode.
-
-test("neutral mode composed prompt does not instruct to use voseo", () => {
-	const prompt = __testing.buildGentlePrompt("neutral");
-	// The neutral prompt must never tell the model to USE voseo
-	assert.doesNotMatch(
-		prompt,
-		/answer in natural Rioplatense Spanish with voseo/i,
-		"neutral prompt must not instruct to use Rioplatense voseo",
-	);
-	assert.doesNotMatch(
-		prompt,
-		/uses natural Rioplatense voseo/i,
-		"neutral prompt must not describe voseo as the language mode to use",
-	);
+test("S4/T12: the fixed senior architect preserves language and identity rules", () => {
+	const prompt = __testing.buildGentlePrompt();
+	assert.match(prompt, /Follow the senior architect persona: direct, concise, technical, and professional\./);
+	assert.match(prompt, /Always respond in the same language the user writes in/);
+	assert.match(prompt, /When the user writes in Spanish, answer in professional, technical Spanish\./);
+	assert.doesNotMatch(prompt, /Current persona mode|voseo|Rioplatense/i);
 });
 
-test("neutral mode composed prompt has no positive voseo/Rioplatense instruction and includes explicit prohibition", () => {
-	const prompt = __testing.buildGentlePrompt("neutral");
-	// Any sentence that affirmatively tells the model to use voseo or natural Rioplatense
-	// must be absent. The prohibition line ("Do NOT use voseo") is the only allowed voseo
-	// mention. We match patterns that indicate a positive directive by requiring the word
-	// "use" (or its inflections) in proximity to "voseo" or "Rioplatense" WITHOUT a
-	// preceding negation — concretely, lines that start/contain "use", "uses", or "with voseo".
-	assert.doesNotMatch(
-		prompt,
-		/\bwith voseo\b/i,
-		"neutral prompt must not contain 'with voseo' (positive directive)",
-	);
-	assert.doesNotMatch(
-		prompt,
-		/\buse(?:s)? (?:natural )?Rioplatense\b/i,
-		"neutral prompt must not instruct to use Rioplatense",
-	);
-	// The prohibition line must remain present so the model knows NOT to use voseo
-	assert.match(
-		prompt,
-		/Do NOT use voseo/i,
-		"neutral prompt must explicitly prohibit voseo",
-	);
-});
-
-test("gentleman mode composed prompt contains voseo reference", () => {
-	const prompt = __testing.buildGentlePrompt("gentleman");
-	assert.match(
-		prompt,
-		/voseo/i,
-		"gentleman prompt must reference voseo",
-	);
-});
-
-test("gentleman mode composed prompt contains Rioplatense reference", () => {
-	const prompt = __testing.buildGentlePrompt("gentleman");
-	assert.match(
-		prompt,
-		/Rioplatense/i,
-		"gentleman prompt must reference Rioplatense",
-	);
-});
-
-test("neutral mode composed prompt explicitly states active mode is neutral", () => {
-	const prompt = __testing.buildGentlePrompt("neutral");
-	assert.match(
-		prompt,
-		/Current persona mode: neutral/i,
-		"neutral prompt must state active mode is neutral",
-	);
-});
-
-test("gentleman mode composed prompt explicitly states active mode is gentleman", () => {
-	const prompt = __testing.buildGentlePrompt("gentleman");
-	assert.match(
-		prompt,
-		/Current persona mode: gentleman/i,
-		"gentleman prompt must state active mode is gentleman",
-	);
-});
-
-test("neutral mode composed prompt explicitly forbids voseo conjugations", () => {
-	const prompt = __testing.buildGentlePrompt("neutral");
-	// The neutral persona prompt must explicitly forbid voseo conjugation forms
-	assert.match(
-		prompt,
-		/Do NOT use voseo/i,
-		"neutral prompt must explicitly forbid voseo",
-	);
-});
-
-test("neutral and gentleman modes produce different language-boundary text", () => {
-	const neutralPrompt = __testing.buildGentlePrompt("neutral");
-	const gentlemanPrompt = __testing.buildGentlePrompt("gentleman");
-
-	// The language-boundary section must differ between modes
-	assert.notEqual(
-		neutralPrompt,
-		gentlemanPrompt,
-		"neutral and gentleman prompts must differ",
-	);
-
-	// Neutral must not include a positive instruction to use Rioplatense
-	assert.doesNotMatch(
-		neutralPrompt,
-		/Language: natural Rioplatense/i,
-		"neutral prompt must not contain positive 'natural Rioplatense' language instruction",
-	);
-
-	// Gentleman must contain the Rioplatense instruction
-	assert.match(
-		gentlemanPrompt,
-		/Language: natural Rioplatense/i,
-		"gentleman prompt must contain 'Language: natural Rioplatense' instruction",
-	);
+test("S4/T12: persona command is absent and existing config is ignored without writes", async (t) => {
+	const root = mkdtempSync(join(tmpdir(), "td-persona-"));
+	t.after(() => rmSync(root, { recursive: true, force: true }));
+	const global = join(root, "config");
+	const project = join(root, ".pi", "gentle-ai");
+	mkdirSync(global, { recursive: true });
+	mkdirSync(project, { recursive: true });
+	const files = [join(global, "persona.json"), join(project, "persona.json")];
+	const previous = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = global;
+	t.after(() => { if (previous === undefined) delete process.env.TOMIDEV_CONFIG_HOME; else process.env.TOMIDEV_CONFIG_HOME = previous; });
+	const commands = new Map<string, unknown>();
+	const hooks = new Map<string, Function>();
+	createGentleAiExtension({ processEnv: {} })({
+		on(name: string, handler: Function) { hooks.set(name, handler); },
+		registerTool() {},
+		registerCommand(name: string, command: unknown) { commands.set(name, command); },
+		getActiveTools: () => [],
+	} as unknown as ExtensionAPI);
+	assert.equal(commands.has("td:persona"), false);
+	assert.ok(commands.has("td:profiles"), "model routing remains available");
+	const prompts: string[] = [];
+	for (const contents of ['{"mode":"neutral"}', '{"mode":"gentleman"}', "not JSON"]) {
+		for (const file of files) writeFileSync(file, contents);
+		const options: Record<string, unknown> = {};
+		await hooks.get("before_agent_start")!({ systemPromptOptions: options }, {
+			cwd: root, mode: "tui", hasUI: false,
+			sessionManager: { getSessionId: () => "fixed-persona" },
+		});
+		prompts.push(JSON.stringify(options));
+		for (const file of files) assert.equal(readFileSync(file, "utf8"), contents);
+	}
+	assert.equal(prompts[0], prompts[1]);
+	assert.equal(prompts[1], prompts[2]);
+	assert.match(prompts[0], /Follow the senior architect persona/);
 });

@@ -2,11 +2,8 @@ import { execFile } from "node:child_process";
 import type { ToolResultEvent, ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 
-// Harness roadmap T4 (R1): ODD slices delivery at about 400 authored changed
-// lines, but the model had to estimate the count. After each parent commit the
-// runtime reports it from Git, so the slicing decision reads a number.
-
-export const SLICE_LINES = 400;
+// Report authored-line metrics after an explicitly requested parent commit.
+// These are not production-line measurements or authority to split delivery.
 
 // Generated files that do not count as authored lines.
 const GENERATED = [/(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|bun\.lockb?|Cargo\.lock|go\.sum|poetry\.lock|composer\.lock|Gemfile\.lock)$/, /\.min\.(js|css)$/];
@@ -78,10 +75,7 @@ export async function commitSliceReport(cwd: string, git: Git = runGit): Promise
 		if (!path || added === "-" || GENERATED.some((pattern) => pattern.test(path))) continue;
 		lines += Number(added) + Number(deleted);
 	}
-	const head = `Commit slice: ${lines} authored changed lines in ${commits} commit${commits === 1 ? "" : "s"} on ${branch} since ${target} (lock files excluded).`;
-	return lines > SLICE_LINES
-		? `${head} Past the ~${SLICE_LINES}-line slice: apply the feature's delivery strategy before the next commit (record the slice boundary in the feature document).`
-		: `${head} ${SLICE_LINES - lines} lines left before the ~${SLICE_LINES}-line slice.`;
+	return `Commit slice: ${lines} authored changed lines in ${commits} commit${commits === 1 ? "" : "s"} on ${branch} since ${target} (lock files excluded).`;
 }
 
 /**

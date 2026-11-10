@@ -11,7 +11,7 @@ import { readDelegationDetail } from "./support/orchestrator-modules.ts";
 // Freezes the pre-change wrapper (gentle-ai.ts) and orchestrator.md text as
 // verbatim string-literal fixtures (from HEAD, BEFORE this change), then
 // proves the union survives in the LIVE post-change combined injection
-// (`__testing.buildGentlePrompt(persona)`, which calls `getOrchestratorPrompt()`
+// (`__testing.buildGentlePrompt()`, which calls `getOrchestratorPrompt()`
 // internally and reads `assets/orchestrator.md` from disk, memoized for the
 // lifetime of the process — see gentle-ai.ts:118-133).
 //
@@ -158,13 +158,13 @@ const NEW_GENTLEMAN_LANGUAGE_CLAUSE =
 /** design.md "orchestrator.md `## Identity Contract`" — replaces orchestrator.md :5-21. */
 const POST_ORCH_IDENTITY = `## Identity Contract
 
-Defined once in the identity/harness section injected above (the \`Current persona mode:\` line). Honor it; do not restate here.
+Defined once in the identity/harness section injected above. Honor it; do not restate here.
 `;
 
 /** design.md "orchestrator.md `## Language Boundary`" — LB1 pointer + LB2-LB5 verbatim, replaces orchestrator.md :28-42. */
 const POST_ORCH_LANGBOUNDARY = `## Language Boundary
 
-Reply-language style and the active persona's Spanish variant are defined once in the identity/harness section above (its \`Current persona mode:\` line). The rules below are delegation/artifact-scoped and not restated there:
+Reply-language style and the persona's Spanish variant are defined once in the identity/harness section above. The rules below are delegation/artifact-scoped and not restated there:
 
 Subagent-facing prompts should be written in English by default, even when the user speaks Spanish. Translate the user's request into concise English before delegation. This keeps token usage lower and gives built-in/project subagents a consistent operating language without changing the user-facing persona.
 
@@ -191,12 +191,12 @@ const POST_WRAPPER_BYTES = 817; // POST_WRAPPER_IDENTITY_BLOCK
 const WRAPPER_IDENTITY_DELTA_BYTES = 379; // POST_WRAPPER_BYTES - PRE_WRAPPER_BYTES
 
 const PRE_ORCH_IDENTITY_BYTES = 831; // PRE_ORCH_IDENTITY
-const ORCH_IDENTITY_DELTA_BYTES = 682; // PRE_ORCH_IDENTITY_BYTES - POST_ORCH_IDENTITY (149 B)
+const ORCH_IDENTITY_DELTA_BYTES = 717; // PRE_ORCH_IDENTITY_BYTES - POST_ORCH_IDENTITY (114 B, T9 re-measure)
 
 const PRE_ORCH_LANGBOUNDARY_BYTES = 2117; // PRE_ORCH_LANGBOUNDARY
 
-const GENTLEMAN_NET_DELTA_BYTES = -283; // section-sum method, gentleman mode
-const NEUTRAL_NET_DELTA_BYTES = -341; // section-sum method, neutral mode
+const GENTLEMAN_NET_DELTA_BYTES = -360; // section-sum method, gentleman mode (T9 re-measure)
+const NEUTRAL_NET_DELTA_BYTES = -418; // section-sum method, neutral mode (T9 re-measure)
 
 // ---------------------------------------------------------------------------
 // Frozen fixture integrity — self-check the transcription against the design's
@@ -234,15 +234,15 @@ test("fixture integrity: POST_WRAPPER_IDENTITY_BLOCK matches design.md converged
 // ---------------------------------------------------------------------------
 // Line-level union sweep — one named assertion per Table A / Table B rule.
 // Verifies survival (VERBATIM / MERGED / POINTER) in the LIVE post-change
-// combined injection: __testing.buildGentlePrompt(persona).
+// combined injection: __testing.buildGentlePrompt().
 // ---------------------------------------------------------------------------
 
 test("Table A rule: wrapper :177 'You are el Gentleman...' survives verbatim (KEEP once, wrapper)", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
-			/You are el Gentleman: a Pi-specific coding-agent harness for controlled development work\./,
+			/You are (?:el Gentleman|Tomidev Shell): a Pi-specific coding-agent harness for controlled development work\./,
 			`[${persona}] wrapper :177 opening sentence must survive`,
 		);
 	}
@@ -250,11 +250,11 @@ test("Table A rule: wrapper :177 'You are el Gentleman...' survives verbatim (KE
 
 test("Table A rule: wrapper :180/:181 + orchestrator :9,:12 self-description MERGE into wrapper bullet 1", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
-			/answer as el Gentleman, not as a generic assistant/,
-			`[${persona}] merged bullet must keep 'answer as el Gentleman, not as a generic assistant' (subsumes wrapper :180)`,
+			/answer as (?:el Gentleman|Tomidev Shell), not as a generic assistant/,
+			`[${persona}] merged bullet must keep 'answer as el Gentleman/Tomidev Shell, not as a generic assistant' (subsumes wrapper :180)`,
 		);
 		assert.match(
 			prompt,
@@ -263,7 +263,7 @@ test("Table A rule: wrapper :180/:181 + orchestrator :9,:12 self-description MER
 		);
 		assert.match(
 			prompt,
-			/I am el Gentleman: a Pi-specific coding-agent harness for controlled development, with a senior architect persona\. I run Organic Driven Development, coordinate subagents, track substantial work, run commands, and edit files\. I am not a generic chatbot\./,
+			/I am Tomidev Shell: a Pi-specific coding-agent harness for controlled development, with a senior architect persona\. I compose my builtin development mechanisms with the project's harness as orchestrator: I coordinate subagents, track substantial work using project conventions, run commands, and edit files\. Where undefined, I use Organic Driven Development with Direct, Checks-only, or Full Lean defaults\. I am not a generic chatbot\./,
 			`[${persona}] the richer translated self-description paragraph (orchestrator :9,:12) must survive in the wrapper`,
 		);
 	}
@@ -271,7 +271,7 @@ test("Table A rule: wrapper :180/:181 + orchestrator :9,:12 self-description MER
 
 test("Table A rule: orchestrator :17 'never introduce yourself...' ADDED to wrapper (orchestrator-only rule)", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
 			/never introduce yourself as only "your assistant" or "the default assistant"/,
@@ -282,10 +282,10 @@ test("Table A rule: orchestrator :17 'never introduce yourself...' ADDED to wrap
 
 test("Table A rule: persona-mode selection (trimmed) survives; language clause NOT restated in Identity contract", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
-			/Follow the currently selected persona mode\./,
+			/Follow the senior architect persona: direct, concise, technical, and professional\./,
 			`[${persona}] trimmed persona-mode-selection rule must survive (orchestrator :18, language clause dropped)`,
 		);
 	}
@@ -293,10 +293,10 @@ test("Table A rule: persona-mode selection (trimmed) survives; language clause N
 
 test("Table A rule: ODD and subagents core-capabilities bullet survives (KEEP once)", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
-			/Mention ODD as the development workflow and subagents as a core capability\./,
+			/Describe Organic Driven Development and its three lanes \(Direct, Checks-only, Full Lean\) as builtin defaults; the project's workflow takes precedence\. Subagents remain a core capability\./,
 			`[${persona}] wrapper :182 rule must survive`,
 		);
 	}
@@ -304,7 +304,7 @@ test("Table A rule: ODD and subagents core-capabilities bullet survives (KEEP on
 
 test("Table A rule: memory rule (wrapper phrasing, with never-invent clause) survives (KEEP wrapper)", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
 			/Mention memory only when memory packages or callable memory tools are actually active; never invent persistent memory\./,
@@ -315,7 +315,7 @@ test("Table A rule: memory rule (wrapper phrasing, with never-invent clause) sur
 
 test("Table A rule: 'Do not claim portability outside the Pi runtime.' survives (KEEP once, byte-identical wrapper :184 / orchestrator :20)", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
 			/Do not claim portability outside the Pi runtime\./,
@@ -331,7 +331,7 @@ test("Table B rule: LB2 subagent-English delegation kept verbatim in orchestrato
 	// assertion is repointed, not weakened.
 	const delegationDetail = readDelegationDetail();
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona) + delegationDetail;
+		const prompt = __testing.buildGentlePrompt() + delegationDetail;
 		assert.match(
 			prompt,
 			/Subagent-facing prompts should be written in English by default, even when the user speaks Spanish\./,
@@ -342,7 +342,7 @@ test("Table B rule: LB2 subagent-English delegation kept verbatim in orchestrato
 
 test("Table B rule: LB3 artifacts-English kept verbatim in orchestrator (unique)", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
 			/Generated technical artifacts — whether by the parent inline or by subagents/,
@@ -353,7 +353,7 @@ test("Table B rule: LB3 artifacts-English kept verbatim in orchestrator (unique)
 
 test("Table B rule: LB4 public-comment target language kept verbatim in orchestrator (unique)", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.match(
 			prompt,
 			/Public\/contextual comments and replies are different from technical artifacts\./,
@@ -369,7 +369,7 @@ test("Table B rule: LB5 exceptions kept verbatim in orchestrator (unique)", () =
 	// read so this assertion is repointed, not weakened.
 	const delegationDetail = readDelegationDetail();
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona) + delegationDetail;
+		const prompt = __testing.buildGentlePrompt() + delegationDetail;
 		assert.match(
 			prompt,
 			/Preserve exact user quotes, UI copy, error messages, filenames, commands, and domain terms in their original language when they are evidence\./,
@@ -400,7 +400,7 @@ test("orchestrator.md Language Boundary LB1 collapses to the one-line pointer; L
 	const raw = readOrchestratorMdRaw();
 	assert.ok(
 		raw.includes(
-			"Reply-language style and the active persona's Spanish variant are defined once in the identity/harness section above",
+			"Reply-language style and the persona's Spanish variant are defined once in the identity/harness section above",
 		),
 		"orchestrator.md must contain the LB1 pointer text from design.md",
 	);
@@ -423,7 +423,7 @@ function countOccurrences(haystack: string, needle: string): number {
 
 test("dup guard (exact-string): 'Do not claim portability outside the Pi runtime.' occurs exactly once", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.equal(
 			countOccurrences(prompt, "Do not claim portability outside the Pi runtime."),
 			1,
@@ -433,10 +433,9 @@ test("dup guard (exact-string): 'Do not claim portability outside the Pi runtime
 });
 
 test("dup guard (exact-string): identity self-description sentence occurs exactly once", () => {
-	const selfDescription =
-		"I am el Gentleman: a Pi-specific coding-agent harness for controlled development, with a senior architect persona. I run Organic Driven Development, coordinate subagents, track substantial work, run commands, and edit files. I am not a generic chatbot.";
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
+		const selfDescription = "I am Tomidev Shell: a Pi-specific coding-agent harness for controlled development, with a senior architect persona. I compose my builtin development mechanisms with the project's harness as orchestrator: I coordinate subagents, track substantial work using project conventions, run commands, and edit files. Where undefined, I use Organic Driven Development with Direct, Checks-only, or Full Lean defaults. I am not a generic chatbot.";
 		assert.equal(
 			countOccurrences(prompt, selfDescription),
 			1,
@@ -459,7 +458,7 @@ test("dup guard (exact-string): LB2/LB3/LB4 each occur exactly once", () => {
 	const lb4 =
 		"Public/contextual comments and replies are different from technical artifacts.";
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		assert.equal(
 			countOccurrences(prompt + delegationDetail, lb2),
 			1,
@@ -491,41 +490,31 @@ function countLanguageMatchConceptOccurrences(text: string): number {
 	return rawMatches.length - exceptionOccurrences;
 }
 
-test("dup guard (concept-level): language-match regex matches exactly once per rendered mode, excluding the scoped self-description exception", () => {
-	const gentlemanPrompt = __testing.buildGentlePrompt("gentleman");
-	const neutralPrompt = __testing.buildGentlePrompt("neutral");
-	assert.equal(
-		countLanguageMatchConceptOccurrences(gentlemanPrompt),
-		1,
-		"gentleman mode must have exactly one non-excepted language-match concept occurrence",
-	);
-	assert.equal(
-		countLanguageMatchConceptOccurrences(neutralPrompt),
-		1,
-		"neutral mode must have exactly one non-excepted language-match concept occurrence",
-	);
+test("dup guard (concept-level): fixed persona has one language-match rule, excluding self-description", () => {
+	assert.equal(countLanguageMatchConceptOccurrences(__testing.buildGentlePrompt()), 1);
 });
 
 // ---------------------------------------------------------------------------
 // Added-rule assertion — task 1.5
 // ---------------------------------------------------------------------------
 
-test("added rule: gentleman output contains the new GENTLEMAN_PERSONA_PROMPT language-match clause", () => {
-	const prompt = __testing.buildGentlePrompt("gentleman");
+test("fixed persona retains the language-match clause", () => {
+	const prompt = __testing.buildGentlePrompt();
 	assert.match(
 		prompt,
-		/Always respond in the same language the user writes in\./,
-		"gentleman prompt must contain the new language-match clause mirroring NEUTRAL_PERSONA_PROMPT :158",
+		/Always respond in the same language the user writes in \(match the user's latest message\)\./,
+		"the fixed prompt must retain the language-match clause",
 	);
 });
 
-test("regression: neutral output still contains its own unchanged language-match clause (:158)", () => {
-	const prompt = __testing.buildGentlePrompt("neutral");
+test("fixed persona preserves professional identity alongside language matching", () => {
+	const prompt = __testing.buildGentlePrompt();
 	assert.match(
 		prompt,
-		/Always respond in the same language the user writes in\./,
-		"neutral prompt must keep its own :158 language-match clause",
+		/Always respond in the same language the user writes in \(match the user's latest message\)\./,
+		"the fixed prompt must retain the language-match clause",
 	);
+	assert.match(prompt, /Follow the senior architect persona: direct, concise, technical, and professional/);
 });
 
 // ---------------------------------------------------------------------------
@@ -543,20 +532,20 @@ test("byte delta: wrapper Identity contract block grows by the measured delta (p
 	assert.equal(post - pre, WRAPPER_IDENTITY_DELTA_BYTES, "wrapper Identity block delta must be +379 B");
 });
 
-test("byte delta: orchestrator.md Identity Contract shrinks to the measured pointer size (149 B, ±1 B of design's 148 B estimate)", () => {
+test("byte delta: orchestrator.md Identity Contract shrinks to the measured pointer size (114 B after the T9 re-measure)", () => {
 	const pre = Buffer.byteLength(PRE_ORCH_IDENTITY);
 	const post = Buffer.byteLength(POST_ORCH_IDENTITY);
 	assert.equal(pre, PRE_ORCH_IDENTITY_BYTES, "pre orchestrator Identity Contract must be 831 B");
-	assert.equal(post, 149, "post orchestrator Identity Contract must be 149 B (measured, see byte-measurements.md)");
-	assert.equal(pre - post, ORCH_IDENTITY_DELTA_BYTES, "orchestrator Identity Contract delta must be -682 B");
+	assert.equal(post, 114, "post orchestrator Identity Contract must be 114 B (T9 re-measure after the persona mode line was retired)");
+	assert.equal(pre - post, ORCH_IDENTITY_DELTA_BYTES, "orchestrator Identity Contract delta must be -717 B");
 });
 
-test("byte delta: orchestrator.md Language Boundary LB1->pointer shrinks by the measured 38 B (LB2-LB5 unchanged)", () => {
+test("byte delta: orchestrator.md Language Boundary LB1->pointer shrinks by the measured 80 B (LB2-LB5 unchanged)", () => {
 	const pre = Buffer.byteLength(PRE_ORCH_LANGBOUNDARY);
 	const post = Buffer.byteLength(POST_ORCH_LANGBOUNDARY);
 	assert.equal(pre, PRE_ORCH_LANGBOUNDARY_BYTES, "pre orchestrator Language Boundary must be 2,117 B");
-	assert.equal(post, 2079, "post orchestrator Language Boundary must be 2,079 B (measured, see byte-measurements.md)");
-	assert.equal(pre - post, 38, "orchestrator Language Boundary delta must be -38 B (262 B LB1 sentence -> 224 B pointer)");
+	assert.equal(post, 2037, "post orchestrator Language Boundary must be 2,037 B (T9 re-measure)");
+	assert.equal(pre - post, 80, "orchestrator Language Boundary delta must be -80 B (LB1 pointer rewritten without the retired persona mode line)");
 });
 
 test("byte delta: new GENTLEMAN_PERSONA_PROMPT clause is present and small (single added line)", () => {
@@ -567,7 +556,7 @@ test("byte delta: new GENTLEMAN_PERSONA_PROMPT clause is present and small (sing
 	);
 });
 
-test("byte delta: net per-session injection delta matches byte-measurements.md (gentleman -283 B, neutral -341 B, section-sum method)", () => {
+test("byte delta: net per-session injection delta matches the section-sum method (gentleman -360 B, neutral -418 B after the T9 re-measure)", () => {
 	// Section-sum method (fixture-derived, internally consistent). Whole-file `wc -c` on the
 	// two edited files gives -282 B / -340 B — 1 B off, a trailing-newline/range-boundary
 	// counting-convention artifact between `bat --line-range` section extraction and whole-file
@@ -583,12 +572,12 @@ test("byte delta: net per-session injection delta matches byte-measurements.md (
 	assert.equal(
 		wrapperDelta + orchDelta + gentlemanClauseDelta,
 		GENTLEMAN_NET_DELTA_BYTES,
-		"gentleman net per-session injection delta must be -283 B (section-sum method)",
+		"gentleman net per-session injection delta must be -360 B (section-sum method)",
 	);
 	assert.equal(
 		wrapperDelta + orchDelta,
 		NEUTRAL_NET_DELTA_BYTES,
-		"neutral net per-session injection delta must be -341 B (section-sum method, no persona-prompt change)",
+		"neutral net per-session injection delta must be -418 B (section-sum method, no persona-prompt change)",
 	);
 });
 
@@ -596,24 +585,16 @@ test("byte delta: net per-session injection delta matches byte-measurements.md (
 // Requirement: Persona Constant Selection Keeps Working
 // ---------------------------------------------------------------------------
 
-test("gentleman persona selected: GENTLEMAN_PERSONA_PROMPT content appears once, no neutral-only rule leaks in", () => {
-	const prompt = __testing.buildGentlePrompt("gentleman");
-	assert.match(prompt, /Current persona mode: gentleman/);
-	assert.match(prompt, /answer in natural Rioplatense Spanish with voseo/i);
-	assert.doesNotMatch(
-		prompt,
-		/Do NOT use voseo \(vos ten[eé]s/i,
-		"gentleman prompt must not leak the neutral-only voseo prohibition bullet",
-	);
+test("gentleman persona selected: the consolidated persona appears once, no voseo or Rioplatense rule", () => {
+	const prompt = __testing.buildGentlePrompt();
+	assert.doesNotMatch(prompt, /Current persona mode/, "one fixed persona renders no mode line");
+	assert.equal(prompt.split("Act as a senior architect: direct, concise, technical, and professional.").length - 1, 1, "the persona bullet appears once");
+	assert.doesNotMatch(prompt, /voseo|Rioplatense/i, "the consolidated persona has no voseo or Rioplatense rule");
 });
 
-test("neutral persona selected: NEUTRAL_PERSONA_PROMPT content appears once, no gentleman-only rule leaks in", () => {
-	const prompt = __testing.buildGentlePrompt("neutral");
-	assert.match(prompt, /Current persona mode: neutral/);
-	assert.match(prompt, /Do NOT use voseo/i);
-	assert.doesNotMatch(
-		prompt,
-		/answer in natural Rioplatense Spanish with voseo/i,
-		"neutral prompt must not leak the gentleman-only voseo instruction",
-	);
+test("neutral persona selected: the consolidated persona appears once, no voseo or Rioplatense rule", () => {
+	const prompt = __testing.buildGentlePrompt();
+	assert.doesNotMatch(prompt, /Current persona mode/, "one fixed persona renders no mode line");
+	assert.equal(prompt.split("Act as a senior architect: direct, concise, technical, and professional.").length - 1, 1, "the persona bullet appears once");
+	assert.doesNotMatch(prompt, /voseo|Rioplatense/i, "the consolidated persona has no voseo or Rioplatense rule");
 });

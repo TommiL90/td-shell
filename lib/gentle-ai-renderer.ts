@@ -5,9 +5,9 @@ import { CARD_TONE, cardBodyRows, cardBottom, cardInnerWidth, cardLine, cardTop,
 import { formatElapsed } from "./agents-widget.ts";
 import { sanitizeTerminalText, stripAnsi } from "./terminal-theme.ts";
 
-// Gentle AI tool cards: every call into the gentle-ai binary and every
-// gentle_review tool draws the same card as the other Gentle notices. The
-// call component owns the top rule; the result component closes the frame.
+// Gentle AI tool cards: every call into the gentle-ai binary draws the same
+// card as the other Gentle notices. The call component owns the top rule; the
+// result component closes the frame.
 
 export interface GentleAiRenderTheme extends CardTheme {
 	bg?(color: string, text: string): string;
@@ -63,10 +63,7 @@ const STATUS_TONE: Record<LifecycleStatus, CardTone> = {
 };
 
 // The title reads like the quiet read card: a short name, then the operation
-// as its argument. Review operations are `rdd <op>`; any other binary call
-// is `gentle-ai <op>`.
-const REVIEW_PREFIX = "review";
-const REVIEW_TITLE = "rdd";
+// as its argument: `gentle-ai <op>`.
 const BINARY_TITLE = "gentle-ai";
 const SEPARATOR = " · ";
 // The binary keeps its rose as a colored emoji (2 cells, no text-presentation
@@ -77,11 +74,8 @@ const passthroughTheme: CardTheme = { fg: (_color, text) => text };
 
 // The running/failed state stays visible until the call completes.
 function callTitle(status: LifecycleStatus, operationPath: string): string {
-	const review = operationPath === REVIEW_PREFIX || operationPath.startsWith(`${REVIEW_PREFIX} `);
-	const name = review ? REVIEW_TITLE : BINARY_TITLE;
-	const operation = review ? operationPath.slice(REVIEW_PREFIX.length).trim() : operationPath;
-	const argument = [status === LIFECYCLE_STATUS.COMPLETED ? "" : status, operation].filter((part) => part.length > 0).join(SEPARATOR);
-	return argument.length > 0 ? `${name} ${argument}` : name;
+	const argument = [status === LIFECYCLE_STATUS.COMPLETED ? "" : status, operationPath].filter((part) => part.length > 0).join(SEPARATOR);
+	return argument.length > 0 ? `${BINARY_TITLE} ${argument}` : BINARY_TITLE;
 }
 
 export function getGentleAiRenderState(state: unknown): GentleAiRenderState | undefined {
@@ -98,7 +92,7 @@ export function getGentleAiRenderState(state: unknown): GentleAiRenderState | un
 // also closes the frame, because no result row exists yet; once a final
 // result is in, the result card closes it instead.
 export class GentleAiCallCard {
-	private card: Card = { title: REVIEW_TITLE, body: [], tone: CARD_TONE.WARNING, glyph: CARD_GLYPH };
+	private card: Card = { title: BINARY_TITLE, body: [], tone: CARD_TONE.WARNING, glyph: CARD_GLYPH };
 	private theme: GentleAiRenderTheme = passthroughTheme;
 	private detail: string | undefined;
 	private hint: string | undefined;

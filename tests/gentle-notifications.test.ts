@@ -46,7 +46,7 @@ function harness(options: Options = {}) {
 	const ctx = { mode: options.mode ?? "tui", hasUI: true, sessionManager: { getSessionId: () => id },
 		getContextUsage: () => ({ tokens: null, contextWindow: 100, percent }),
 		ui: { notify: (s: string) => notes.push(s) } } as unknown as ExtensionContext;
-	const deps = { now: () => time, env: { GENTLE_PI_AGENTS_CHILD: options.child ? "1" : "0", GENTLE_SHELL_INTERACTIVE_HOST: "1" },
+	const deps = { now: () => time, env: { TOMIDEV_AGENTS_CHILD: options.child ? "1" : "0", TOMIDEV_INTERACTIVE_HOST: "1" },
 		visualNotice: () => options.visualNotice ?? true,
 		setTimeout: (fn: () => void, delay: number) => { const id = ++nextTimer; timers.set(id, { fn, at: time + delay }); return id; },
 		clearTimeout: (id: number) => { timers.delete(id); },

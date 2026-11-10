@@ -24,7 +24,7 @@ import { sidebarPart, sidebarState } from "../lib/shell-sidebar.ts";
 
 function terminalWithState(state: unknown): object {
   return {
-    [Symbol.for("gentle-pi.experimental-sidebar.state")]: state,
+    [Symbol.for("tomidev.experimental-sidebar.state")]: state,
   } as object;
 }
 
@@ -201,7 +201,7 @@ async function captureOverlayOptions(terminal: object): Promise<OverlayOptions> 
       },
     } as never,
     {
-      env: { GENTLE_PI_HISTORY_CAPTURE: "1" },
+      env: { TOMIDEV_HISTORY_CAPTURE: "1" },
       gentlePiConfigHome: fs.mkdtempSync(
         path.join(os.tmpdir(), "pi-history-margin-config-"),
       ),

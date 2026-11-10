@@ -8,7 +8,7 @@ import shell, { shellGitRunner } from "../extensions/gentle-shell.ts";
 import { SESSION_CHANGE_ENTRY } from "../lib/session-changes.ts";
 import { SESSION_WORKTREE_ENTRY } from "../lib/session-worktree-registry.ts";
 
-// /gentle:changes shows the current Git state (working tree vs HEAD, untracked
+// /td:changes shows the current Git state (working tree vs HEAD, untracked
 // included) of the session's repository and of every worktree its subagents
 // used. Captured write/edit evidence only names roots; Git names the files.
 
@@ -28,14 +28,14 @@ function fixture(entries: any[] = [], options: { root?: string; sessionId?: stri
 	const ctx: any = { hasUI:true, cwd:root, sessionManager:{getSessionId:()=>sessionId,getEntries:()=>entries},
 		ui: { setFooter() {}, getEditorComponent:()=>({}), setWorkingVisible() {}, setWidget:(key,value)=>value===undefined?widgets.delete(key):widgets.set(key,value), notify:(text,level)=>{ notices.push(text); levels.push(level); },
 			custom:(factory:any)=>new Promise(resolve=>{ overlay.close=()=>resolve(null); overlay.view=factory({terminal:{rows:40,columns:200},requestRender(){}},{fg:(_c:string,t:string)=>t,bold:(t:string)=>t},{},resolve); }) } };
-	shell(pi,{GENTLE_PI_SHELL_CHANGES_POLL_MS:String(options.pollMs ?? 60_000)}, {resolveWorktree:()=>({root,commonDir:root+"/.git"}),devBinary:()=>undefined,
+	shell(pi,{TOMIDEV_SHELL_CHANGES_POLL_MS:String(options.pollMs ?? 60_000)}, {resolveWorktree:()=>({root,commonDir:root+"/.git"}),devBinary:()=>undefined,
 		gitRunner:(cwd)=>async(args)=>{gitCalls++; return options.gitRunner ? options.gitRunner(cwd)(args) : await new Promise<any>(()=>{});} });
 	const fire=async(key,event={})=>{for(const fn of handlers.get(key)??[]) await fn(event,ctx);};
 	// Opens the panel and closes it again: its groups (root, branch, files)
 	// and the rendered group rows.
 	const panel=async()=>{
 		overlay.view=undefined;
-		const opened=commands.get("gentle:changes").handler("",ctx);
+		const opened=commands.get("td:changes").handler("",ctx);
 		for(let i=0;i<200&&!overlay.view;i++){ if(await Promise.race([opened.then(()=>true),new Promise(r=>setTimeout(()=>r(false),5))])) break; }
 		if(!overlay.view) return undefined;
 		const text=overlay.view.render(200).join("\n");
@@ -61,7 +61,7 @@ const captured = (root: string, id: string, path = "file.ts", sessionId = "sessi
 const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(resolve => setTimeout(resolve, 5)); };
 const real: Runner = (cwd) => shellGitRunner(cwd);
 
-test("Gentle Shell startup never waits for a repository scan", async () => {
+test("Tomidev Shell startup never waits for a repository scan", async () => {
 	const f = fixture([sessionRoot("/repo"), captured("/repo", "a")]);
 	await Promise.race([f.fire("session_start"), new Promise((_, reject) => setTimeout(() => reject(new Error("startup blocked by Git inventory")), 100))]);
 	assert.equal(f.gitCalls(), 0, "session_start never runs Git");
@@ -218,7 +218,7 @@ test("the open panel diffs the selected file against HEAD and reloads a same-cou
 	writeFileSync(join(repo.root, "new.ts"), "hello\n");
 	const f = fixture([], { root: repo.root, gitRunner: real, pollMs: 20 });
 	await f.fire("session_start");
-	const opened = f.commands.get("gentle:changes").handler("", f.ctx);
+	const opened = f.commands.get("td:changes").handler("", f.ctx);
 	for (let i = 0; i < 200 && !f.overlay.view; i++) await new Promise(resolve => setTimeout(resolve, 5));
 	const view = f.overlay.view;
 	const shows = async (pattern: RegExp) => {

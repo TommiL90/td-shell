@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { ENV_AGENT_HOME, ENV_CONFIG_HOME } from "../runtime/brand.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const MAX_NPM_OUTPUT_BYTES = 1024 * 1024;
@@ -84,8 +85,9 @@ const UNHOOKED_CHECK_IDS = new Set([
 	"asset-lib-agents-session-transport-owned", "asset-lib-agents-session-transport-hash",
 	"asset-extension-gentle-agents-owned", "asset-extension-gentle-agents-hash",
 	"asset-extension-gentle-ai-owned", "asset-extension-gentle-ai-hash",
-	"asset-native-review-cli-owned", "asset-native-review-cli-hash",
-	"asset-review-integration-v2-owned", "asset-review-integration-v2-hash",
+	"asset-launcher-owned", "asset-launcher-hash",
+	"asset-brand-owned", "asset-brand-hash",
+	"asset-agents-config-owned", "asset-agents-config-hash",
 	"asset-installer-gentle-ai-owned", "asset-installer-gentle-ai-hash",
 	"asset-installer-tui-mode-setting-owned", "asset-installer-tui-mode-setting-hash",
 	"native-package-cache-absent", "native-command-absent", "sdk-manifest-owned", "sdk-version", "jiti-manifest-owned", "jiti-static-export", "jiti-entry-owned", "jiti-version",
@@ -608,29 +610,48 @@ export function createHookedPackedConsumerManifest(installDirectory, tarball) {
 	if (isAbsolute(filePath)) throw new Error("packed tarball must share the consumer filesystem root");
 	const fileSpec = `file:${filePath.split(sep).join("/")}`;
 	if (realpathSync.native(resolve(consumer, fileSpec.slice(5))) !== canonicalTarball) throw new Error("script approval does not resolve to the packed tarball");
-	// npm 12 matches local dependencies by their resolved file spec, not name.
-	// Absolute installs on npm 12 retain an absolute node.resolved; the relative
-	// key alone was empirically blocked. Both keys identify this same tarball.
-	// Older npm ignores this consumer-only field. No transitive script is approved.
+	// Approve only the relative and canonical absolute identities of this tarball,
+	// never a package name or wildcard. Policy acceptance varies by npm version;
+	// the foreground installer message below independently proves hook execution.
+	// No transitive script is approved.
 	const absoluteSpec = `file:${canonicalTarball.split(sep).join("/")}`;
 	if (realpathSync.native(absoluteSpec.slice(5)) !== canonicalTarball) throw new Error("absolute script approval does not resolve to the packed tarball");
 	return { name: "gentle-pi-packed-runner-test", private: true, allowScripts: { [fileSpec]: true, [absoluteSpec]: true } };
+}
+
+export function assertPackedPostinstallOutput(output, packageRoot) {
+	const expected = `tomidev skipped enabling fullscreen in global Pi settings: ${realpathSync.native(packageRoot)} is not a pi-managed install.`;
+	assert.ok(typeof output === "string" && output.split(/\r?\n/).includes(expected),
+		"packed postinstall execution was not observed; npm may have blocked the exact local tarball lifecycle approval (allowScripts). An install exit code alone is not hook evidence.");
+}
+
+export function runPackedLaunchSmoke(packageRoot, cwd, env, version) {
+	const launcher = assertOwnedRegularFile(packageRoot, "bin/tomidev.mjs");
+	assert.ok(runBoundedProbe([launcher, "--version"], env, cwd).startsWith(`tomidev ${version}\npi `));
+	assert.match(runBoundedProbe([launcher, "--help"], env, cwd), /tomidev/);
+	// Launch the installed adjacent Pi through Tomidev without provisioning companions
+	// or calling a model. This is a real CLI process, not an import-only substitute.
+	runBoundedProbe([launcher, "--link", "--no-extensions", "--list-models"], env, cwd);
+	let rejected;
+	try { runBoundedProbe([launcher, "home", "one", "two"], env, cwd); }
+	catch (error) { rejected = error; }
+	assert.equal(rejected?.exitStatus, 2, "invalid home arguments must remain rejected");
 }
 
 async function testHookedPackedRunner() {
 	const temporary = mkdtempSync(join(tmpdir(), "gentle-pi-packed-runner-"));
 	const packDirectory = join(temporary, "pack");
 	const installDirectory = join(temporary, "install");
-	// Every child inherits only disposable Pi homes, never the operator's settings.
-	const agentHome = join(temporary, "agent");
-	const piAgentHome = join(temporary, "pi-agent");
-	const isolatedEnv = { ...process.env, GENTLE_PI_AGENT_HOME: agentHome, PI_CODING_AGENT_DIR: piAgentHome };
+	// Use the same allowlisted, fully disposable environment as every other mode.
+	const { env: isolatedEnv, homes } = isolatedUnhookedEnvironment(temporary);
+	Object.assign(isolatedEnv, { PI_OFFLINE: "1", TOMIDEV_AGENTS: "1", TOMIDEV_NO_AUTO_SETUP: "1" });
+	const agentHome = isolatedEnv[ENV_AGENT_HOME];
+	const piAgentHome = isolatedEnv.PI_CODING_AGENT_DIR;
+	const sdkVersion = resolveProjectPiSdkVersion(root);
 	const runNpm = (arguments_, options) => runNpmWithEnv(arguments_, isolatedEnv, options);
 	try {
 		mkdirSync(packDirectory);
 		mkdirSync(installDirectory);
-		mkdirSync(agentHome);
-		mkdirSync(piAgentHome);
 	const originalSettings = '{ "tuiMode": "regular", "theme": "packed-fixture" }\n';
 	writeFileSync(join(agentHome, "settings.json"), originalSettings);
 	const packed = parseNpmPackResult(runNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", packDirectory], {
@@ -641,67 +662,62 @@ async function testHookedPackedRunner() {
 	if (packed.length !== 1 || typeof packed[0]?.filename !== "string") throw new Error("npm pack did not return one tarball");
 	const { tarball } = assertPackResult(packed, packDirectory, newUnhookedReceipt());
 	writeFileSync(join(installDirectory, "package.json"), JSON.stringify(createHookedPackedConsumerManifest(installDirectory, tarball)), "utf8");
-	runNpm(["install", "--ignore-scripts=false", "--no-audit", "--no-fund", "--package-lock=false", "--omit=dev", "--legacy-peer-deps", tarball], {
+	const installOutput = runNpm(["install", "--ignore-scripts=false", "--foreground-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--omit=dev", "--legacy-peer-deps", tarball, `@earendil-works/pi-coding-agent@${sdkVersion}`], {
 		cwd: installDirectory,
-		stdio: "inherit",
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "inherit"],
+		timeout: 120000,
+		maxBuffer: MAX_NPM_OUTPUT_BYTES,
 	});
+	process.stdout.write(installOutput);
 	// This is an ordinary npm consumer, not Pi's managed global npm directory.
 	assert.equal(readFileSync(join(agentHome, "settings.json"), "utf8"), originalSettings);
 	assert.deepEqual(readdirSync(agentHome), ["settings.json"]);
 	assert.deepEqual(readdirSync(piAgentHome), []);
 	assert.equal(existsSync(join(installDirectory, ".pi", "settings.json")), false);
-	const packageRoot = join(installDirectory, "node_modules", "gentle-pi");
+	const packageRoot = join(installDirectory, "node_modules", "tomidev");
+	assertPackedPostinstallOutput(installOutput, packageRoot);
 	assert.ok(existsSync(join(packageRoot, "scripts", "install-tui-mode-setting.mjs")));
-	const { nativeReviewAbandonAuthorization } = await import(pathToFileURL(join(packageRoot, "runtime", "native-review-cli.mjs")).href);
-	const abandonAuthorization = nativeReviewAbandonAuthorization({
-		lineage: "review-abc",
-		expectedRevision: "revision-9",
-		snapshotIdentity: "snapshot-1",
-		capturedLensResults: ["00-risk.json", "01-refuter.json"],
-		findingsPresent: true,
-		actor: "maintainer",
-		reason: "operator_disposition",
-	});
-	assert.equal(abandonAuthorization, [
-		"gentle-ai.review-abandon-authorization/v2",
-		"lineage=review-abc",
-		"revision=revision-9",
-		"snapshot_identity=snapshot-1",
-		"reason=operator_disposition",
-		"captured_lens_results=00-risk.json,01-refuter.json",
-		"findings_present=true",
-		"actor=maintainer",
-	].join("\n"));
-	assert.ok(!abandonAuthorization.includes("evidence_records_present"));
-	// Accept prerelease pins too: a stable-only pattern here was a second,
-	// silent pin that refused the first prerelease version directory.
-	if (!existsSync(join(packageRoot, ".gentle-ai"))) throw new Error("packed postinstall did not create .gentle-ai; npm may have blocked lifecycle scripts — check the consumer allowScripts exact tarball approval and installer output");
-	const versions = readdirSync(join(packageRoot, ".gentle-ai"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.]*)?$/.test(entry.name));
-	if (versions.length !== 1) throw new Error("packed install did not contain exactly one package-local Gentle AI version");
-	const executable = join(packageRoot, ".gentle-ai", versions[0].name, process.platform === "win32" ? "gentle-ai.exe" : "gentle-ai");
-	const capabilities = JSON.parse(execFileSync(executable, ["review", "capabilities", "--contract", "gentle-ai.review-integration/v2"], { cwd: installDirectory, encoding: "utf8", env: isolatedEnv }));
-	// Decode with the PACKED consumer's own decoder rather than comparing the
-	// schema string against a list hand-copied into this script. The copy was a
-	// second, silent pin: it accepted only `capabilities/v2`, so the moment the
-	// pinned provider advertised an additive minor this E2E rejected a pairing
-	// that gentle-pi reads correctly, and it would have done so again on the
-	// next minor. Using the shipped decoder makes the assertion what it always
-	// meant to be — the packed consumer can read the packed provider — and it
-	// checks the whole envelope (protocol major/minor, required operations,
-	// gates, projections, advertised schemas, mandatory features, and the
-	// self-reported executable digest) instead of one string.
-	const { decodeReviewCapabilitiesV2 } = await import(pathToFileURL(join(packageRoot, "runtime", "review-integration-v2.mjs")).href);
-	const executableDigest = `sha256:${createHash("sha256").update(readFileSync(executable)).digest("hex")}`;
-	const decoded = decodeReviewCapabilitiesV2(capabilities, executableDigest);
-	if (decoded.contract !== "gentle-ai.review-integration/v2" || decoded.packageVersion !== versions[0].name.slice(1)) throw new Error("package-local Gentle AI returned incompatible capabilities");
-	const packageManifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-		process.stdout.write(`packed package E2E passed (gentle-pi ${packageManifest.version ?? "unknown"}; Gentle AI ${decoded.packageVersion ?? "unknown"})\n`);
+	assertPackedAssets(packageRoot, newUnhookedReceipt());
+	assertNoNativeInstallerArtifacts(packageRoot, installDirectory, newUnhookedReceipt());
+	const packageManifest = JSON.parse(readFileSync(assertOwnedRegularFile(packageRoot, "package.json"), "utf8"));
+	assert.equal(packageManifest.name, "tomidev");
+	assert.deepEqual(packageManifest.bin, { tomidev: "bin/tomidev.mjs" });
+	assert.ok(existsSync(join(installDirectory, "node_modules", ".bin", process.platform === "win32" ? "tomidev.cmd" : "tomidev")));
+	const jitiStaticEntry = resolveInstalledJitiStaticEntry(installDirectory,
+		join(installDirectory, "node_modules", "@earendil-works", "pi-coding-agent", "package.json"), sdkVersion, () => {}, {});
+	safeJson(runBoundedProbe(["--input-type=module", "--eval", unhookedProbeSource(packageRoot, join(installDirectory, "package.json"), jitiStaticEntry)], isolatedEnv, installDirectory), "registration probe");
+	// Factories alone must not mutate any home, including the seeded user preference.
+	assert.equal(readFileSync(join(agentHome, "settings.json"), "utf8"), originalSettings);
+	assert.deepEqual(readdirSync(agentHome), ["settings.json"]);
+	for (const home of homes.filter(home => home.path !== agentHome)) assertEmptyDirectory(home.path);
+	// CLI startup may create Pi-owned caches; unlike postinstall and inert
+	// registration, a real runtime is not required to leave every home empty.
+	runPackedLaunchSmoke(packageRoot, installDirectory, isolatedEnv, packageManifest.version);
+	assert.equal(readFileSync(join(agentHome, "settings.json"), "utf8"), originalSettings);
+	// Exercise the installed helper on an actually owned Pi layout, not the ordinary consumer.
+	const managedHome = join(temporary, "managed-agent");
+	const managedPackage = join(managedHome, "npm", "node_modules", "tomidev");
+	mkdirSync(managedPackage, { recursive: true });
+	writeFileSync(join(managedHome, "settings.json"), originalSettings);
+	const managedProbe = `import assert from 'node:assert/strict';
+	const { installTuiModeSetting } = await import(${JSON.stringify(pathToFileURL(join(packageRoot, "scripts/install-tui-mode-setting.mjs")).href)});
+	assert.deepEqual(await installTuiModeSetting({ packageRoot: ${JSON.stringify(managedPackage)}, env: { TOMIDEV_AGENT_HOME: ${JSON.stringify(managedHome)} } }), {changed:true,recognized:true});`;
+	runBoundedProbe(["--input-type=module", "--eval", managedProbe], isolatedEnv, installDirectory);
+	assert.deepEqual(JSON.parse(readFileSync(join(managedHome, "settings.json"), "utf8")), { tuiMode: "fullscreen", theme: "packed-fixture" });
+	const lifecycleEnv = { ...isolatedEnv, [ENV_AGENT_HOME]: managedHome, PI_CODING_AGENT_DIR: managedHome };
+	const probe = await runBoundedSdkLifecycleProbe(["--input-type=module", "--eval", sdkLifecycleProbeSource(packageRoot, join(installDirectory, "package.json"), jitiStaticEntry)], lifecycleEnv, installDirectory);
+	const lifecycle = parseSdkLifecycleChildReceipt(probe.stdout, probe.stderr);
+	assert.equal(probe.status, 0, `SDK lifecycle failed: ${probe.stdout} ${probe.stderr}`);
+	assert.equal(lifecycle?.status, "complete", "SDK lifecycle receipt must prove two starts and two withdrawals without model invocation");
+	assertNoNativeInstallerArtifacts(packageRoot, installDirectory, newUnhookedReceipt());
+	process.stdout.write(`packed package E2E passed (tomidev ${packageManifest.version}; Pi ${sdkVersion}; launch + registration + two-session lifecycle)\n`);
 	} finally {
 		rmSync(temporary, { recursive: true, force: true });
 	}
 }
 
-function isolatedUnhookedEnvironment(temporary) {
+export function isolatedUnhookedEnvironment(temporary) {
 	const homes = join(temporary, "homes");
 	const home = join(homes, "home");
 	const agentHome = join(homes, "gentle-pi-agent");
@@ -722,7 +738,7 @@ function isolatedUnhookedEnvironment(temporary) {
 		HOME: home, USERPROFILE: home, APPDATA: appData, LOCALAPPDATA: localAppData,
 		XDG_CONFIG_HOME: xdgConfigHome, XDG_CACHE_HOME: xdgCacheHome, XDG_DATA_HOME: xdgDataHome,
 		TMPDIR: temporary, TMP: temporary, TEMP: temporary,
-		GENTLE_PI_AGENT_HOME: agentHome, GENTLE_PI_CONFIG_HOME: gentleConfigHome, PI_CODING_AGENT_DIR: piAgentHome,
+		[ENV_AGENT_HOME]: agentHome, [ENV_CONFIG_HOME]: gentleConfigHome, PI_CODING_AGENT_DIR: piAgentHome,
 		NPM_CONFIG_CACHE: npmCache, npm_config_cache: npmCache, NPM_CONFIG_USERCONFIG: npmUserConfig, npm_config_userconfig: npmUserConfig,
 		NPM_CONFIG_TMP: temporary, npm_config_tmp: temporary, NPM_CONFIG_IGNORE_SCRIPTS: "true", npm_config_ignore_scripts: "true",
 		NPM_CONFIG_UPDATE_NOTIFIER: "false", npm_config_update_notifier: "false",
@@ -821,7 +837,7 @@ export function validateWindowsStartupTimingMachinePaths(delta, operations = { l
 function assertPackResult(packed, packDirectory, receipt) {
 	selectUnhookedCheck(receipt, "pack-metadata");
 	const [entry] = normalizeNpmPackResult(packed);
-	if (entry.name !== "gentle-pi" || typeof entry.filename !== "string" || entry.filename !== basename(entry.filename)) throw new Error("npm pack returned an unsafe package identity");
+	if (entry.name !== "tomidev" || typeof entry.filename !== "string" || entry.filename !== basename(entry.filename)) throw new Error("npm pack returned an unsafe package identity");
 	if (typeof entry.integrity !== "string" || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(entry.integrity)) throw new Error("npm pack did not report a sha512 integrity");
 	const tarball = resolve(packDirectory, entry.filename);
 	if (!isWithin(packDirectory, tarball)) throw new Error("npm pack tarball escapes the owned pack directory");
@@ -832,14 +848,15 @@ function assertPackResult(packed, packDirectory, receipt) {
 	return { entry, tarball };
 }
 
-const HASHED_PACKED_ASSETS = [
+export const HASHED_PACKED_ASSETS = [
 	{ ownedCheckId: "asset-runtime-windows-session-transport-owned", hashCheckId: "asset-runtime-windows-session-transport-hash", relativePath: "runtime/windows-session-transport.ps1" },
 	{ ownedCheckId: "asset-lib-windows-session-transport-owned", hashCheckId: "asset-lib-windows-session-transport-hash", relativePath: "lib/windows-session-transport.ts" },
 	{ ownedCheckId: "asset-lib-agents-session-transport-owned", hashCheckId: "asset-lib-agents-session-transport-hash", relativePath: "lib/agents-session-transport.ts" },
 	{ ownedCheckId: "asset-extension-gentle-agents-owned", hashCheckId: "asset-extension-gentle-agents-hash", relativePath: "extensions/gentle-agents.ts" },
 	{ ownedCheckId: "asset-extension-gentle-ai-owned", hashCheckId: "asset-extension-gentle-ai-hash", relativePath: "extensions/gentle-ai.ts" },
-	{ ownedCheckId: "asset-native-review-cli-owned", hashCheckId: "asset-native-review-cli-hash", relativePath: "runtime/native-review-cli.mjs" },
-	{ ownedCheckId: "asset-review-integration-v2-owned", hashCheckId: "asset-review-integration-v2-hash", relativePath: "runtime/review-integration-v2.mjs" },
+	{ ownedCheckId: "asset-launcher-owned", hashCheckId: "asset-launcher-hash", relativePath: "bin/tomidev.mjs" },
+	{ ownedCheckId: "asset-brand-owned", hashCheckId: "asset-brand-hash", relativePath: "runtime/brand.mjs" },
+	{ ownedCheckId: "asset-agents-config-owned", hashCheckId: "asset-agents-config-hash", relativePath: "lib/agents-config.ts" },
 	{ ownedCheckId: "asset-installer-gentle-ai-owned", hashCheckId: "asset-installer-gentle-ai-hash", relativePath: "scripts/install-gentle-ai.mjs" },
 	{ ownedCheckId: "asset-installer-tui-mode-setting-owned", hashCheckId: "asset-installer-tui-mode-setting-hash", relativePath: "scripts/install-tui-mode-setting.mjs" },
 ];
@@ -855,7 +872,10 @@ function assertPackedAssets(packageRoot, receipt) {
 	}
 }
 
-function assertNoNativeInstallerArtifacts(packageRoot, consumerDirectory, receipt) {
+export function assertNoNativeInstallerArtifacts(packageRoot, consumerDirectory, receipt) {
+	for (const retired of ["runtime/native-review-cli.mjs", "runtime/review-integration-v2.mjs", `runtime/${["gentle", "ai", "binary"].join("-")}.mjs`]) {
+		assert.equal(existsSync(join(packageRoot, retired)), false, `retired provider artifact shipped: ${retired}`);
+	}
 	selectUnhookedCheck(receipt, "native-package-cache-absent");
 	if (existsSync(join(packageRoot, ".gentle-ai"))) throw new Error("unhooked install unexpectedly contains a native Gentle AI artifact");
 	selectUnhookedCheck(receipt, "native-command-absent");
@@ -914,10 +934,11 @@ export function resolveInstalledJitiStaticEntry(consumerDirectory, sdkPackageJso
 	return jitiStaticEntry;
 }
 
-function unhookedProbeSource(packageRoot, consumerPackageJson, jitiStaticEntry) {
+export function unhookedProbeSource(packageRoot, consumerPackageJson, jitiStaticEntry) {
 	return `
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
+import { ENV_AGENT_HOME, ENV_CONFIG_HOME } from ${JSON.stringify(pathToFileURL(join(packageRoot, "runtime/brand.mjs")).href)};
 const { createJiti } = await import(pathToFileURL(${JSON.stringify(jitiStaticEntry)}).href);
 const jiti = createJiti(pathToFileURL(${JSON.stringify(consumerPackageJson)}).href, { moduleCache: false });
 const registrations = { tools: [], commands: [], events: [] };
@@ -937,10 +958,24 @@ async function register(relativePath) {
 }
 await register("extensions/gentle-agents.ts");
 await register("extensions/gentle-ai.ts");
-for (const name of ["subagent_list_agents", "subagent_run", "orchestrator_session_id", "orchestrator_list", "orchestrator_send_message", "gentle_review", "gentle_review_capture", "gentle_review_capture_group", "gentle_review_scope"]) assert.ok(registrations.tools.includes(name), \`missing registered tool: \${name}\`);
-for (const name of ["gentle:agents", "gentle:status", "gentle:review-mode"]) assert.ok(registrations.commands.includes(name), \`missing registered command: \${name}\`);
+for (const name of ["subagent_list_agents", "subagent_run", "orchestrator_session_id", "orchestrator_list", "orchestrator_send_message"]) assert.ok(registrations.tools.includes(name), \`missing registered tool: \${name}\`);
+for (const name of ["td:agents", "td:status"]) assert.ok(registrations.commands.includes(name), \`missing registered command: \${name}\`);
 assert.ok(registrations.events.includes("session_start"), "expected session_start registration");
 assert.ok(registrations.events.includes("session_shutdown"), "expected session_shutdown registration");
+assert.equal(registrations.tools.some(name => name.startsWith(["gentle", "review"].join("_"))), false, "removed review tools must not register");
+const { mkdirSync, writeFileSync } = await import("node:fs");
+const { join } = await import("node:path");
+const project = join(process.cwd(), "project-agent-probe");
+mkdirSync(join(project, ".agents", "agents"), { recursive: true });
+writeFileSync(join(project, ".agents", "agents", "packed-project.md"), "---\\nname: packed-project\\ntools: Read, Glob\\nmodel: inherit\\n---\\nProject-owned instructions.\\n");
+const { discoverAgents } = await jiti.import(pathToFileURL(join(${JSON.stringify(packageRoot)}, "lib", "agents-config.ts")).href);
+const discovery = discoverAgents({ cwd: project, home: process.env.HOME, agentHome: process.env[ENV_AGENT_HOME] });
+assert.deepEqual(discovery.errors, []);
+const projectAgent = discovery.agents.find(agent => agent.name === "packed-project");
+assert.ok(projectAgent, "repo project agent must load");
+assert.equal(projectAgent.scope, "project");
+assert.deepEqual(projectAgent.tools, ["read", "find"]);
+assert.equal(projectAgent.model, undefined);
 process.stdout.write(JSON.stringify({ tools: registrations.tools.sort(), commands: registrations.commands.sort(), loader: "Jiti from @earendil-works/pi-coding-agent dependency" }));
 `;
 }
@@ -1053,8 +1088,9 @@ function mergeSdkLifecycleChildProgress(receipt, childReceipt) {
 	if (childReceipt.windowsRegistryObservation !== undefined) receipt.windowsRegistryObservation = childReceipt.windowsRegistryObservation;
 }
 
-function sdkLifecycleProbeSource(packageRoot, consumerPackageJson, jitiStaticEntry) {
+export function sdkLifecycleProbeSource(packageRoot, consumerPackageJson, jitiStaticEntry) {
 	return `
+import { ENV_AGENT_HOME } from ${JSON.stringify(pathToFileURL(join(packageRoot, "runtime/brand.mjs")).href)};
 // One bind permits default start (30s), initialize (2s), and listen (2s); its
 // remaining 6s covers SDK lifecycle/error observation. Listen owns publication.
 const SDK_LIFECYCLE_WINDOWS_BIND_DEADLINE_MS = 30_000 + 2_000 + 2_000 + 6_000;
@@ -1233,7 +1269,7 @@ try {
   ({ join } = pathModule);
   ({ pathToFileURL } = urlModule);
   checkpoint("bootstrap", "bootstrap-agent-home");
-  const agentHome = process.env.GENTLE_PI_AGENT_HOME;
+  const agentHome = process.env[ENV_AGENT_HOME];
   assert.equal(typeof agentHome, "string");
   checkpoint("bootstrap", "bootstrap-directories");
   const probeRoot = join(process.cwd(), "sdk-lifecycle-probe");
@@ -1445,7 +1481,7 @@ async function testSdkLifecyclePackedSession() {
 		mkdirSync(packDirectory);
 		mkdirSync(consumerDirectory);
 		const { env } = isolatedUnhookedEnvironment(temporary);
-		Object.assign(env, { GENTLE_PI_AGENTS: "1", PI_OFFLINE: "1" });
+		Object.assign(env, { TOMIDEV_AGENTS: "1", PI_OFFLINE: "1" });
 		selectSdkLifecycleCheck(receipt, "project-sdk-version");
 		const sdkVersion = resolveProjectPiSdkVersion(root, "SDK lifecycle probe");
 		selectSdkLifecycleCheck(receipt, "pack-command");
@@ -1461,7 +1497,7 @@ async function testSdkLifecyclePackedSession() {
 		runBoundedNpm("install", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--omit=dev", "--legacy-peer-deps", tarball, `@earendil-works/pi-coding-agent@${sdkVersion}`], env, consumerDirectory);
 		receipt.installCompleted = true;
 		stage = "artifact-check";
-		const packageRoot = join(consumerDirectory, "node_modules", "gentle-pi");
+		const packageRoot = join(consumerDirectory, "node_modules", "tomidev");
 		selectSdkLifecycleCheck(receipt, "packed-assets");
 		assertPackedAssets(packageRoot, { checkId: "asset-runtime-windows-session-transport-owned" });
 		selectSdkLifecycleCheck(receipt, "native-artifacts");
@@ -1518,7 +1554,7 @@ async function testWindowsStartupTimingPackedHelper() {
 		mkdirSync(packDirectory);
 		mkdirSync(consumerDirectory);
 		const { env } = isolatedUnhookedEnvironment(temporary);
-		Object.assign(env, { GENTLE_PI_AGENTS: "1", PI_OFFLINE: "1" });
+		Object.assign(env, { TOMIDEV_AGENTS: "1", PI_OFFLINE: "1" });
 		selectWindowsStartupTimingCheck(receipt, "project-sdk-version");
 		const sdkVersion = resolveProjectPiSdkVersion(root, "Windows startup timing probe");
 		selectWindowsStartupTimingCheck(receipt, "pack-command");
@@ -1534,7 +1570,7 @@ async function testWindowsStartupTimingPackedHelper() {
 		runBoundedNpm("install", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--omit=dev", "--legacy-peer-deps", tarball, `@earendil-works/pi-coding-agent@${sdkVersion}`], env, consumerDirectory);
 		receipt.installCompleted = true;
 		stage = "artifact-check";
-		const packageRoot = join(consumerDirectory, "node_modules", "gentle-pi");
+		const packageRoot = join(consumerDirectory, "node_modules", "tomidev");
 		selectWindowsStartupTimingCheck(receipt, "packed-assets");
 		assertPackedAssets(packageRoot, { checkId: "asset-runtime-windows-session-transport-owned" });
 		selectWindowsStartupTimingCheck(receipt, "native-artifacts");
@@ -1592,7 +1628,7 @@ async function testWindowsStartupTimingEnvironmentExperiment() {
 		// Both cases retain this exact existing minimal isolation environment; only
 		// the treatment receives the validated, fixed Windows path-key delta.
 		const { env: isolatedEnv } = isolatedUnhookedEnvironment(temporary);
-		Object.assign(isolatedEnv, { GENTLE_PI_AGENTS: "1", PI_OFFLINE: "1" });
+		Object.assign(isolatedEnv, { TOMIDEV_AGENTS: "1", PI_OFFLINE: "1" });
 		const pathDelta = deriveWindowsStartupTimingPathDelta(process.env);
 		const treatmentPathDelta = validateWindowsStartupTimingMachinePaths(pathDelta) ? pathDelta : undefined;
 		selectWindowsStartupTimingCheck(receipt, "project-sdk-version");
@@ -1610,7 +1646,7 @@ async function testWindowsStartupTimingEnvironmentExperiment() {
 		runBoundedNpm("install", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--omit=dev", "--legacy-peer-deps", tarball, `@earendil-works/pi-coding-agent@${sdkVersion}`], isolatedEnv, consumerDirectory);
 		receipt.installCompleted = true;
 		stage = "artifact-check";
-		const packageRoot = join(consumerDirectory, "node_modules", "gentle-pi");
+		const packageRoot = join(consumerDirectory, "node_modules", "tomidev");
 		selectWindowsStartupTimingCheck(receipt, "packed-assets");
 		assertPackedAssets(packageRoot, { checkId: "asset-runtime-windows-session-transport-owned" });
 		selectWindowsStartupTimingCheck(receipt, "native-artifacts");
@@ -1707,7 +1743,7 @@ async function testUnhookedPackedImports() {
 		runBoundedNpm("install", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--omit=dev", "--legacy-peer-deps", tarball, `@earendil-works/pi-coding-agent@${sdkVersion}`], env, consumerDirectory);
 		receipt.installCompleted = true;
 		stage = "artifact-check";
-		const packageRoot = join(consumerDirectory, "node_modules", "gentle-pi");
+		const packageRoot = join(consumerDirectory, "node_modules", "tomidev");
 		assertPackedAssets(packageRoot, receipt);
 		assertNoNativeInstallerArtifacts(packageRoot, consumerDirectory, receipt);
 		const sdkPackageJson = join(consumerDirectory, "node_modules", "@earendil-works", "pi-coding-agent", "package.json");
@@ -1776,6 +1812,11 @@ export function decidePackedRunnerEntrypoint(scriptPath, argvEntry, platform, op
 	}
 }
 
+// Modes: default: install + launch + registration + two-session lifecycle.
+// --unhooked-imports: no-script install, inert registration, homes unchanged.
+// --sdk-lifecycle: hosted two-session Pi lifecycle, no provider/model invocation.
+// --windows-startup-timing and --windows-startup-timing-environment: hosted
+// Windows session-transport experiments (not native review/provider probes).
 const entrypoint = decidePackedRunnerEntrypoint(fileURLToPath(import.meta.url), process.argv[1], process.platform);
 if (entrypoint.exitCode !== null) {
 	process.exitCode = entrypoint.exitCode;

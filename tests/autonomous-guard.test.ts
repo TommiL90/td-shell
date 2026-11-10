@@ -299,10 +299,11 @@ test("recognized data loss requires fresh confirmation across autonomous and mix
 		`mysql -e 'TRUNCATE TABLE users'`,
 		`sqlite3 app.db 'DELETE FROM users'`,
 		`git push origin main && rm -rf ./data`,
-		`sh -c "psql -c 'DROP DATABASE app'"`,
 	]) {
 		assert.equal(classifyGuardedCommand(command, { autonomousMode: true, guardedCommands: { gitPush: "allow" } }), "confirm", command);
 	}
+	// DROP DATABASE is one of the unified denylist's hard denials, so it is blocked even when wrapped in sh -c.
+	assert.equal(classifyGuardedCommand(`sh -c "psql -c 'DROP DATABASE app'"`, { autonomousMode: true, guardedCommands: { gitPush: "allow" } }), "block", "DROP DATABASE is always blocked");
 	assert.equal(classifyGuardedCommand(`psql -c 'DROP TABLE users' && npm publish`, {
 		autonomousMode: true, guardedCommands: { npmPublish: "block" },
 	}), "block", "configured blocks still take precedence");
@@ -683,9 +684,9 @@ test("loadRuntimeGuardrailsConfig: returns off config when no file exists", () =
 	}
 });
 
-test("loadRuntimeGuardrailsConfig: env var GENTLE_PI_AUTONOMOUS_MODE=1 activates mode", () => {
-	const original = process.env.GENTLE_PI_AUTONOMOUS_MODE;
-	process.env.GENTLE_PI_AUTONOMOUS_MODE = "1";
+test("loadRuntimeGuardrailsConfig: env var TOMIDEV_AUTONOMOUS_MODE=1 activates mode", () => {
+	const original = process.env.TOMIDEV_AUTONOMOUS_MODE;
+	process.env.TOMIDEV_AUTONOMOUS_MODE = "1";
 	const dir = makeTmpDir();
 	try {
 		const config = __testing.loadRuntimeGuardrailsConfig(dir, {
@@ -694,8 +695,8 @@ test("loadRuntimeGuardrailsConfig: env var GENTLE_PI_AUTONOMOUS_MODE=1 activates
 		assert.equal(config.autonomousMode, true);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
-		if (original === undefined) delete process.env.GENTLE_PI_AUTONOMOUS_MODE;
-		else process.env.GENTLE_PI_AUTONOMOUS_MODE = original;
+		if (original === undefined) delete process.env.TOMIDEV_AUTONOMOUS_MODE;
+		else process.env.TOMIDEV_AUTONOMOUS_MODE = original;
 	}
 });
 
@@ -907,9 +908,9 @@ test("classifyGuardedCommand: autonomousMode=true, empty guardedCommands, gitPus
 // Fix 5c: env var negatives — only "1" activates autonomous mode
 // ---------------------------------------------------------------------------
 
-test("loadRuntimeGuardrailsConfig: GENTLE_PI_AUTONOMOUS_MODE=0 does NOT activate autonomous mode", () => {
-	const original = process.env.GENTLE_PI_AUTONOMOUS_MODE;
-	process.env.GENTLE_PI_AUTONOMOUS_MODE = "0";
+test("loadRuntimeGuardrailsConfig: TOMIDEV_AUTONOMOUS_MODE=0 does NOT activate autonomous mode", () => {
+	const original = process.env.TOMIDEV_AUTONOMOUS_MODE;
+	process.env.TOMIDEV_AUTONOMOUS_MODE = "0";
 	const dir = makeTmpDir();
 	try {
 		const config = __testing.loadRuntimeGuardrailsConfig(dir, {
@@ -918,14 +919,14 @@ test("loadRuntimeGuardrailsConfig: GENTLE_PI_AUTONOMOUS_MODE=0 does NOT activate
 		assert.equal(config.autonomousMode, false);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
-		if (original === undefined) delete process.env.GENTLE_PI_AUTONOMOUS_MODE;
-		else process.env.GENTLE_PI_AUTONOMOUS_MODE = original;
+		if (original === undefined) delete process.env.TOMIDEV_AUTONOMOUS_MODE;
+		else process.env.TOMIDEV_AUTONOMOUS_MODE = original;
 	}
 });
 
-test("loadRuntimeGuardrailsConfig: GENTLE_PI_AUTONOMOUS_MODE=true does NOT activate autonomous mode", () => {
-	const original = process.env.GENTLE_PI_AUTONOMOUS_MODE;
-	process.env.GENTLE_PI_AUTONOMOUS_MODE = "true";
+test("loadRuntimeGuardrailsConfig: TOMIDEV_AUTONOMOUS_MODE=true does NOT activate autonomous mode", () => {
+	const original = process.env.TOMIDEV_AUTONOMOUS_MODE;
+	process.env.TOMIDEV_AUTONOMOUS_MODE = "true";
 	const dir = makeTmpDir();
 	try {
 		const config = __testing.loadRuntimeGuardrailsConfig(dir, {
@@ -934,14 +935,14 @@ test("loadRuntimeGuardrailsConfig: GENTLE_PI_AUTONOMOUS_MODE=true does NOT activ
 		assert.equal(config.autonomousMode, false);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
-		if (original === undefined) delete process.env.GENTLE_PI_AUTONOMOUS_MODE;
-		else process.env.GENTLE_PI_AUTONOMOUS_MODE = original;
+		if (original === undefined) delete process.env.TOMIDEV_AUTONOMOUS_MODE;
+		else process.env.TOMIDEV_AUTONOMOUS_MODE = original;
 	}
 });
 
-test("loadRuntimeGuardrailsConfig: GENTLE_PI_AUTONOMOUS_MODE='' does NOT activate autonomous mode", () => {
-	const original = process.env.GENTLE_PI_AUTONOMOUS_MODE;
-	process.env.GENTLE_PI_AUTONOMOUS_MODE = "";
+test("loadRuntimeGuardrailsConfig: TOMIDEV_AUTONOMOUS_MODE='' does NOT activate autonomous mode", () => {
+	const original = process.env.TOMIDEV_AUTONOMOUS_MODE;
+	process.env.TOMIDEV_AUTONOMOUS_MODE = "";
 	const dir = makeTmpDir();
 	try {
 		const config = __testing.loadRuntimeGuardrailsConfig(dir, {
@@ -950,8 +951,8 @@ test("loadRuntimeGuardrailsConfig: GENTLE_PI_AUTONOMOUS_MODE='' does NOT activat
 		assert.equal(config.autonomousMode, false);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
-		if (original === undefined) delete process.env.GENTLE_PI_AUTONOMOUS_MODE;
-		else process.env.GENTLE_PI_AUTONOMOUS_MODE = original;
+		if (original === undefined) delete process.env.TOMIDEV_AUTONOMOUS_MODE;
+		else process.env.TOMIDEV_AUTONOMOUS_MODE = original;
 	}
 });
 
@@ -1204,8 +1205,8 @@ test("evaluateBashPolicies: allow verdict from the last policy returns undefined
 
 test("evaluateBashPolicies: real runtime-guardrails policy blocks hard-deny commands through the seam", async () => {
 	const dir = makeTmpDir();
-	const originalConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = join(dir, "config-home");
+	const originalConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = join(dir, "config-home");
 	try {
 		const seam = makeBashPolicySeamHarness(dir);
 		const result = await __testing.evaluateBashPolicies(
@@ -1219,16 +1220,16 @@ test("evaluateBashPolicies: real runtime-guardrails policy blocks hard-deny comm
 		assert.match(result?.reason ?? "", /destructive/);
 	} finally {
 		if (originalConfigHome === undefined)
-			delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = originalConfigHome;
+			delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = originalConfigHome;
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
 
 test("evaluateBashPolicies: real runtime-guardrails policy allows a non-guarded command through the seam", async () => {
 	const dir = makeTmpDir();
-	const originalConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = join(dir, "config-home");
+	const originalConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = join(dir, "config-home");
 	try {
 		const seam = makeBashPolicySeamHarness(dir);
 		const result = await __testing.evaluateBashPolicies(
@@ -1241,8 +1242,8 @@ test("evaluateBashPolicies: real runtime-guardrails policy allows a non-guarded 
 		assert.equal(result, undefined);
 	} finally {
 		if (originalConfigHome === undefined)
-			delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = originalConfigHome;
+			delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = originalConfigHome;
 		rmSync(dir, { recursive: true, force: true });
 	}
 });

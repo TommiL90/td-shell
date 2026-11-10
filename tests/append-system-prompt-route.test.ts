@@ -30,8 +30,8 @@ before(async () => {
 	for (const directory of [fixtureCwd, home]) await mkdir(directory);
 	Object.assign(fixtureEnvironment, {
 		HOME: home, USERPROFILE: home,
-		GENTLE_PI_CONFIG_HOME: join(home, "config"),
-		GENTLE_PI_AGENT_HOME: join(home, "agents"),
+		TOMIDEV_CONFIG_HOME: join(home, "config"),
+		TOMIDEV_AGENT_HOME: join(home, "agents"),
 		PI_CODING_AGENT_DIR: join(home, "pi"),
 		XDG_CONFIG_HOME: join(home, "xdg"),
 	});
@@ -60,7 +60,7 @@ function gentleAiHandlers(processEnv: NodeJS.ProcessEnv = {}): Map<string, Handl
 	} as unknown as ExtensionAPI;
 	createGentleAiExtension({
 		nativeReviewCli: null,
-		processEnv: { ...fixtureEnvironment, GENTLE_PI_AGENTS_CHILD: "0", ...processEnv, GENTLE_AI_TELEMETRY: "0" },
+		processEnv: { ...fixtureEnvironment, TOMIDEV_AGENTS_CHILD: "0", ...processEnv, GENTLE_AI_TELEMETRY: "0" },
 		resolveTelemetryTriggerBinary: () => join(fixtureCwd, "never-executed"),
 		telemetryTriggerSpawn: () => assert.fail("Route fixtures must not spawn telemetry"),
 	})(pi);
@@ -114,31 +114,32 @@ test("both extensions land their block in appendSystemPrompt on one shared optio
 	assert.equal(todoResult, undefined, "gentle-todo must not return a replacement systemPrompt");
 
 	const appended = event.systemPromptOptions.appendSystemPrompt;
-	assert.match(appended, /el Gentleman Identity and Harness/);
+	assert.match(appended, /(?:el Gentleman|Tomidev Shell) Identity and Harness/);
 	const continuityStart = appended.indexOf("## Authorized work continuity");
-	const coreStart = appended.indexOf("# el Gentleman Orchestrator");
+	const coreStart = appended.indexOf("# Tomidev Shell Orchestrator") !== -1
+		? appended.indexOf("# Tomidev Shell Orchestrator")
+		: appended.indexOf("# el Gentleman Orchestrator");
 	assert.ok(continuityStart >= 0 && continuityStart < coreStart,
 		"continuity must be always injected in the identity/harness, outside the budgeted core");
 	assert.equal(appended.split("## Authorized work continuity").length - 1, 1);
 	const continuity = appended.slice(continuityStart, coreStart);
 	for (const clause of [
-		"necessary in-scope implementation, documentation and verification steps",
-		"Never end a turn merely announcing an immediately executable authorized next step; execute it instead",
-		"required explicit consent, a denied action, or the human's explicit stop",
-		"Unavailable required proof blocks completion and delivery; it does not alone prohibit specifically authorized in-scope implementation where actual native authority and other limits permit it.",
-		"After a setup prerequisite is repaired, the human may explicitly request one new bounded verification attempt.",
-		"Never bypass consent, a denial, explicit one-run or no-retry limits, terminal native outcomes, or exhausted native budgets.",
-		"Do not infer permission for publishing, destructive actions, unrelated scope or native consent",
-		"Report a concrete blocker and the exact decision needed",
-		"launch the bounded action and end the turn when no independent in-scope work remains",
-		"Retain its identity and resume the already-authorized continuation automatically on its completion event",
-		"do not ask the human to say \"continue\", poll, or claim completion while checks remain pending",
+		"Continue authorized in-scope implementation, documentation, and verification steps without asking the human to approve each transition.",
+		"Never end a turn by announcing a next step you can execute; execute it.",
+		"Stop only for an unresolved consequential scope or product decision, required consent, a denied action, missing required proof (it blocks completion and delivery), or the human's explicit stop.",
+		"Do not infer permission for publishing (push, pull request, release), commits, destructive actions, or unrelated scope",
+		"Report the concrete blocker and the exact decision needed",
+		"Resume background work on its completion event; do not ask the human to say \"continue\".",
 	]) assert.ok(continuity.includes(clause), `missing continuity clause: ${clause}`);
 	assert.match(appended, /## Todo list/);
 	// gentle-shell#1662: the list itself travels as a request-local message, never in the prompt.
 	assert.doesNotMatch(appended, /Fix the bug/);
+	const harnessIdx = Math.max(
+		appended.indexOf("Tomidev Shell Identity and Harness"),
+		appended.indexOf("el Gentleman Identity and Harness"),
+	);
 	assert.ok(
-		appended.indexOf("el Gentleman Identity and Harness") < appended.indexOf("## Todo list"),
+		harnessIdx < appended.indexOf("## Todo list"),
 		"gentle-ai's block must precede gentle-todo's, matching handler registration order",
 	);
 });
@@ -154,19 +155,24 @@ test("re-running both handlers on the same already-populated options object does
 
 	const event = { systemPrompt: "base", systemPromptOptions: { appendSystemPrompt: "" } };
 	await aiHandlers.get("before_agent_start")!(event, session);
-	const gentleAiOccurrencesAfterFirstRun = event.systemPromptOptions.appendSystemPrompt.split("el Gentleman Identity and Harness").length - 1;
+	const countHarnessOccurrences = (prompt: string) => {
+		const m1 = prompt.split("Tomidev Shell Identity and Harness").length - 1;
+		const m2 = prompt.split("el Gentleman Identity and Harness").length - 1;
+		return m1 + m2;
+	};
+	const gentleAiOccurrencesAfterFirstRun = countHarnessOccurrences(event.systemPromptOptions.appendSystemPrompt);
 	assert.equal(gentleAiOccurrencesAfterFirstRun, 1);
 
 	// A defensive re-run of gentle-ai's own handler against an options object
 	// that already carries its exact block must not append it again.
 	await aiHandlers.get("before_agent_start")!(event, session);
-	const gentleAiOccurrencesAfterSecondRun = event.systemPromptOptions.appendSystemPrompt.split("el Gentleman Identity and Harness").length - 1;
+	const gentleAiOccurrencesAfterSecondRun = countHarnessOccurrences(event.systemPromptOptions.appendSystemPrompt);
 	assert.equal(gentleAiOccurrencesAfterSecondRun, 1, "a second gentle-ai run on the same options object must not duplicate the harness");
 });
 
 for (const scenario of ["child", "named-agent"] as const) {
 	test(`${scenario} start leaves shared prompt options unchanged and returns no replacement`, async () => {
-		const handlers = gentleAiHandlers(scenario === "child" ? { GENTLE_PI_AGENTS_CHILD: "1" } : {});
+		const handlers = gentleAiHandlers(scenario === "child" ? { TOMIDEV_AGENTS_CHILD: "1" } : {});
 		const event = {
 			systemPrompt: "base",
 			systemPromptOptions: { appendSystemPrompt: "Existing provider section" },
@@ -175,6 +181,6 @@ for (const scenario of ["child", "named-agent"] as const) {
 		const result = await handlers.get("before_agent_start")!(event, ctx());
 		assert.equal(result, undefined, "excluded sessions must not return a replacement system prompt");
 		assert.equal(event.systemPromptOptions.appendSystemPrompt, "Existing provider section");
-		assert.doesNotMatch(event.systemPromptOptions.appendSystemPrompt, /el Gentleman Identity and Harness/);
+		assert.doesNotMatch(event.systemPromptOptions.appendSystemPrompt, /(?:el Gentleman|Tomidev Shell) Identity and Harness/);
 	});
 }

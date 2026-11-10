@@ -1,13 +1,15 @@
 // Narrow update ownership proof. Deliberately independent of Shell upgrade/uninstall.
 import { posix, win32 } from 'node:path';
+import { GIT_SOURCE } from '../runtime/brand.mjs';
 import { bundledUpdatePlan } from '../runtime/gentle-shell-bundled.mjs';
 import { setupErrorDetail } from './installer-runner.mjs';
+import { ENV_CONFIG_HOME } from "../runtime/brand.mjs";
 
 const PI = '@earendil-works/pi-coding-agent';
-const SHELL = 'gentle-pi';
+const SHELL = 'tomidev';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const succeeded = result => result?.code === 0 && !result.timedOut && result.signal == null;
-const refusal = detail => new Error(`gentle-shell update: ownership ${detail}; update Pi with the package manager or source checkout that supplies the selected runtime. No installation changed.`);
+const refusal = detail => new Error(`tomidev update: ownership ${detail}; update Pi with the package manager or source checkout that supplies the selected runtime. No installation changed.`);
 const LINKED = /^(?:file|link|workspace):/i;
 // A main-channel Shell (`<version>-main.<sha12>`, scripts/main-channel.mjs
 // mainVersion) is never published; it exists only as the packed tarball.
@@ -41,7 +43,7 @@ function canonicalWith(adapters, path) {
  };
 }
 
-/** The cli.js a selected PATH or GENTLE_SHELL_PI executable runs: itself when
+/** The cli.js a selected PATH or TOMIDEV_PI executable runs: itself when
  * it is the entry (npm's bin symlink resolves there), otherwise the single
  * target its shim names, relative to the shim's directory. Anything else
  * cannot be matched against a listed package and is refused.
@@ -142,14 +144,14 @@ async function listedEntries(groups, {adapters, path, key, canonical}) {
  * ownership. An adjacent runtime is owned by the Shell group that resolved
  * it: updating a separate global Pi never changes what that Shell runs.
  */
-/** Where `gentle-shell upgrade --channel main` packed this Shell version: the
+/** Where `tomidev upgrade --channel main` packed this Shell version: the
  * same config home as scripts/main-channel.mjs configHome. A relative config
  * home is refused, not resolved: `upgrade` resolved it from its own working
  * directory, so it names no single folder, and the package manager runs from
  * the neutral cwd.
  */
 function mainBuildTarball(version, {env, home, path}) {
- const config = env?.GENTLE_PI_CONFIG_HOME || (typeof home === 'string' ? path.join(home, '.pi', 'gentle-ai') : null);
+ const config = env?.[ENV_CONFIG_HOME] || (typeof home === 'string' ? path.join(home, '.pi', 'gentle-ai') : null);
  if (!config || !path.isAbsolute(config)) throw refusal('cannot locate the main-channel build without an absolute config home');
  return path.join(config, 'main', 'packages', `${SHELL}-${version}.tgz`);
 }
@@ -273,10 +275,11 @@ export async function resolveUpdateOwner({runtime, packageRoot, platform = proce
      continue;
     }
     // Reinstalling the same Shell version re-resolves its peer; `update`
-    // never upgrades Shell itself (that is `gentle-shell upgrade`).
+    // never upgrades Shell itself (that is `tomidev upgrade`).
     if (typeof manifest.version !== 'string') throw refusal('listed Shell version is missing');
     artifact = MAIN_BUILD.test(manifest.version);
-    spec = artifact ? mainBuildTarball(manifest.version, {env, home, path}) : `${SHELL}@${manifest.version}`;
+    if (!artifact && !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(manifest.version)) throw refusal('listed Shell version is not a stable release tag');
+    spec = artifact ? mainBuildTarball(manifest.version, {env, home, path}) : `${GIT_SOURCE}#v${manifest.version}`;
    }
    if (key(cli) !== key(selected)) continue;
    if (name === 'pnpm' && members.get(key(groupRoot)).size !== 1) throw refusal('selected supplier shares its global install group');
@@ -316,11 +319,11 @@ export async function updateSelectedPi(input) {
  catch (error) { throw error.message?.includes('ownership') ? error : refusal('could not be resolved'); }
  if (owner.artifact) {
   try { await input.adapters.fs.realpath(owner.spec); }
-  catch { throw new Error(`gentle-shell update: the main-channel build ${owner.spec} is missing, and this unpublished build cannot be reinstalled from the registry; run 'gentle-shell upgrade --channel release' and then 'gentle-shell upgrade --channel main' to rebuild it. No installation changed.`); }
+  catch { throw new Error(`tomidev update: the main-channel build ${owner.spec} is missing, and this unpublished build cannot be reinstalled from the registry; run 'tomidev upgrade --channel release' and then 'tomidev upgrade --channel main' to rebuild it. No installation changed.`); }
  }
  // Exactly one approved package per command; never create a comma group or
  // reinstall arbitrary dependencies merely because they share a store.
- const args = owner.args ?? (owner.name === 'pnpm' ? ['add', '-g', owner.spec, ...(owner.package === SHELL ? ['--allow-build=gentle-pi'] : [])] : ['install', '-g', owner.spec, ...(owner.package === PI ? ['--ignore-scripts'] : [])]);
+ const args = owner.args ?? (owner.name === 'pnpm' ? ['add', '-g', owner.spec, ...(owner.package === SHELL ? ['--allow-build=tomidev'] : [])] : ['install', '-g', owner.spec, ...(owner.package === PI ? ['--ignore-scripts'] : [])]);
  const result = await input.adapters.run(owner.command, [...owner.prefix, ...args], {deadlineMs:20 * 60_000, cwd: owner.sourceRoot ?? input.cwd, stderrTail:4096, ...(owner.sourceEnv ? {env:owner.sourceEnv} : {})});
  if (!succeeded(result)) {
   // One sanitized line of the manager's own error: npm prints it on stderr,
@@ -328,16 +331,16 @@ export async function updateSelectedPi(input) {
   // error line in either stream wins over a stderr warning, stderr's on a tie.
   const output = [result?.stdout, result?.stderrTail].filter(text => typeof text === 'string').join('\n');
   const detail = setupErrorDetail(output, input.home, input.platform);
-  throw new Error(`gentle-shell update: ${owner.name} (${[owner.command, ...owner.prefix].join(' ')}) could not install ${owner.spec}${detail ? `\n${detail}` : ''}`);
+  throw new Error(`tomidev update: ${owner.name} (${[owner.command, ...owner.prefix].join(' ')}) could not install ${owner.spec}${detail ? `\n${detail}` : ''}`);
  }
  if (owner.sourceRoot) {
   const {path, key} = pathsFor(input.platform ?? process.platform);
   const canonical = canonicalWith(input.adapters, path);
   let sameLink = false;
   try { sameLink = key(await canonical(owner.linkPath)) === key(owner.sourceRoot); } catch { /* checked below */ }
-  if (!sameLink) throw new Error('gentle-shell update: the Shell link changed during the source update; inspect the installation before retrying.');
-  if (await input.adapters.fs.readFile(path.join(owner.sourceRoot, 'package.json'), 'utf8') !== owner.manifest) throw new Error('gentle-shell update: the source manifest changed during the update; inspect the checkout before retrying.');
-  if (owner.sourceConfig !== undefined && await input.adapters.fs.readFile(path.join(owner.sourceRoot, 'pnpm-workspace.yaml'), 'utf8') !== owner.sourceConfig) throw new Error('gentle-shell update: the source pnpm configuration changed during the update; inspect the checkout before retrying.');
+  if (!sameLink) throw new Error('tomidev update: the Shell link changed during the source update; inspect the installation before retrying.');
+  if (await input.adapters.fs.readFile(path.join(owner.sourceRoot, 'package.json'), 'utf8') !== owner.manifest) throw new Error('tomidev update: the source manifest changed during the update; inspect the checkout before retrying.');
+  if (owner.sourceConfig !== undefined && await input.adapters.fs.readFile(path.join(owner.sourceRoot, 'pnpm-workspace.yaml'), 'utf8') !== owner.sourceConfig) throw new Error('tomidev update: the source pnpm configuration changed during the update; inspect the checkout before retrying.');
   let after = null;
   try {
    const peer = await adjacentPeer({shellRoot:owner.sourceRoot, adapters:input.adapters, path, key, canonical});
@@ -345,7 +348,7 @@ export async function updateSelectedPi(input) {
    if (peer && key(peer.cli) === key(nested)) after = peer.manifest.version ?? null;
   } catch { /* Never invent readback after a successful manager invocation. */ }
   const location = `${owner.name} updated ${PI} in ${owner.sourceRoot}`;
-  if (after === null) input.out?.(`${location}. The Pi version could not be read back; run 'gentle-shell --version' to check it.`);
+  if (after === null) input.out?.(`${location}. The Pi version could not be read back; run 'tomidev --version' to check it.`);
   else {
    input.out?.(`${location}; the selected Pi is ${after === input.currentVersion ? 'still' : 'now'} ${after}${after !== input.currentVersion && input.currentVersion !== undefined ? ` (was ${input.currentVersion})` : ''}.`);
    if (after === input.currentVersion && owner.name === 'pnpm') input.out?.('The declared version range and pnpm minimumReleaseAge setting still apply; neither was overridden.');
@@ -354,7 +357,7 @@ export async function updateSelectedPi(input) {
  }
  const after = await suppliedPiVersion(owner, input);
  const before = input.currentVersion;
- if (after === null) input.out?.(`${owner.name} installed ${owner.spec}. The Pi version it now supplies could not be read back; run 'gentle-shell --version' to check it.`);
+ if (after === null) input.out?.(`${owner.name} installed ${owner.spec}. The Pi version it now supplies could not be read back; run 'tomidev --version' to check it.`);
  else if (before !== undefined && after === before) {
   input.out?.(`${owner.name} installed ${owner.spec}, and the selected Pi is still ${after}.`);
   if (owner.name === 'pnpm') input.out?.('pnpm installs only releases older than its minimumReleaseAge setting (pnpm 11 defaults to 4320 minutes); a newer Pi release is picked up once it is old enough.');

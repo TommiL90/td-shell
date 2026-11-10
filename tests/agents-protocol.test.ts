@@ -113,7 +113,7 @@ test("all terminal statuses produce exactly one transition and restore establish
 	}
 });
 
-// Gentle Agents protocol: the child pi process streams RPC events; the host
+// Tomidev Agents protocol: the child pi process streams RPC events; the host
 // normalizes them into small typed deltas, applies them to an append-only
 // thread, and notifies only the listeners of the task that changed.
 

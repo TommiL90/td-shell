@@ -125,7 +125,7 @@ export interface PanelSheet {
 const SHEET_ORDER = ["todo", "jobs", "agents", "footer"] as const;
 
 /**
- * The rail's sections as a full-width sheet (/gentle:panel, mobile): a fixed
+ * The rail's sections as a full-width sheet (/td:panel, mobile): a fixed
  * ` ✿ Panel … esc back` row, then every section the rail would show, in rail
  * order, scrolled within `rows`. Rows hidden below say how many remain.
  */

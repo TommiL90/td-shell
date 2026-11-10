@@ -1,3 +1,4 @@
+import { brandCommand } from "../lib/brand.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -8,7 +9,7 @@ import { createStatsLoader, currentSessionStats, type StatsLoader } from "../lib
 import { StatsView } from "../lib/stats-view.ts";
 import { effectiveKey, loadKeymaps, type KeymapBindings } from "../lib/keymaps.ts";
 
-// Gentle Stats: /gentle:stats opens a full-terminal panel over local Pi
+// Gentle Stats: /td:stats opens a full-terminal panel over local Pi
 // session history (tokens, cost, models, activity). It only reads the
 // session files Pi already writes; nothing new is persisted.
 //
@@ -18,14 +19,14 @@ import { effectiveKey, loadKeymaps, type KeymapBindings } from "../lib/keymaps.t
 // ~/.pi/agent stands in. The loader reads an alias of the same root once and
 // counts a session copied into both homes once.
 
-export const STATS_COMMAND_NAME = "gentle:stats";
+export const STATS_COMMAND_NAME = brandCommand("stats");
 
 /** Optional shortcut; there is no default key because the common alt+ keys are taken. A key saved in keymaps.json applies when the variable is unset. */
 export function statsViewKey(env: NodeJS.ProcessEnv = process.env, bindings: KeymapBindings = {}): string | undefined {
 	return effectiveKey("stats.view", env, bindings);
 }
 
-/** The sessions roots /gentle:stats reads: the active home and the user's original Pi home. */
+/** The sessions roots /td:stats reads: the active home and the user's original Pi home. */
 export function statsSessionRoots(agentDir: string, env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string[] {
 	const userHome = env[USER_PI_HOME_ENV] || join(home, ".pi", "agent");
 	return [join(agentDir, "sessions"), join(userHome, "sessions")];

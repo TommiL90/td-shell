@@ -1,6 +1,7 @@
 // Explicit bundled-store recovery. The provider owns catalog validation and
 // migration; Shell owns promotion and its core-bound provenance. Never called
 // from ordinary startup or upgrade.
+import { LOG_PREFIX } from "../runtime/brand.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -8,7 +9,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { engramProbeAllowed, engramProvenancePath, parseEngramProvenance } from "../runtime/gentle-shell-bundled.mjs";
 
-export const MIGRATION_USAGE = "Usage: gentle-shell memory migrate --confirm-quiescent\nStop every Engram client before running this command.\n";
+export const MIGRATION_USAGE = "Usage: tomidev memory migrate --confirm-quiescent\nStop every Engram client before running this command.\n";
 export const MIGRATION_PENDING_NOTICE = "Engram memory disabled: an incomplete memory migration needs recovery. Keep every Engram client stopped, retain the original backup, and follow docs/bundled-install.md#recovering-an-interrupted-migration. Do not remove the migration marker or create a new store before recovery.";
 export const migrationMarkerPath = (prefix) => join(prefix, "config", "engram-migration.json");
 export function migrationPending(prefix) {
@@ -50,7 +51,7 @@ export function migrateBundledEngram({ prefix, core, home, env }) {
 	let output;
 	let backup;
 	try {
-		if (!core) throw new Error("the verified bundled core is unavailable; run gentle-shell setup first");
+		if (!core) throw new Error("the verified bundled core is unavailable; run tomidev setup first");
 		if (!engramProbeAllowed(env)) throw new Error("explicit Engram selections or a disabled startup policy must be resolved before bundled migration");
 		if (migrationPending(prefix)) throw new Error(MIGRATION_PENDING_NOTICE);
 		const source = join(realpathSync(home), ".engram");
@@ -114,6 +115,6 @@ export function migrateBundledEngram({ prefix, core, home, env }) {
 		}
 		const retained = output ? ` Any partial copy at ${output} is retained; do not use it.` : "";
 		const recovery = promotionStarted ? ` Promotion may be incomplete; original backup: ${backup}. ${MIGRATION_PENDING_NOTICE}` : "";
-		return { code: 1, stdout: "", stderr: `gentle-shell: memory migration failed: ${error.message}.${retained}${recovery}\n` };
+		return { code: 1, stdout: "", stderr: `${LOG_PREFIX} memory migration failed: ${error.message}.${retained}${recovery}\n` };
 	}
 }

@@ -17,7 +17,7 @@ import {
 import gentleAgents, { type SessionTransportFactory } from "../extensions/gentle-agents.ts";
 import { fakeChild, type FakeChild } from "./agents-fake-child.ts";
 
-// Real-host proof of the Gentle Agents -> parent delivery paths (#1528, #1631).
+// Real-host proof of the Tomidev Agents -> parent delivery paths (#1528, #1631).
 //
 // A fake pi object can only prove what the fake models, and #1631 shipped
 // without a real-host reproduction. This file drives the real Pi AgentSession
@@ -134,7 +134,7 @@ async function createHost(t: TestContext): Promise<Host> {
 	};
 	let clock = 1000;
 	const env = { PATH: process.env.PATH ?? "/bin" };
-	// Input handlers run in extension order, so the gate sits after Gentle Agents:
+	// Input handlers run in extension order, so the gate sits after Tomidev Agents:
 	// its `input` handler has already run while the prompt stays parked.
 	const inputGate = (pi: ExtensionAPI) => {
 		pi.on("input", async () => {

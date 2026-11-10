@@ -7,14 +7,14 @@ import {
 	serializeResumeHandoff,
 } from "../lib/gentle-shell-resume-hint.ts";
 
-// Hands the quitting session to bin/gentle-shell.mjs, which prints a
+// Hands the quitting session to bin/tomidev.mjs, which prints a
 // gentle-shell resume command below pi's "pi --session <id>" exit hint (see
 // lib/gentle-shell-resume-hint.ts). Inert unless the launcher set the env var.
 
 // Process-wide, not per extension instance: /reload re-runs this factory after
 // the env var was already claimed, and must keep using the same handoff path
 // instead of going inert.
-const STATE_KEY = Symbol.for("gentle-pi.resume-hint");
+const STATE_KEY = Symbol.for("tomidev.resume-hint");
 type StateHolder = { [STATE_KEY]?: string };
 
 function claimHandoffPath(env: NodeJS.ProcessEnv): string | undefined {

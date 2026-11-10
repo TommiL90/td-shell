@@ -12,8 +12,8 @@ test("vim preference defaults off, persists strictly, and fails closed on malfor
 	assert.equal(resolveVimPolicy(options).source, "default");
 	writeVimPolicy("on", options);
 	assert.equal(resolveVimPolicy(options).policy, "on");
-	assert.equal(JSON.parse(readFileSync(join(home, "vim.json"), "utf8")).schema, "gentle-pi.vim/v1");
-	writeFileSync(join(home, "vim.json"), '{"schema":"gentle-pi.vim/v1","policy":"on","extra":true}');
+	assert.equal(JSON.parse(readFileSync(join(home, "vim.json"), "utf8")).schema, "tomidev.vim/v1");
+	writeFileSync(join(home, "vim.json"), '{"schema":"tomidev.vim/v1","policy":"on","extra":true}');
 	assert.equal(resolveVimPolicy(options).policy, "off");
 	assert.equal(resolveVimPolicy(options).malformed, true);
 });

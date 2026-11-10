@@ -19,15 +19,19 @@ const helperUrl = new URL("../scripts/install-tui-mode-setting.mjs", import.meta
 const { isPiManagedInstall } = await import(helperUrl.href);
 
 test("isPiManagedInstall recognizes the user-scope npm-managed layout", () => {
-	assert.equal(isPiManagedInstall(join("/home/alan", ".pi", "agent", "npm", "node_modules", "gentle-pi")), true);
+	assert.equal(isPiManagedInstall(join("/home/alan", ".pi", "agent", "npm", "node_modules", "tomidev")), true);
 });
 
 test("isPiManagedInstall recognizes the project-scope npm-managed layout", () => {
-	assert.equal(isPiManagedInstall(join("/repo", ".pi", "npm", "node_modules", "gentle-pi")), true);
+	assert.equal(isPiManagedInstall(join("/repo", ".pi", "npm", "node_modules", "tomidev")), true);
 });
 
 test("isPiManagedInstall recognizes Pi's git-managed layout", () => {
-	assert.equal(isPiManagedInstall(join("/home/alan", ".pi", "agent", "git", "github.com", "Gentleman-Programming", "gentle-pi")), true);
+	assert.equal(isPiManagedInstall(join("/home/alan", ".pi", "agent", "git", "github.com", "Gentleman-Programming", "tomidev")), true);
+});
+
+test("isPiManagedInstall recognizes Pi's git-managed layout of the Tomidev Shell fork (TommiL90)", () => {
+	assert.equal(isPiManagedInstall(join("/home/alan", ".pi", "agent", "git", "github.com", "TommiL90", "tomidev-shell")), true);
 });
 
 test("isPiManagedInstall rejects a global npm -g install", () => {
@@ -39,18 +43,18 @@ test("isPiManagedInstall rejects a plain development git checkout", () => {
 });
 
 test("isPiManagedInstall rejects an npx cache directory", () => {
-	assert.equal(isPiManagedInstall(join("/home/alan", ".npm", "_npx", "abc123", "node_modules", "gentle-pi")), false);
+	assert.equal(isPiManagedInstall(join("/home/alan", ".npm", "_npx", "abc123", "node_modules", "tomidev")), false);
 });
 
 test("isPiManagedInstall rejects a pnpm content-addressable store", () => {
-	assert.equal(isPiManagedInstall(join("/home/alan", ".pnpm", "gentle-pi@1.0.0", "node_modules", "gentle-pi")), false);
+	assert.equal(isPiManagedInstall(join("/home/alan", ".pnpm", "gentle-pi@1.0.0", "node_modules", "tomidev")), false);
 });
 
 test("isPiManagedInstall resolves a relative path before checking", () => {
 	const cwd = process.cwd();
 	try {
 		process.chdir(join("/tmp"));
-		assert.equal(isPiManagedInstall(join(".", "npm", "node_modules", "gentle-pi")), true);
+		assert.equal(isPiManagedInstall(join(".", "npm", "node_modules", "tomidev")), true);
 	} finally {
 		process.chdir(cwd);
 	}
@@ -72,12 +76,12 @@ function fixture(t: test.TestContext, packageSegments: readonly string[]) {
 		'export const INSTALLER_VERSION = "test"; export async function installGentleAi() { return { installed: true, binaryPath: "fixture" }; }',
 	);
 	const settings = join(home, "settings.json");
-	const env = { ...process.env, GENTLE_PI_AGENT_HOME: home, GENTLE_PI_SKIP_GENTLE_AI_INSTALL: "0" };
+	const env = { ...process.env, TOMIDEV_AGENT_HOME: home };
 	return { root, home, packageRoot, scripts, settings, env };
 }
 
 test("postinstall skips the global settings write outside a pi-managed install", (t) => {
-	const f = fixture(t, ["node_modules", "gentle-pi"]);
+	const f = fixture(t, ["node_modules", "tomidev"]);
 	const result = spawnSync(process.execPath, [join(f.scripts, "install-gentle-ai.mjs")], { encoding: "utf8", env: f.env });
 	assert.equal(result.status, 0, result.stderr);
 	assert.match(`${result.stdout}${result.stderr}`, /skip/i);
@@ -85,14 +89,14 @@ test("postinstall skips the global settings write outside a pi-managed install",
 });
 
 test("postinstall still writes fullscreen for a pi-managed npm install", (t) => {
-	const f = fixture(t, ["npm", "node_modules", "gentle-pi"]);
+	const f = fixture(t, ["npm", "node_modules", "tomidev"]);
 	const result = spawnSync(process.execPath, [join(f.scripts, "install-gentle-ai.mjs")], { encoding: "utf8", env: f.env });
 	assert.equal(result.status, 0, result.stderr);
 	assert.equal(JSON.parse(readFileSync(f.settings, "utf8")).tuiMode, "fullscreen");
 });
 
 test("postinstall still writes fullscreen for a pi-managed git install", (t) => {
-	const f = fixture(t, ["git", "github.com", "Gentleman-Programming", "gentle-pi"]);
+	const f = fixture(t, ["git", "github.com", "Gentleman-Programming", "tomidev"]);
 	const result = spawnSync(process.execPath, [join(f.scripts, "install-gentle-ai.mjs")], { encoding: "utf8", env: f.env });
 	assert.equal(result.status, 0, result.stderr);
 	assert.equal(JSON.parse(readFileSync(f.settings, "utf8")).tuiMode, "fullscreen");

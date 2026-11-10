@@ -44,7 +44,7 @@ for (const order of ["agents-only", "agents-first", "owner-first"] as const)
     );
    const manager = SessionManager.create(root, join(root, "sessions"));
    manager.appendMessage({ role: "user", content: "fixture", timestamp: 1 });
-   manager.appendCustomEntry("gentle-pi.session-profile/v99", {
+   manager.appendCustomEntry("tomidev.session-profile/v99", {
     kind: "future",
    });
    const initialDisk = readFileSync(manager.getSessionFile()!, "utf8");
@@ -75,7 +75,7 @@ for (const order of ["agents-only", "agents-first", "owner-first"] as const)
      {
       home,
       agentHome: join(home, ".pi", "agent"),
-      env: { GENTLE_PI_CONFIG_HOME: join(root, "config") },
+      env: { TOMIDEV_CONFIG_HOME: join(root, "config") },
       sessionTransport: transport,
       schedule: () => () => {},
       childExtensionPaths: [],
@@ -92,7 +92,7 @@ for (const order of ["agents-only", "agents-first", "owner-first"] as const)
    const ownerFactory = createGentleAiExtension({
     nativeReviewCli: null,
     candidateViews: null,
-    processEnv: { GENTLE_PI_AGENTS_CHILD: "1" },
+    processEnv: { TOMIDEV_AGENTS_CHILD: "1" },
    });
    const factories =
     order === "agents-only"
@@ -205,7 +205,7 @@ test("U3 independently evaluated binding readers share only process-local snapsh
  );
  clearSessionProfileBinding("u3-module");
  assert.equal(copy.readSessionProfileBinding("u3-module"), undefined);
- assert.equal(SESSION_PROFILE_CUSTOM_TYPE, "gentle-pi.session-profile/v1");
+ assert.equal(SESSION_PROFILE_CUSTOM_TYPE, "tomidev.session-profile/v1");
 });
 
 // Profile-less branches never depend on parsing the rest of the session file.

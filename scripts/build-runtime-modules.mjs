@@ -7,19 +7,11 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sources = [
-	"gentle-ai-binary",
-	"review-relay-contract",
-	"review-integration-v2",
-	"review-risk-assessment",
-	"native-review-cli",
-	"status-timing-diagnostics",
+	"brand",
 	"telemetry-trigger",
 	"child-package-injection",
 	"gentle-shell-launcher",
 	"gentle-shell-bundled",
-	"gentle-shell-startup-update",
-	"gentle-shell-update-panel",
-	"gentle-shell-startup-flow",
 	"gentle-shell-resume-hint",
 	"gentle-shell-uninstall",
 	"gentle-shell-import-pi",

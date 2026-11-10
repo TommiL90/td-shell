@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -18,22 +18,21 @@ function fakeRunStage(codes) {
 	};
 }
 
-test("default stages cover unit tests, provider contract, and runtime harness", () => {
+test("default stages cover unit tests and runtime harness", () => {
 	assert.deepEqual(
 		DEFAULT_STAGES.map((stage) => stage.name),
-		["unit-tests", "provider-contract", "runtime-harness"],
+		["unit-tests", "runtime-harness"],
 	);
 });
 
 test("every stage runs even when an earlier stage fails", async () => {
-	const run = fakeRunStage([1, 0, 1]);
+	const run = fakeRunStage([1, 0]);
 	const results = await runTestSuite(DEFAULT_STAGES, { runStageImpl: run, write: () => {} });
 	assert.deepEqual(
 		results,
 		[
 			{ name: "unit-tests", code: 1 },
-			{ name: "provider-contract", code: 0 },
-			{ name: "runtime-harness", code: 1 },
+			{ name: "runtime-harness", code: 0 },
 		],
 	);
 });
@@ -41,12 +40,11 @@ test("every stage runs even when an earlier stage fails", async () => {
 test("summary reports each stage outcome and names the failures", async () => {
 	const lines: string[] = [];
 	await runTestSuite(DEFAULT_STAGES, {
-		runStageImpl: fakeRunStage([1, 0, 0]),
+		runStageImpl: fakeRunStage([1, 0]),
 		write: (line: string) => lines.push(line),
 	});
 	const summary = lines.slice(lines.findIndex((line) => line.includes("=== test suite summary ===")));
 	assert.ok(summary.includes("FAIL  unit-tests"));
-	assert.ok(summary.includes("PASS  provider-contract"));
 	assert.ok(summary.includes("PASS  runtime-harness"));
 	assert.ok(summary.includes("1 stage(s) failed: unit-tests"));
 });
@@ -116,20 +114,23 @@ function probeStageEnvironment(t: test.TestContext, env: NodeJS.ProcessEnv) {
 	const probePath = join(dirname(stagesPath), "probe.mjs");
 	writeFileSync(probePath, `
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-const home = process.env.GENTLE_PI_CONFIG_HOME;
+const home = process.env.TOMIDEV_CONFIG_HOME;
 const gitGlobalPath = process.env.GIT_CONFIG_GLOBAL;
 const xdgPath = process.env.XDG_CONFIG_HOME;
 console.log("ENV_PROBE=" + JSON.stringify({
   git: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase().startsWith("GIT_"))),
   gitGlobal: gitGlobalPath ? { exists: existsSync(gitGlobalPath), content: existsSync(gitGlobalPath) ? readFileSync(gitGlobalPath, "utf8") : null } : null,
   xdg: xdgPath ?? null,
-  agents: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase().startsWith("GENTLE_PI_AGENTS_"))),
+  agents: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase().startsWith("TOMIDEV_AGENTS_"))),
   home,
-  shellMarker: process.env.GENTLE_SHELL_CONFIG_HOME ?? null,
+  shellMarker: process.env.TOMIDEV_SHELL_CONFIG_HOME ?? null,
   files: home && existsSync(home) ? readdirSync(home) : null,
   sentinel: process.env.TEST_ENV_SENTINEL,
   tmp: process.env.TMPDIR ?? null,
   tmpExists: process.env.TMPDIR ? existsSync(process.env.TMPDIR) : null,
+  userHome: process.env.HOME ?? null,
+  userProfile: process.env.USERPROFILE ?? null,
+  userHomeExists: process.env.HOME ? existsSync(process.env.HOME) : null,
 }));
 `);
 	writeFileSync(stagesPath, JSON.stringify([
@@ -217,7 +218,7 @@ console.log("XDG_FIXTURE=" + JSON.stringify({ staged: run("ls-files").includes("
 });
 
 test("unit stage strips inherited subagent context without changing later stages", (t) => {
-	const env = { GENTLE_PI_AGENTS_CHILD: "1", GENTLE_PI_AGENTS_OWNED_IPC: "1" };
+	const env = { TOMIDEV_AGENTS_CHILD: "1", TOMIDEV_AGENTS_OWNED_IPC: "1" };
 	const [unit, provider] = probeStageEnvironment(t, env);
 	assert.deepEqual(unit.agents, {});
 	for (const [key, value] of Object.entries(env)) assert.equal(provider.agents[key], value);
@@ -228,7 +229,7 @@ test("unit stage removes the launcher marker without changing later stages", (t)
 	t.after(() => rmSync(marker, { recursive: true, force: true }));
 	const sentinel = join(marker, "sentinel");
 	writeFileSync(sentinel, "untouched");
-	const [unit, provider, runtime] = probeStageEnvironment(t, { GENTLE_SHELL_CONFIG_HOME: marker });
+	const [unit, provider, runtime] = probeStageEnvironment(t, { TOMIDEV_SHELL_CONFIG_HOME: marker });
 	assert.equal(unit.shellMarker, null);
 	assert.equal(provider.shellMarker, marker);
 	assert.equal(runtime.shellMarker, marker);
@@ -241,7 +242,7 @@ test("unit stage accepts an uncreated inherited config home without creating it"
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
 	const home = join(dir, "not-created");
 	assert.equal(existsSync(home), false);
-	const [unit, provider] = probeStageEnvironment(t, { GENTLE_PI_CONFIG_HOME: home });
+	const [unit, provider] = probeStageEnvironment(t, { TOMIDEV_CONFIG_HOME: home });
 	assert.notEqual(unit.home, home);
 	assert.deepEqual(unit.files, ["empty.gitconfig"]);
 	assert.equal(existsSync(unit.home), false);
@@ -256,13 +257,26 @@ test("unit stage uses an empty temporary config home and removes it after exit",
 	const configPath = join(home, "runtime-guardrails.json");
 	const config = JSON.stringify({ autonomousMode: true, guardedCommands: { gitPush: "allow", gitRebase: "allow", gitBranchDeleteForce: "allow" } });
 	writeFileSync(configPath, config);
-	const [unit, provider] = probeStageEnvironment(t, { GENTLE_PI_CONFIG_HOME: home });
+	const [unit, provider] = probeStageEnvironment(t, { TOMIDEV_CONFIG_HOME: home });
 	assert.notEqual(unit.home, home);
 	assert.deepEqual(unit.files, ["empty.gitconfig"]);
 	assert.equal(existsSync(unit.home), false);
 	assert.equal(provider.home, home);
 	assert.deepEqual(provider.files, ["runtime-guardrails.json"]);
 	assert.equal(readFileSync(configPath, "utf8"), config);
+});
+
+// L22: no stage ever sees the developer's real home. Each stage gets a private HOME and USERPROFILE that exists
+// while it runs and is removed after it.
+test("every stage runs with a private HOME and USERPROFILE that is removed after the stage", (t) => {
+	const realHome = userInfo().homedir;
+	const probes = probeStageEnvironment(t, { HOME: realHome, USERPROFILE: realHome });
+	for (const probe of probes) {
+		assert.notEqual(probe.userHome, realHome, "a stage never inherits the real home");
+		assert.equal(probe.userProfile, probe.userHome);
+		assert.equal(probe.userHomeExists, true, "the private home exists while the stage runs");
+		assert.equal(existsSync(probe.userHome), false, "the private home is removed after the stage");
+	}
 });
 
 test("direct invocation rejects a malformed stages file with a non-zero exit", (t) => {
@@ -314,7 +328,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 const name = process.argv[2];
 const env = process.env;
-const snapshot = { tmp: env.TMPDIR, home: env.GENTLE_PI_CONFIG_HOME, marker: env.GENTLE_SHELL_CONFIG_HOME ?? null,
+const snapshot = { tmp: env.TMPDIR, home: env.TOMIDEV_CONFIG_HOME, marker: env.TOMIDEV_SHELL_CONFIG_HOME ?? null,
   gitGlobal: env.GIT_CONFIG_GLOBAL, gitNoSystem: env.GIT_CONFIG_NOSYSTEM, xdg: env.XDG_CONFIG_HOME };
 if (name === "unit") {
   snapshot.mode = statSync(env.TMPDIR).mode & 0o777;
@@ -351,7 +365,7 @@ process.exitCode = results.some(result => result.code !== 0) ? 1 : 0;
 `);
 	const result = spawnSync(process.execPath, [hostPath, stagesPath], {
 		encoding: "utf8",
-		env: { ...process.env, TMPDIR: inherited, GENTLE_PI_CONFIG_HOME: callerConfig, GENTLE_SHELL_CONFIG_HOME: marker,
+		env: { ...process.env, TMPDIR: inherited, TOMIDEV_CONFIG_HOME: callerConfig, TOMIDEV_SHELL_CONFIG_HOME: marker,
 			GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: "0", XDG_CONFIG_HOME: xdg },
 	});
 	assert.equal(result.status, 1);

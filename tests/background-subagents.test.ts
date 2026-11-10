@@ -60,7 +60,7 @@ function writePolicyFile(dir: string, policy: string): void {
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(
 		join(dir, "background-subagents.json"),
-		JSON.stringify({ schema: "gentle-pi.background-subagents/v1", policy }),
+		JSON.stringify({ schema: "tomidev.background-subagents/v1", policy }),
 	);
 }
 
@@ -96,13 +96,13 @@ function installSubagentsPackage(
 test("strict decode accepts exactly the v1 schema with policy on|off", () => {
 	assert.equal(
 		parseBackgroundSubagentsPolicyFile(
-			'{"schema":"gentle-pi.background-subagents/v1","policy":"on"}',
+			'{"schema":"tomidev.background-subagents/v1","policy":"on"}',
 		),
 		"on",
 	);
 	assert.equal(
 		parseBackgroundSubagentsPolicyFile(
-			'{"schema":"gentle-pi.background-subagents/v1","policy":"off"}',
+			'{"schema":"tomidev.background-subagents/v1","policy":"off"}',
 		),
 		"off",
 	);
@@ -114,10 +114,10 @@ test("strict decode rejects malformed shapes", () => {
 		"[]",
 		"null",
 		'{"policy":"on"}',
-		'{"schema":"gentle-pi.background-subagents/v2","policy":"on"}',
-		'{"schema":"gentle-pi.background-subagents/v1","policy":"ON"}',
-		'{"schema":"gentle-pi.background-subagents/v1","policy":true}',
-		'{"schema":"gentle-pi.background-subagents/v1","policy":"on","extra":1}',
+		'{"schema":"tomidev.background-subagents/v2","policy":"on"}',
+		'{"schema":"tomidev.background-subagents/v1","policy":"ON"}',
+		'{"schema":"tomidev.background-subagents/v1","policy":true}',
+		'{"schema":"tomidev.background-subagents/v1","policy":"on","extra":1}',
 	]) {
 		assert.equal(
 			parseBackgroundSubagentsPolicyFile(raw),
@@ -148,7 +148,7 @@ test("project file overrides global file and env", () => {
 	assert.equal(
 		loadBackgroundSubagentsPolicy(cwd, {
 			gentlePiConfigHome: configHome,
-			env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "off" },
+			env: { TOMIDEV_BACKGROUND_SUBAGENTS: "off" },
 		}),
 		"on",
 	);
@@ -161,7 +161,7 @@ test("global file overrides env when no project file exists", () => {
 	assert.equal(
 		loadBackgroundSubagentsPolicy(cwd, {
 			gentlePiConfigHome: configHome,
-			env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "off" },
+			env: { TOMIDEV_BACKGROUND_SUBAGENTS: "off" },
 		}),
 		"on",
 	);
@@ -173,7 +173,7 @@ test("env var applies only when no policy file exists, and only exact on|off", (
 	assert.equal(
 		loadBackgroundSubagentsPolicy(cwd, {
 			gentlePiConfigHome: configHome,
-			env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "on" },
+			env: { TOMIDEV_BACKGROUND_SUBAGENTS: "on" },
 		}),
 		"on",
 	);
@@ -181,7 +181,7 @@ test("env var applies only when no policy file exists, and only exact on|off", (
 		assert.equal(
 			loadBackgroundSubagentsPolicy(cwd, {
 				gentlePiConfigHome: configHome,
-				env: { GENTLE_PI_BACKGROUND_SUBAGENTS: invalid },
+				env: { TOMIDEV_BACKGROUND_SUBAGENTS: invalid },
 			}),
 			"off",
 			`env value "${invalid}" must fail closed to off`,
@@ -199,7 +199,7 @@ test("a malformed higher-priority file fails closed to off instead of falling th
 	assert.equal(
 		loadBackgroundSubagentsPolicy(cwd, {
 			gentlePiConfigHome: configHome,
-			env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "on" },
+			env: { TOMIDEV_BACKGROUND_SUBAGENTS: "on" },
 		}),
 		"off",
 	);
@@ -327,7 +327,7 @@ test("renderOrchestratorPrompt substitutes the background policy token", () => {
 		capability: "ready",
 	});
 	assert.match(rendered, /Background subagent policy: on \(capability: ready\)/);
-	assert.doesNotMatch(rendered, /\{\{GENTLE_PI_BACKGROUND_POLICY\}\}/);
+	assert.doesNotMatch(rendered, /\{\{TOMIDEV_BACKGROUND_POLICY\}\}/);
 });
 
 test("renderOrchestratorPrompt defaults to the fail-closed off/absent rendering", () => {
@@ -384,7 +384,7 @@ test("the resolver attributes the project file, with its path", () => {
 	writePolicyFile(configHome, "off");
 	const resolution = resolveBackgroundSubagentsPolicy(cwd, {
 		gentlePiConfigHome: configHome,
-		env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "off" },
+		env: { TOMIDEV_BACKGROUND_SUBAGENTS: "off" },
 	});
 	assert.equal(resolution.policy, "on");
 	assert.equal(resolution.source, "project_file");
@@ -405,7 +405,7 @@ test("the resolver attributes the global file when no project file exists", () =
 	writePolicyFile(configHome, "on");
 	const resolution = resolveBackgroundSubagentsPolicy(cwd, {
 		gentlePiConfigHome: configHome,
-		env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "off" },
+		env: { TOMIDEV_BACKGROUND_SUBAGENTS: "off" },
 	});
 	assert.equal(resolution.policy, "on");
 	assert.equal(resolution.source, "global_file");
@@ -418,7 +418,7 @@ test("the resolver attributes the environment variable when no file exists", () 
 	const configHome = join(makeScratch("gp-bg-home-"), "gentle-ai");
 	const resolution = resolveBackgroundSubagentsPolicy(cwd, {
 		gentlePiConfigHome: configHome,
-		env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "on" },
+		env: { TOMIDEV_BACKGROUND_SUBAGENTS: "on" },
 	});
 	assert.equal(resolution.policy, "on");
 	assert.equal(resolution.source, "environment");
@@ -430,7 +430,7 @@ test("the resolver attributes the built-in default when nothing else decides", (
 	const configHome = join(makeScratch("gp-bg-home-"), "gentle-ai");
 	const resolution = resolveBackgroundSubagentsPolicy(cwd, {
 		gentlePiConfigHome: configHome,
-		env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "yes" },
+		env: { TOMIDEV_BACKGROUND_SUBAGENTS: "yes" },
 	});
 	assert.equal(resolution.policy, "off");
 	assert.equal(resolution.source, "default");
@@ -450,7 +450,7 @@ test("the resolver attributes a malformed file to that file and does not fall th
 	writePolicyFile(configHome, "on");
 	const resolution = resolveBackgroundSubagentsPolicy(cwd, {
 		gentlePiConfigHome: configHome,
-		env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "on" },
+		env: { TOMIDEV_BACKGROUND_SUBAGENTS: "on" },
 	});
 	assert.equal(resolution.policy, "off", "a malformed file fails closed");
 	assert.equal(
@@ -467,17 +467,17 @@ test("loadBackgroundSubagentsPolicy delegates to the resolver so the two can nev
 	const scenarios: Array<{ cwd: string; env: Record<string, string | undefined> }> = [];
 	const bare = makeScratch("gp-bg-agree-bare-");
 	scenarios.push({ cwd: bare, env: {} });
-	scenarios.push({ cwd: bare, env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "on" } });
+	scenarios.push({ cwd: bare, env: { TOMIDEV_BACKGROUND_SUBAGENTS: "on" } });
 	const projectOn = makeScratch("gp-bg-agree-project-");
 	writePolicyFile(join(projectOn, ".pi", "gentle-ai"), "off");
-	scenarios.push({ cwd: projectOn, env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "on" } });
+	scenarios.push({ cwd: projectOn, env: { TOMIDEV_BACKGROUND_SUBAGENTS: "on" } });
 	const malformed = makeScratch("gp-bg-agree-malformed-");
 	mkdirSync(join(malformed, ".pi", "gentle-ai"), { recursive: true });
 	writeFileSync(
 		join(malformed, ".pi", "gentle-ai", "background-subagents.json"),
 		"{malformed",
 	);
-	scenarios.push({ cwd: malformed, env: { GENTLE_PI_BACKGROUND_SUBAGENTS: "on" } });
+	scenarios.push({ cwd: malformed, env: { TOMIDEV_BACKGROUND_SUBAGENTS: "on" } });
 	for (const scenario of scenarios) {
 		const options = { gentlePiConfigHome: configHome, env: scenario.env };
 		assert.equal(
@@ -489,11 +489,11 @@ test("loadBackgroundSubagentsPolicy delegates to the resolver so the two can nev
 });
 
 // ---------------------------------------------------------------------------
-// /gentle:background-subagents command (issue #345)
+// /td:background-subagents command (issue #345)
 //
 // The policy had no user-facing surface at all: it could only be set by
 // hand-writing JSON or exporting an env var, and the deciding source was
-// visible to nobody. The command mirrors /gentle:review-mode — status|enable|
+// visible to nobody. The command mirrors /td:review-mode — status|enable|
 // disable, user-initiated only, Pi automation never toggles it.
 // ---------------------------------------------------------------------------
 
@@ -576,21 +576,21 @@ async function runBackgroundSubagents(
 	env: Record<string, string | undefined> = {},
 ): Promise<{ message: string; type?: string }> {
 	scopedEnv(t, {
-		GENTLE_PI_CONFIG_HOME: configHome,
-		GENTLE_PI_BACKGROUND_SUBAGENTS: undefined,
+		TOMIDEV_CONFIG_HOME: configHome,
+		TOMIDEV_BACKGROUND_SUBAGENTS: undefined,
 		...env,
 	});
-	const command = registeredCommands().get("gentle:background-subagents");
-	assert.ok(command, "gentle:background-subagents must be registered");
+	const command = registeredCommands().get("td:background-subagents");
+	assert.ok(command, "td:background-subagents must be registered");
 	const notices: Array<{ message: string; type?: string }> = [];
 	await command!.handler(argument, notifyContext(cwd, notices));
 	assert.equal(notices.length, 1, "one invocation reports exactly once");
 	return notices[0]!;
 }
 
-test("gentle:background-subagents is registered and declares user-initiated sub-actions", () => {
-	const command = registeredCommands().get("gentle:background-subagents");
-	assert.ok(command, "gentle:background-subagents must be registered");
+test("td:background-subagents is registered and declares user-initiated sub-actions", () => {
+	const command = registeredCommands().get("td:background-subagents");
+	assert.ok(command, "td:background-subagents must be registered");
 	assert.match(command!.description ?? "", /status\|enable\|disable/);
 	assert.match(
 		command!.description ?? "",
@@ -607,7 +607,7 @@ test("no argument reports the effective policy, the deciding default, and the ca
 		notice.message,
 		[
 			"background subagents: off (decided by built-in default; capability: absent)",
-			"Resolution order (first hit wins): project file, global file, GENTLE_PI_BACKGROUND_SUBAGENTS, built-in default off.",
+			"Resolution order (first hit wins): project file, global file, TOMIDEV_BACKGROUND_SUBAGENTS, built-in default off.",
 		].join("\n"),
 	);
 });
@@ -617,11 +617,11 @@ test("no argument opens a selectable menu and applies the chosen sub-action", as
 	const configHome = join(makeScratch("gp-bg-home-"), "gentle-ai");
 	const globalFile = join(configHome, "background-subagents.json");
 	scopedEnv(t, {
-		GENTLE_PI_CONFIG_HOME: configHome,
-		GENTLE_PI_BACKGROUND_SUBAGENTS: undefined,
+		TOMIDEV_CONFIG_HOME: configHome,
+		TOMIDEV_BACKGROUND_SUBAGENTS: undefined,
 	});
-	const command = registeredCommands().get("gentle:background-subagents");
-	assert.ok(command, "gentle:background-subagents must be registered");
+	const command = registeredCommands().get("td:background-subagents");
+	assert.ok(command, "td:background-subagents must be registered");
 
 	// A dismissed menu (undefined selection) reports nothing and writes nothing.
 	// It runs first so the untouched config home can prove the no-write: a second
@@ -649,11 +649,11 @@ test("no argument opens a selectable menu and applies the chosen sub-action", as
 		[
 			`background subagents: on (decided by global file ${globalFile}; capability: absent)`,
 			`Wrote on to the global file ${globalFile}.`,
-			"Resolution order (first hit wins): project file, global file, GENTLE_PI_BACKGROUND_SUBAGENTS, built-in default off.",
+			"Resolution order (first hit wins): project file, global file, TOMIDEV_BACKGROUND_SUBAGENTS, built-in default off.",
 		].join("\n"),
 	);
 	assert.deepEqual(JSON.parse(readFileSync(globalFile, "utf8")), {
-		schema: "gentle-pi.background-subagents/v1",
+		schema: "tomidev.background-subagents/v1",
 		policy: "on",
 	});
 });
@@ -671,7 +671,7 @@ test("status names the project file that decided and the global file it shadows"
 		[
 			`background subagents: on (decided by project file ${join(cwd, ".pi", "gentle-ai", "background-subagents.json")}; capability: ready)`,
 			`The global file ${join(configHome, "background-subagents.json")} exists but is outranked by that project file.`,
-			"Resolution order (first hit wins): project file, global file, GENTLE_PI_BACKGROUND_SUBAGENTS, built-in default off.",
+			"Resolution order (first hit wins): project file, global file, TOMIDEV_BACKGROUND_SUBAGENTS, built-in default off.",
 		].join("\n"),
 	);
 });
@@ -691,12 +691,12 @@ test("status names the environment variable when it is the deciding source", asy
 	const cwd = makeScratch("gp-bg-cmd-env-");
 	const configHome = join(makeScratch("gp-bg-home-"), "gentle-ai");
 	const notice = await runBackgroundSubagents(t, "status", cwd, configHome, {
-		GENTLE_PI_BACKGROUND_SUBAGENTS: "on",
+		TOMIDEV_BACKGROUND_SUBAGENTS: "on",
 	});
 	assert.equal(notice.type, "info");
 	assert.equal(
 		notice.message.split("\n")[0],
-		"background subagents: on (decided by GENTLE_PI_BACKGROUND_SUBAGENTS; capability: absent)",
+		"background subagents: on (decided by TOMIDEV_BACKGROUND_SUBAGENTS; capability: absent)",
 	);
 });
 
@@ -704,7 +704,7 @@ test("status calls an unrecognized environment value inert instead of silently i
 	const cwd = makeScratch("gp-bg-cmd-env-bad-");
 	const configHome = join(makeScratch("gp-bg-home-"), "gentle-ai");
 	const notice = await runBackgroundSubagents(t, "status", cwd, configHome, {
-		GENTLE_PI_BACKGROUND_SUBAGENTS: "true",
+		TOMIDEV_BACKGROUND_SUBAGENTS: "true",
 	});
 	assert.equal(
 		notice.message.split("\n")[0],
@@ -712,7 +712,7 @@ test("status calls an unrecognized environment value inert instead of silently i
 	);
 	assert.ok(
 		notice.message.includes(
-			'GENTLE_PI_BACKGROUND_SUBAGENTS="true" is not a recognized value ("on" or "off"), so it is ignored.',
+			'TOMIDEV_BACKGROUND_SUBAGENTS="true" is not a recognized value ("on" or "off"), so it is ignored.',
 		),
 		notice.message,
 	);
@@ -745,7 +745,7 @@ test("enable writes the global file and reports that it decides", async (t) => {
 	const globalFile = join(configHome, "background-subagents.json");
 	const notice = await runBackgroundSubagents(t, "enable", cwd, configHome);
 	assert.deepEqual(JSON.parse(readFileSync(globalFile, "utf8")), {
-		schema: "gentle-pi.background-subagents/v1",
+		schema: "tomidev.background-subagents/v1",
 		policy: "on",
 	});
 	assert.equal(notice.type, "info");
@@ -754,7 +754,7 @@ test("enable writes the global file and reports that it decides", async (t) => {
 		[
 			`background subagents: on (decided by global file ${globalFile}; capability: absent)`,
 			`Wrote on to the global file ${globalFile}.`,
-			"Resolution order (first hit wins): project file, global file, GENTLE_PI_BACKGROUND_SUBAGENTS, built-in default off.",
+			"Resolution order (first hit wins): project file, global file, TOMIDEV_BACKGROUND_SUBAGENTS, built-in default off.",
 		].join("\n"),
 	);
 });
@@ -766,7 +766,7 @@ test("disable writes the global file off and reports that it decides", async (t)
 	writePolicyFile(configHome, "on");
 	const notice = await runBackgroundSubagents(t, "disable", cwd, configHome);
 	assert.deepEqual(JSON.parse(readFileSync(globalFile, "utf8")), {
-		schema: "gentle-pi.background-subagents/v1",
+		schema: "tomidev.background-subagents/v1",
 		policy: "off",
 	});
 	assert.equal(notice.type, "info");
@@ -788,7 +788,7 @@ test("enable under an outranking project file writes the global file and says it
 	const notice = await runBackgroundSubagents(t, "enable", cwd, configHome);
 	assert.deepEqual(
 		JSON.parse(readFileSync(globalFile, "utf8")),
-		{ schema: "gentle-pi.background-subagents/v1", policy: "on" },
+		{ schema: "tomidev.background-subagents/v1", policy: "on" },
 		"the requested global write still happens",
 	);
 	assert.equal(notice.type, "warning");
@@ -798,7 +798,7 @@ test("enable under an outranking project file writes the global file and says it
 			`background subagents: off (decided by project file ${projectFile}; capability: absent)`,
 			`Wrote on to the global file ${globalFile}.`,
 			`That global write does not take effect here: the project file ${projectFile} outranks it. Edit or remove that project file to let the global setting decide.`,
-			"Resolution order (first hit wins): project file, global file, GENTLE_PI_BACKGROUND_SUBAGENTS, built-in default off.",
+			"Resolution order (first hit wins): project file, global file, TOMIDEV_BACKGROUND_SUBAGENTS, built-in default off.",
 		].join("\n"),
 	);
 });
@@ -808,7 +808,7 @@ test("enable with the environment variable set reports where that variable ranks
 	const configHome = join(makeScratch("gp-bg-home-"), "gentle-ai");
 	const globalFile = join(configHome, "background-subagents.json");
 	const notice = await runBackgroundSubagents(t, "enable", cwd, configHome, {
-		GENTLE_PI_BACKGROUND_SUBAGENTS: "off",
+		TOMIDEV_BACKGROUND_SUBAGENTS: "off",
 	});
 	assert.equal(
 		notice.message.split("\n")[0],
@@ -816,7 +816,7 @@ test("enable with the environment variable set reports where that variable ranks
 	);
 	assert.ok(
 		notice.message.includes(
-			"GENTLE_PI_BACKGROUND_SUBAGENTS=off is set, but both files outrank it and it outranks the built-in default; it decides only when neither file exists.",
+			"TOMIDEV_BACKGROUND_SUBAGENTS=off is set, but both files outrank it and it outranks the built-in default; it decides only when neither file exists.",
 		),
 		notice.message,
 	);
@@ -829,7 +829,7 @@ test("an unknown sub-action warns and changes nothing", async (t) => {
 	assert.equal(notice.type, "warning");
 	assert.equal(
 		notice.message,
-		'Unknown /gentle:background-subagents sub-action "toggle". Use status, enable, or disable.',
+		'Unknown /td:background-subagents sub-action "toggle". Use status, enable, or disable.',
 	);
 	assert.equal(
 		existsSync(join(configHome, "background-subagents.json")),

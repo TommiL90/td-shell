@@ -6,19 +6,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { gentlePiConfigHome } from "../lib/agent-home.ts";
-import { gentleAiDevBinaryRegistrationPath, gentleAiIsolationEnv } from "../lib/gentle-ai-binary.ts";
-import { GENTLE_SHELL_CONFIG_HOME_ENV, setBundledInstallForTesting } from "../lib/gentle-shell-bundled.ts";
+import { TOMIDEV_SHELL_CONFIG_HOME_ENV, setBundledInstallForTesting } from "../lib/gentle-shell-bundled.ts";
 import { buildPiInvocation, migrateStandaloneConfig, standaloneConfigHome, type ResolvedHome } from "../lib/gentle-shell-launcher.ts";
 import { createActiveProfileReader } from "../extensions/gentle-shell.ts";
 import { readBannerConfig } from "../extensions/startup-banner.ts";
+import { assertNotRealHome } from "./support/isolated-home.ts";
 
-// #2201 (S1, S1a): the standalone launcher's isolated home keeps Gentle Shell's
-// config next to its agent dir (~/.gentle-shell/gentle-ai), not in the shared
+// #2201 (S1, S1a): the standalone launcher's isolated home keeps Tomidev Shell's
+// config next to its agent dir (~/.tomidev/gentle-ai), not in the shared
 // ~/.pi/gentle-ai that a Pi install with gentle-pi also uses.
 
 const posixOnly = { skip: process.platform === "win32" };
-const binPath = fileURLToPath(new URL("../bin/gentle-shell.mjs", import.meta.url));
-const MARKER = "GENTLE_SHELL_CONFIG_HOME";
+const binPath = fileURLToPath(new URL("../bin/tomidev.mjs", import.meta.url));
+const MARKER = "TOMIDEV_SHELL_CONFIG_HOME";
 
 function scratch(): string {
 	return realpathSync(mkdtempSync(join(tmpdir(), "standalone-config-home-")));
@@ -40,15 +40,15 @@ function launch(home: ResolvedHome, baseEnv: Record<string, string | undefined> 
 	});
 }
 
-function isolated(dir = "/os-home/.gentle-shell/agent"): { home: ResolvedHome } {
+function isolated(dir = "/os-home/.tomidev/agent"): { home: ResolvedHome } {
 	return { home: { mode: "isolated", dir, source: "default" } };
 }
 
-test("the marker is exported under its launcher-owned name, never GENTLE_PI_CONFIG_HOME", () => {
-	assert.equal(GENTLE_SHELL_CONFIG_HOME_ENV, MARKER);
+test("the marker is exported under its launcher-owned name, never TOMIDEV_CONFIG_HOME", () => {
+	assert.equal(TOMIDEV_SHELL_CONFIG_HOME_ENV, MARKER);
 });
 
-test("config home precedence: explicit GENTLE_PI_CONFIG_HOME > launcher marker > ~/.pi/gentle-ai; empty counts as unset", () => {
+test("config home precedence: explicit TOMIDEV_CONFIG_HOME > launcher marker > ~/.pi/gentle-ai; empty counts as unset", () => {
 	const home = scratch();
 	const env = (extra: Record<string, string>) => ({ HOME: home, USERPROFILE: home, ...extra });
 	const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
@@ -57,8 +57,8 @@ test("config home precedence: explicit GENTLE_PI_CONFIG_HOME > launcher marker >
 	try {
 		assert.equal(gentlePiConfigHome(env({})), join(home, ".pi", "gentle-ai"));
 		assert.equal(gentlePiConfigHome(env({ [MARKER]: "/shell/gentle-ai" })), "/shell/gentle-ai");
-		assert.equal(gentlePiConfigHome(env({ [MARKER]: "/shell/gentle-ai", GENTLE_PI_CONFIG_HOME: "/explicit" })), "/explicit");
-		assert.equal(gentlePiConfigHome(env({ [MARKER]: "/shell/gentle-ai", GENTLE_PI_CONFIG_HOME: "" })), "/shell/gentle-ai");
+		assert.equal(gentlePiConfigHome(env({ [MARKER]: "/shell/gentle-ai", TOMIDEV_CONFIG_HOME: "/explicit" })), "/explicit");
+		assert.equal(gentlePiConfigHome(env({ [MARKER]: "/shell/gentle-ai", TOMIDEV_CONFIG_HOME: "" })), "/shell/gentle-ai");
 		assert.equal(gentlePiConfigHome(env({ [MARKER]: "" })), join(home, ".pi", "gentle-ai"));
 		assert.equal(gentlePiConfigHome(env({ [MARKER]: "relative/gentle-ai" })), join(home, ".pi", "gentle-ai"), "a relative marker is ignored");
 	} finally {
@@ -74,40 +74,40 @@ test("a bundled prefix still outranks the explicit override and the marker", (t)
 	setBundledInstallForTesting({ root: prefix });
 	t.after(() => setBundledInstallForTesting(undefined));
 	assert.equal(
-		gentlePiConfigHome({ GENTLE_SHELL_PREFIX: prefix, GENTLE_PI_CONFIG_HOME: "/explicit", [MARKER]: "/shell/gentle-ai" }),
+		gentlePiConfigHome({ TOMIDEV_PREFIX: prefix, TOMIDEV_CONFIG_HOME: "/explicit", [MARKER]: "/shell/gentle-ai" }),
 		join(prefix, "config", "gentle-ai"),
 	);
 });
 
-test("the banner and profile readers follow the same resolver, including an empty GENTLE_PI_CONFIG_HOME", async (t) => {
+test("the banner and profile readers follow the same resolver, including an empty TOMIDEV_CONFIG_HOME", async (t) => {
 	const root = scratch();
 	const config = join(root, "shell", "gentle-ai");
 	mkdirSync(config, { recursive: true });
 	writeFileSync(join(config, "banner.json"), JSON.stringify({ showTextLogo: false }));
-	writeFileSync(join(config, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "fast", profiles: { fast: {} } }));
-	const previous = { marker: process.env[MARKER], explicit: process.env.GENTLE_PI_CONFIG_HOME };
+	writeFileSync(join(config, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "fast", profiles: { fast: {} } }));
+	const previous = { marker: process.env[MARKER], explicit: process.env.TOMIDEV_CONFIG_HOME };
 	process.env[MARKER] = config;
-	process.env.GENTLE_PI_CONFIG_HOME = "";
+	process.env.TOMIDEV_CONFIG_HOME = "";
 	t.after(() => {
 		if (previous.marker === undefined) delete process.env[MARKER];
 		else process.env[MARKER] = previous.marker;
-		if (previous.explicit === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previous.explicit;
+		if (previous.explicit === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previous.explicit;
 	});
 	assert.equal((await readBannerConfig()).showTextLogo, false);
-	assert.equal(createActiveProfileReader({ [MARKER]: config, GENTLE_PI_CONFIG_HOME: "" })(), "fast");
+	assert.equal(createActiveProfileReader({ [MARKER]: config, TOMIDEV_CONFIG_HOME: "" })(), "fast");
 });
 
 test("the launcher gives Pi the marker only in its isolated home", () => {
 	const isolatedLaunch = launch(isolated().home);
-	assert.equal(isolatedLaunch.env[MARKER], "/os-home/.gentle-shell/gentle-ai");
-	assert.equal(isolatedLaunch.env.GENTLE_PI_CONFIG_HOME, undefined, "GENTLE_PI_CONFIG_HOME is never exported to Pi");
-	assert.equal(standaloneConfigHome(isolated().home), "/os-home/.gentle-shell/gentle-ai");
-	// A custom GENTLE_SHELL_HOME's parent may be anyone's folder (~/myagent ->
-	// ~/gentle-ai), so only a .gentle-shell/agent home gets its own config folder.
-	assert.equal(launch(isolated("/custom/shell/agent").home).env[MARKER], undefined, "no marker beside a custom GENTLE_SHELL_HOME");
+	assert.equal(isolatedLaunch.env[MARKER], "/os-home/.tomidev/gentle-ai");
+	assert.equal(isolatedLaunch.env.TOMIDEV_CONFIG_HOME, undefined, "TOMIDEV_CONFIG_HOME is never exported to Pi");
+	assert.equal(standaloneConfigHome(isolated().home), "/os-home/.tomidev/gentle-ai");
+	// A custom TOMIDEV_HOME's parent may be anyone's folder (~/myagent ->
+	// ~/gentle-ai), so only a .tomidev/agent home gets its own config folder.
+	assert.equal(launch(isolated("/custom/shell/agent").home).env[MARKER], undefined, "no marker beside a custom TOMIDEV_HOME");
 	assert.equal(standaloneConfigHome(isolated("/os-home/myagent").home), undefined, "never the generic ~/gentle-ai");
-	assert.equal(standaloneConfigHome(isolated("/data/.gentle-shell/agent").home), "/data/.gentle-shell/gentle-ai");
+	assert.equal(standaloneConfigHome(isolated("/data/.tomidev/agent").home), "/data/.tomidev/gentle-ai");
 });
 
 test("--link, a custom --home and a bundled launch keep today's config home and drop an inherited marker", () => {
@@ -118,29 +118,6 @@ test("--link, a custom --home and a bundled launch keep today's config home and 
 	for (const invocation of [link, path, bundled]) assert.equal(MARKER in invocation.env, false);
 	assert.equal(standaloneConfigHome({ mode: "link", dir: "/os-home/.pi/agent", source: "flag" }), undefined);
 	assert.equal(standaloneConfigHome({ mode: "path", dir: "/custom/home", source: "flag" }), undefined);
-});
-
-test("Gentle AI processes started from a standalone isolated session get the bundled-style config pair", () => {
-	const env = gentleAiIsolationEnv({ PATH: "/bin", [MARKER]: "/os-home/.gentle-shell/gentle-ai" });
-	assert.equal(env.GENTLE_AI_PI_CONFIG_DIR, "/os-home/.gentle-shell/gentle-ai");
-	assert.equal(env.GENTLE_PI_CONFIG_HOME, "/os-home/.gentle-shell", "Gentle AI 4.0.0 reads it as the parent of its gentle-ai folder");
-	assert.equal(env.PATH, "/bin");
-	assert.equal(env.GENTLE_AI_HOME, undefined, "standalone keeps Gentle AI's own state where it was");
-});
-
-test("without the marker, or with an explicit GENTLE_PI_CONFIG_HOME, Gentle AI's environment is unchanged", () => {
-	const plain = { PATH: "/bin" };
-	assert.equal(gentleAiIsolationEnv(plain), plain);
-	const explicit = { PATH: "/bin", GENTLE_PI_CONFIG_HOME: "/explicit", [MARKER]: "/os-home/.gentle-shell/gentle-ai" };
-	assert.equal(gentleAiIsolationEnv(explicit), explicit);
-});
-
-test("the main-channel dev-binary registration ignores the marker and an empty GENTLE_PI_CONFIG_HOME", () => {
-	assert.equal(
-		gentleAiDevBinaryRegistrationPath({ env: { [MARKER]: "/os-home/.gentle-shell/gentle-ai", GENTLE_PI_CONFIG_HOME: "" }, home: "/os-home" }),
-		join("/os-home", ".pi", "gentle-ai", "dev-binary.json"),
-	);
-	assert.equal(gentleAiDevBinaryRegistrationPath({ env: { GENTLE_PI_CONFIG_HOME: "/explicit" }, home: "/os-home" }), join("/explicit", "dev-binary.json"));
 });
 
 // --- migration -----------------------------------------------------------------
@@ -163,7 +140,7 @@ const fs = {
 function migrationWorld() {
 	const root = scratch();
 	const source = join(root, "home", ".pi", "gentle-ai");
-	const target = join(root, "home", ".gentle-shell", "gentle-ai");
+	const target = join(root, "home", ".tomidev", "gentle-ai");
 	mkdirSync(source, { recursive: true });
 	mkdirSync(dirname(target), { recursive: true });
 	writeFileSync(join(source, "banner.json"), "{\"showTextLogo\":false}\n");
@@ -215,7 +192,7 @@ test("migration skips the main-channel files and does nothing once the folder ex
 
 test("without ~/.pi/gentle-ai the migration only creates the empty 0700 folder, silently", posixOnly, () => {
 	const root = scratch();
-	const target = join(root, ".gentle-shell", "gentle-ai");
+	const target = join(root, ".tomidev", "gentle-ai");
 	const result = migrateStandaloneConfig({ source: join(root, ".pi", "gentle-ai"), target, fs });
 	assert.deepEqual(result.lines, []);
 	assert.deepEqual(readdirSync(target), []);
@@ -246,24 +223,7 @@ function writeFakePi(path: string) {
 		"#!/usr/bin/env node",
 		"const args = process.argv.slice(2);",
 		"if (args.includes('--version')) { console.log('1.2.0'); process.exit(0); }",
-		`console.log(JSON.stringify({ marker: process.env.${MARKER} ?? null, explicit: process.env.GENTLE_PI_CONFIG_HOME ?? null }));`,
-		"",
-	].join("\n"));
-	chmodSync(path, 0o755);
-}
-
-function writeFakeGentleAi(path: string) {
-	writeFileSync(path, [
-		"#!/usr/bin/env node",
-		"import { mkdirSync, writeFileSync } from 'node:fs';",
-		"import { homedir } from 'node:os';",
-		"import { join } from 'node:path';",
-		"for (const dir of [process.env.GENTLE_AI_PI_CONFIG_DIR, join(homedir(), '.pi', 'gentle-ai')]) {",
-		"  if (!dir) continue;",
-		"  mkdirSync(dir, { recursive: true });",
-		"  writeFileSync(join(dir, 'persona.json'), JSON.stringify({ mode: 'gentleman' }));",
-		"}",
-		"process.stdout.write(JSON.stringify({ dir: process.env.GENTLE_AI_PI_CONFIG_DIR ?? null, parent: process.env.GENTLE_PI_CONFIG_HOME ?? null }) + '\\n');",
+		`console.log(JSON.stringify({ marker: process.env.${MARKER} ?? null, explicit: process.env.TOMIDEV_CONFIG_HOME ?? null }));`,
 		"",
 	].join("\n"));
 	chmodSync(path, 0o755);
@@ -276,12 +236,12 @@ function launcherWorld() {
 	writeFileSync(join(home, ".pi", "gentle-ai", "banner.json"), "{\"showTextLogo\":false}\n");
 	const pi = join(root, "fake-pi.mjs");
 	writeFakePi(pi);
-	const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: home, USERPROFILE: home, GENTLE_SHELL_PI: pi, GENTLE_SHELL_NO_AUTO_SETUP: "1" };
-	const run = (args: string[], extra: NodeJS.ProcessEnv = {}) => spawnSync(process.execPath, [binPath, ...args], { encoding: "utf8", env: { ...env, ...extra } });
-	return { root, home, env, run, shellConfig: join(home, ".gentle-shell", "gentle-ai") };
+	const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: home, USERPROFILE: home, TOMIDEV_PI: pi, TOMIDEV_NO_AUTO_SETUP: "1" };
+	const run = (args: string[], extra: NodeJS.ProcessEnv = {}) => spawnSync(process.execPath, [binPath, ...args], { encoding: "utf8", env: assertNotRealHome({ ...env, ...extra }) });
+	return { root, home, env, run, shellConfig: join(home, ".tomidev", "gentle-ai") };
 }
 
-test("a standalone isolated launch migrates ~/.pi/gentle-ai and points Pi at ~/.gentle-shell/gentle-ai", posixOnly, () => {
+test("a standalone isolated launch migrates ~/.pi/gentle-ai and points Pi at ~/.tomidev/gentle-ai", posixOnly, () => {
 	const w = launcherWorld();
 	const result = w.run(["list"]);
 	assert.equal(result.status, 0, result.stderr);
@@ -302,23 +262,22 @@ test("--link launches keep ~/.pi/gentle-ai: no marker and no migration", posixOn
 	assert.equal(existsSync(w.shellConfig), false);
 });
 
-test("an explicit GENTLE_PI_CONFIG_HOME still wins: it reaches Pi and no migration runs", posixOnly, () => {
+test("an explicit TOMIDEV_CONFIG_HOME still wins: it reaches Pi and no migration runs", posixOnly, () => {
 	const w = launcherWorld();
-	const result = w.run(["list"], { GENTLE_PI_CONFIG_HOME: join(w.root, "explicit") });
+	const result = w.run(["list"], { TOMIDEV_CONFIG_HOME: join(w.root, "explicit") });
 	assert.equal(result.status, 0, result.stderr);
 	assert.equal(JSON.parse(result.stdout.trim().split("\n").at(-1)!).explicit, join(w.root, "explicit"));
 	assert.equal(existsSync(w.shellConfig), false);
 });
 
-test("standalone setup gives Gentle AI the config pair and keeps both persona files unchanged", posixOnly, () => {
+test("standalone native setup gives Pi the config marker and leaves both persona files unchanged", posixOnly, () => {
 	const w = launcherWorld();
-	const gentleAi = join(w.root, "fake-gentle-ai.mjs");
-	writeFakeGentleAi(gentleAi);
 	writeFileSync(join(w.home, ".pi", "gentle-ai", "persona.json"), "{\"mode\":\"neutral\"}");
-	const result = w.run(["setup"], { GENTLE_SHELL_GENTLE_AI_BIN: gentleAi });
+	const result = w.run(["setup"]);
 	assert.equal(result.status, 0, result.stderr);
-	const seen = JSON.parse(result.stdout.split("\n").find((line) => line.includes("\"dir\""))!);
-	assert.deepEqual(seen, { dir: w.shellConfig, parent: join(w.home, ".gentle-shell") });
+	const calls = result.stdout.trim().split("\n").map((line) => JSON.parse(line));
+	assert.equal(calls.length, 3);
+	for (const seen of calls) assert.deepEqual(seen, { marker: w.shellConfig, explicit: null });
 	assert.equal(readFileSync(join(w.home, ".pi", "gentle-ai", "persona.json"), "utf8"), "{\"mode\":\"neutral\"}");
-	assert.equal(readFileSync(join(w.shellConfig, "persona.json"), "utf8"), "{\"mode\":\"neutral\"}", "the migrated copy is restored too");
+	assert.equal(readFileSync(join(w.shellConfig, "persona.json"), "utf8"), "{\"mode\":\"neutral\"}", "the one-time migrated copy stays unchanged");
 });

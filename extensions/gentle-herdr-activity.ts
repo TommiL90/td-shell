@@ -4,6 +4,7 @@ import { HERDR_TASK_SUMMARY_CHANGED, resolveHerdrTaskSummarySettings } from "../
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { activitySummary, ActivityPublisher, createActivityColumns, herdrDetected, metadataTransport } from "../lib/herdr-activity.ts";
 import { replayTodo, type TodoState } from "../lib/shell-todo.ts";
+import { ENV_AGENTS_CHILD } from "../lib/brand.ts";
 
 interface ActivityOptions {
 	gentlePiConfigHome?: string;
@@ -18,7 +19,7 @@ interface ActivityOptions {
 export function createHerdrActivityExtension(options: ActivityOptions = {}) {
 	return (pi: ExtensionAPI): void => {
 		const env = options.env ?? process.env;
-		if (env.GENTLE_PI_AGENTS_CHILD === "1" || !herdrDetected(env)) return;
+		if (env[ENV_AGENTS_CHILD] === "1" || !herdrDetected(env)) return;
 		const isSocket = options.isSocket ?? ((path: string) => {
 			try { return statSync(path).isSocket(); } catch { return false; }
 		});

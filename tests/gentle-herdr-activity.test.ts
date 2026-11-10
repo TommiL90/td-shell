@@ -37,7 +37,7 @@ function harness(overrides: NodeJS.ProcessEnv = {}, socket = true) {
 	createHerdrActivityExtension(options)({
 		on: (name: string, fn: Handler) => handlers.set(name, fn),
 		events: { on: (name: string, fn: (data: unknown) => void) => {
-			assert.equal(name, "gentle-pi:herdr-task-summary:changed");
+			assert.equal(name, "td:herdr-task-summary:changed");
 			subscribers.add(fn); return () => subscribers.delete(fn);
 		} },
 	} as unknown as ExtensionAPI);
@@ -45,7 +45,7 @@ function harness(overrides: NodeJS.ProcessEnv = {}, socket = true) {
 	return { handlers, values, reports, ctx, tick: () => tick?.(), stopped: () => stopped,
 		listeners: () => subscribers.size,
 		settings: (enabled: boolean) => writeFileSync(join(configHome, "herdr-task-summary.json"), JSON.stringify({
-			schema: "gentle-pi.herdr-task-summary/v1", enabled, summaryColor: "success", continuationColor: "dim",
+			schema: "tomidev.herdr-task-summary/v1", enabled, summaryColor: "success", continuationColor: "dim",
 		})),
 		change: (home = configHome) => { for (const fn of subscribers) fn({ configHome: home }); },
 		malformed: () => writeFileSync(join(configHome, "herdr-task-summary.json"), "{"),
@@ -85,7 +85,7 @@ test("disable supersedes queued title; idle and replaced sessions cannot resume 
 	h.settings(false); h.change(); h.fire("session_start"); assert.equal(h.listeners(), 1); await wait();
 	const replaced = h.values.length; h.settings(true); h.change(); await wait(); assert.equal(h.values.length, replaced);
 	h.fire("session_shutdown");
-	const child = harness({ GENTLE_PI_AGENTS_CHILD: "1" }); child.settings(false);
+	const child = harness({ TOMIDEV_AGENTS_CHILD: "1" }); child.settings(false);
 	child.fire("session_start"); child.settings(true); child.change(); child.fire("agent_start");
 	child.fire("tool_execution_end", todo("child")); await wait();
 	assert.deepEqual(child.values, []); assert.equal(child.listeners(), 0);
@@ -113,7 +113,7 @@ test("tools and failed Todo snapshots never supply fallback summaries", async ()
 	h.fire("session_shutdown");
 });
 test("children, missing Herdr and socket, and non-TUI never publish", async () => {
-	for (const h of [harness({ GENTLE_PI_AGENTS_CHILD: "1" }), harness({ HERDR_ENV: "0" }), harness({ HERDR_PANE_ID: "" }), harness({}, false)]) {
+	for (const h of [harness({ TOMIDEV_AGENTS_CHILD: "1" }), harness({ HERDR_ENV: "0" }), harness({ HERDR_PANE_ID: "" }), harness({}, false)]) {
 		h.fire("session_start"); h.fire("agent_start"); await wait(); assert.deepEqual(h.values, []);
 	}
 	const h = harness();
@@ -157,12 +157,12 @@ test("width changes reproject and long-to-short/no-task/idle clear both rows tog
 });
 
 test("activity metadata follows the agent label that owns the pane", () => {
-	assert.equal(herdrAgentLabel({ GENTLE_SHELL_HERDR_REPORTER: "1" }), "gentle-shell");
+	assert.equal(herdrAgentLabel({ TOMIDEV_HERDR_REPORTER: "1" }), "tomidev");
 	assert.equal(herdrAgentLabel({}), "pi");
-	assert.equal(herdrAgentLabel({ GENTLE_SHELL_HERDR_REPORTER: "0" }), "pi");
-	assert.deepEqual(metadataArgs("pane", "◐ one", 7, "gentle-shell"), ["pane", "report-metadata", "pane", "--source", "gentle:activity",
-		"--agent", "gentle-shell", "--seq", "7", "--ttl-ms", "30000", "--token", "summary=◐ one", "--clear-token", "summary2"]);
-	assert.deepEqual(metadataArgs("pane", null, 8), ["pane", "report-metadata", "pane", "--source", "gentle:activity",
+	assert.equal(herdrAgentLabel({ TOMIDEV_HERDR_REPORTER: "0" }), "pi");
+	assert.deepEqual(metadataArgs("pane", "◐ one", 7, "tomidev"), ["pane", "report-metadata", "pane", "--source", "td:activity",
+		"--agent", "tomidev", "--seq", "7", "--ttl-ms", "30000", "--token", "summary=◐ one", "--clear-token", "summary2"]);
+	assert.deepEqual(metadataArgs("pane", null, 8), ["pane", "report-metadata", "pane", "--source", "td:activity",
 		"--agent", "pi", "--seq", "8", "--ttl-ms", "30000", "--clear-token", "summary", "--clear-token", "summary2"]);
 });
 

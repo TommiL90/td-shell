@@ -7,7 +7,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { exitCodeFor, openBrowser, openerFor, redirectPage, runnerEnvironment, upgradeEnvironment, wizardHandlers, writeRedirect } from "../bin/gentle-shell-install.mjs";
+import { exitCodeFor, openBrowser, openerFor, redirectPage, runnerEnvironment, upgradeEnvironment, wizardHandlers, writeRedirect } from "../bin/tomidev-install.mjs";
 import { planPreflight, requirements } from "../scripts/installer-preflight.mjs";
 import { PI_INSTALL_VERSION, blockedReasons, failedSteps } from "../scripts/installer-runner.mjs";
 import { createInstallerServer, guidance } from "../scripts/installer-server.mjs";
@@ -164,7 +164,7 @@ test("session code is single-use, expires, and sets a strict HttpOnly cookie", a
 		assert.ok(response.body.includes('<meta http-equiv="refresh" content="0; url=/">'));
 		assert.ok(!/<script|<style|\sstyle=/i.test(response.body));
 		const cookie = String(response.headers["set-cookie"]);
-		assert.match(cookie, /^gentle_install_session=[A-Za-z0-9_-]{43}; HttpOnly; SameSite=Strict; Path=\/$/);
+		assert.match(cookie, /^tomidev_install_session=[A-Za-z0-9_-]{43}; HttpOnly; SameSite=Strict; Path=\/$/);
 		assert.doesNotMatch(cookie, /Domain=/i);
 		const reused = await send(fresh.port, { path: `/session?code=${fresh.code}` });
 		assert.equal(reused.status, 401);
@@ -190,7 +190,7 @@ test("API and asset requests need the session cookie", async () => {
 	try {
 		for (const path of ["/", "/wizard.js", "/api/plan", "/api/progress"]) {
 			assert.equal((await send(port, { path })).status, 401, path);
-			assert.equal((await send(port, { path, headers: { cookie: "gentle_install_session=forged" } })).status, 401, path);
+			assert.equal((await send(port, { path, headers: { cookie: "tomidev_install_session=forged" } })).status, 401, path);
 		}
 		const cookie = await login();
 		const page = await send(port, { path: "/", headers: { cookie } });
@@ -296,7 +296,7 @@ test("/api/plan reports blockers with guidance and no profile change when alread
 	}
 });
 
-test("/api/plan names the found and required version of an older Gentle Shell and how to resolve it", async () => {
+test("/api/plan names the found and required version of an older Tomidev Shell and how to resolve it", async () => {
 	const { host, port, login } = await start({ collect: async () => collected({
 		pi: { available: true, version: "1.2.4", usable: true },
 		shell: { available: true, version: "3.4.0", usable: false, global: true },
@@ -306,8 +306,8 @@ test("/api/plan names the found and required version of an older Gentle Shell an
 		const view = await plan(port, await login());
 		assert.deepEqual(view.blockers.map((blocker: { code: string; tool: string }) => [blocker.code, blocker.tool]), [["incompatible-tool", "shell"]]);
 		assert.equal(view.blockers[0].guidance,
-			"Gentle Shell 3.4.0 is installed globally with pnpm, but this installer needs 4.7.0 or newer. Nothing was replaced. " +
-			"Update it with `pnpm add -g gentle-pi@4.7.0`, or remove it with `pnpm remove -g gentle-pi`, then select Check again.");
+			"Tomidev Shell 3.4.0 is installed globally with pnpm, but this installer needs 4.7.0 or newer. Nothing was replaced. " +
+			"Update it with `pnpm add -g git:github.com/TommiL90/tomidev-shell#v4.7.0`, or remove it with `pnpm remove -g tomidev`, then select Check again.");
 		assert.deepEqual(view.actions, []);
 	} finally {
 		await host.close("test");
@@ -320,8 +320,8 @@ test("/api/plan installs the installer's Pi alongside an older Pi that neither p
 		const view = await plan(port, await login());
 		assert.deepEqual(view.blockers, []);
 		const install = view.actions.find((action: { id: string }) => action.id === "install-pi");
-		assert.equal(install.description, "Install the latest stable Pi globally with pnpm for Gentle Shell. The Pi 0.99.0 already on this computer " +
-			"was not installed with pnpm or npm, so it is left unchanged. Gentle Shell uses the installer's Pi; the `pi` command in a terminal may still run the older one.");
+		assert.equal(install.description, "Install the latest stable Pi globally with pnpm for Tomidev Shell. The Pi 0.99.0 already on this computer " +
+			"was not installed with pnpm or npm, so it is left unchanged. Tomidev Shell uses the installer's Pi; the `pi` command in a terminal may still run the older one.");
 		assert.deepEqual(runs, []);
 	} finally {
 		await host.close("test");
@@ -336,7 +336,7 @@ test("/api/plan shows an older Pi's update to latest stable with its found versi
 			assert.deepEqual(view.blockers, []);
 			const update = view.actions.find((action: { id: string }) => action.id === "update-pi");
 			assert.equal(update.description, `Update Pi 0.87.1 to the latest stable version with ${owner}, the package manager that installed it. ` +
-				`Gentle Shell needs Pi ${requirements.pi} or newer.`);
+				`Tomidev Shell needs Pi ${requirements.pi} or newer.`);
 			assert.ok(view.actions.findIndex((action: { id: string }) => action.id === "update-pi") <
 				view.actions.findIndex((action: { id: string }) => action.id === "install-shell"));
 			assert.deepEqual(runs, []);
@@ -375,21 +375,16 @@ test("/api/plan says, before consent, that an older Node and an incompatible pnp
 	}
 });
 
-test("/api/plan says before consent which Go is downloaded, only to build, with the Go found and the system unchanged", async () => {
-	for (const [go, found] of [[{ available: true, version: "1.24.0", usable: true }, "Go 1.24.0 on this computer is older than 1.25.10"],
-		[{ available: false }, "Go is missing on this computer"]] as const) {
-		const { host, port, login } = await start({ collect: async () => collectedFor("main", { ...mainReady, go }) });
+test("/api/plan never offers a Go download for missing or older Go", async () => {
+	for (const go of [{ available: true, version: "1.24.0", usable: true }, { available: false }]) {
+		const { host, port, login, runs } = await start({ collect: async () => collectedFor("main", { ...mainReady, go }) });
 		try {
 			const view = await plan(port, await login());
 			assert.deepEqual(view.blockers, []);
-			const acquire = view.actions.find((action: { id: string }) => action.id === "acquire-go");
-			assert.equal(acquire.description, `${found}, so the installer downloads Go 1.25.14 from go.dev, verifies its pinned SHA-256 checksum ` +
-				"and uses it only to build Gentle AI. It is kept in the installer's own folder (~/.pi/gentle-ai/tools/go); your Go, PATH and shell profile are not changed.");
-			assert.equal(view.actions.find((action: { id: string }) => action.id === "verify-go").description,
-				"Check that the downloaded Go runs and reports the pinned version.");
-		} finally {
-			await host.close("test");
-		}
+			assert.equal(view.actions.some((action: { id: string }) => /go|gentle-ai/.test(action.id)), false);
+			assert.doesNotMatch(JSON.stringify(view.actions), /Go|Gentle AI/);
+			assert.deepEqual(runs, []);
+		} finally { await host.close("test"); }
 	}
 });
 
@@ -447,7 +442,7 @@ test("/api/plan explains a pnpm in $PNPM_HOME/bin that the installer will not re
 	}
 });
 
-test("/api/plan explains a Gentle Shell that neither pnpm nor npm manages", async () => {
+test("/api/plan explains a Tomidev Shell that neither pnpm nor npm manages", async () => {
 	const { host, port, login } = await start({ collect: async () => collected({
 		pi: { available: true, version: "1.2.4", usable: true },
 		shell: { available: null, outsidePnpm: true }, gentleAi: { available: null }, setup: { available: null },
@@ -456,7 +451,7 @@ test("/api/plan explains a Gentle Shell that neither pnpm nor npm manages", asyn
 		const view = await plan(port, await login());
 		assert.deepEqual(view.blockers.map((blocker: { code: string; tool: string }) => [blocker.code, blocker.tool]), [["unknown-tool", "shell"]]);
 		assert.equal(view.blockers[0].guidance,
-			"Gentle Shell is already installed, but neither pnpm nor npm manages it (a linked source checkout, for example), " +
+			"Tomidev Shell is already installed, but neither pnpm nor npm manages it (a linked source checkout, for example), " +
 			"so this installer cannot update it. Nothing was replaced. Update it the way you installed it, then select Check again.");
 	} finally {
 		await host.close("test");
@@ -474,15 +469,15 @@ test("/api/plan explains a Pi whose version cannot be read", async () => {
 	}
 });
 
-test("/api/plan keeps a compatible Pi and says pnpm may put another next to Gentle Shell, at least the minimum", async () => {
+test("/api/plan keeps a compatible Pi and says pnpm may put another next to Tomidev Shell, at least the minimum", async () => {
 	// A newer compatible Pi is kept as it is; pnpm may install a different peer beside Shell.
 	const { host, port, login, runs } = await start({ collect: async () => collected({ pi: { available: true, version: "1.8.0", usable: true } }) });
 	try {
 		const view = await plan(port, await login());
 		assert.deepEqual(view.blockers, []);
 		assert.equal(view.actions.find((action: { id: string }) => action.id === "install-shell").description,
-			"Install Gentle Shell (gentle-pi) globally with pnpm. pnpm may put another Pi next to it " +
-			`(at least Pi ${requirements.pi}), and Gentle Shell runs that Pi.`);
+			"Install Tomidev Shell (tomidev) globally with pnpm. pnpm may put another Pi next to it " +
+			`(at least Pi ${requirements.pi}), and Tomidev Shell runs that Pi.`);
 		assert.equal(view.actions.some((action: { id: string }) => action.id === "install-pi" || action.id === "update-pi"), false);
 		assert.deepEqual(runs, []);
 	} finally {
@@ -490,14 +485,14 @@ test("/api/plan keeps a compatible Pi and says pnpm may put another next to Gent
 	}
 });
 
-test("the outcome says which Pi Gentle Shell runs whenever a valid version is reported", async () => {
+test("the outcome says which Pi Tomidev Shell runs whenever a valid version is reported", async () => {
 	const cases: [object, string][] = [
-		[{ outcome: "ready", completed: [], piVersion: "1.1.0" }, `${guidance.outcomes.ready} Gentle Shell runs Pi 1.1.0, which pnpm installed next to it.`],
+		[{ outcome: "ready", completed: [], piVersion: "1.1.0" }, `${guidance.outcomes.ready} Tomidev Shell runs Pi 1.1.0, which pnpm installed next to it.`],
 		[{ outcome: "terminal-action-required", action: "open-new-terminal", completed: [], piVersion: "1.1.0" },
-			`${guidance.outcomes["terminal-action-required"]} Gentle Shell runs Pi 1.1.0, which pnpm installed next to it.`],
+			`${guidance.outcomes["terminal-action-required"]} Tomidev Shell runs Pi 1.1.0, which pnpm installed next to it.`],
 		[{ outcome: "ready", completed: [] }, guidance.outcomes.ready],
 		[{ outcome: "ready", completed: [], piVersion: PI_INSTALL_VERSION },
-			`${guidance.outcomes.ready} Gentle Shell runs Pi ${PI_INSTALL_VERSION}, which pnpm installed next to it.`],
+			`${guidance.outcomes.ready} Tomidev Shell runs Pi ${PI_INSTALL_VERSION}, which pnpm installed next to it.`],
 		[{ outcome: "ready", completed: [], piVersion: "1.1.0 <script>" }, guidance.outcomes.ready],
 	];
 	for (const [result, expected] of cases) {
@@ -515,7 +510,7 @@ test("the outcome says which Pi Gentle Shell runs whenever a valid version is re
 	}
 });
 
-test("/api/plan describes updating an existing Gentle Shell on either channel", async () => {
+test("/api/plan describes updating an existing Tomidev Shell on either channel", async () => {
 	const shell = { available: true, version: "3.9.0", usable: true, global: true, owner: "npm" };
 	const { host, port, login } = await start({ collect: async (channel) => collectedFor(channel, { pi: { available: true, version: "1.2.4", usable: true },
 		shell, go: { available: true, version: "1.26.0", usable: true }, gentleAi: { available: null }, setup: { available: null } }) });
@@ -523,12 +518,12 @@ test("/api/plan describes updating an existing Gentle Shell on either channel", 
 		const cookie = await login();
 		const release = await plan(port, cookie);
 		assert.deepEqual(release.actions.map((action: { id: string; description: string }) => [action.id, action.description]), [
-			["update-shell-release", "Update Gentle Shell to the latest release with the package manager that installed it (pnpm or npm)."],
+			["update-shell-release", "Update Tomidev Shell to the latest release with the package manager that installed it (pnpm or npm)."],
 			["setup-shell", release.actions[1].description],
 			["verify-readiness", "Verify that the installed stack is ready."]]);
 		const main = JSON.parse((await send(port, { path: "/api/plan?channel=main", headers: { cookie, ...API } })).body);
 		assert.equal(main.actions[0].description,
-			"Update Gentle Shell and Gentle AI to the latest commits of `main`, built on this computer, with the package manager that installed Gentle Shell.");
+			"Update tomidev from the fork's latest main commit, packed locally with pnpm and installed with the package manager that owns it.");
 	} finally {
 		await host.close("test");
 	}
@@ -547,10 +542,10 @@ test("/api/plan keeps the generic guidance for an unknown tool without more evid
 
 test("/api/plan keeps the generic guidance when no older version is known", async () => {
 	const { host, port, login } = await start({ collect: async () => collected({
-		gentleAi: { available: true, version: "1.0.0", usable: true, compatible: false } }) });
+		pnpm: { available: true, version: "1.0.0", usable: true, compatible: false } }) });
 	try {
 		const view = await plan(port, await login());
-		const blocker = view.blockers.find((item: { tool: string }) => item.tool === "gentleAi");
+		const blocker = view.blockers.find((item: { tool: string }) => item.tool === "pnpm");
 		assert.equal(blocker.guidance, guidance.blockers["incompatible-tool"]);
 	} finally {
 		await host.close("test");
@@ -574,9 +569,9 @@ test("/api/plan plans the release channel by default and the main channel on req
 		const main = JSON.parse(response.body);
 		assert.equal(main.channel, "main");
 		const described = Object.fromEntries(main.actions.map((action: { id: string; description: string }) => [action.id, action.description]));
-		assert.equal(described["build-gentle-ai-main"], "Build Gentle AI from the latest commit of its `main` branch with Go, verified by Go's checksum database, and use it instead of the pinned release binary.");
-		assert.equal(described["install-shell-main"], "Install Gentle Shell from the latest commit of its `main` branch with pnpm, replacing the release package.");
-		assert.equal(described["record-channel"], "Remember the `main` channel, so `gentle-shell upgrade` keeps following `main`.");
+		assert.equal(described["build-gentle-ai-main"], undefined);
+		assert.equal(described["install-shell-main"], "Install Tomidev Shell from the latest commit of its `main` branch with pnpm, replacing the release package.");
+		assert.equal(described["record-channel"], "Remember the `main` channel, so `tomidev upgrade` keeps following `main`.");
 		assert.deepEqual(channels, ["release", "main"]);
 	} finally {
 		await host.close("test");
@@ -610,17 +605,16 @@ test("installing a main plan re-checks the computer on the main channel", async 
 	}
 });
 
-test("/api/plan offers the pinned Go on the main channel for a Go it cannot check", async () => {
+test("/api/plan ignores unchecked Go on the main channel", async () => {
 	const { host, port, login } = await start({ collect: async (channel) => collectedFor(channel, { pi: { available: false }, shell: { available: false }, go: { available: null } }) });
 	try {
 		const cookie = await login();
 		const view = JSON.parse((await send(port, { path: "/api/plan?channel=main", headers: { cookie, ...API } })).body);
 		assert.equal(view.blockers.some((item: { tool: string }) => item.tool === "go"), false);
 		const ids = view.actions.map((action: { id: string }) => action.id);
-		assert.equal(ids.indexOf("verify-go"), ids.indexOf("acquire-go") + 1);
-		assert.equal(view.actions.find((action: { id: string }) => action.id === "acquire-go").description, "The Go on this computer did not report a version this installer can check, so the installer downloads Go 1.25.14 " +
-			"from go.dev, verifies its pinned SHA-256 checksum and uses it only to build Gentle AI. It is kept in the installer's own folder " +
-			"(~/.pi/gentle-ai/tools/go); your Go, PATH and shell profile are not changed.");
+		assert.equal(ids.includes("verify-go"), false);
+		assert.equal(ids.includes("acquire-go"), false);
+		assert.doesNotMatch(JSON.stringify(view.actions), /Go|Gentle AI/);
 	} finally {
 		await host.close("test");
 	}
@@ -635,7 +629,7 @@ test("/api/plan keeps the preflight's camelCase tool names, but no other tool te
 	} });
 	try {
 		const view = await plan(port, await login());
-		assert.deepEqual(view.blockers.map((blocker: { tool: string }) => blocker.tool), ["gentleAi", "globalBin", "unknown", "unknown"]);
+		assert.deepEqual(view.blockers.map((blocker: { tool: string }) => blocker.tool), ["globalBin", "unknown", "unknown"]);
 	} finally {
 		await host.close("test");
 	}
@@ -675,8 +669,10 @@ test("install body must be exactly { planId, consent: true }; the runner is not 
 			req.end(`${"y".repeat(700)}","consent":true}`);
 		});
 		assert.equal(chunked, 413);
-		// A whole client plan never fits the 1 KiB body bound.
-		assert.equal((await post(port, "/api/install", cookie, { planId, consent: true, plan: collected().plan })).status, 413);
+		// Reject client plans even when the leaner plan fits the body bound.
+		const clientPlan = { planId, consent: true, plan: collected().plan };
+		assert.equal((await post(port, "/api/install", cookie, clientPlan)).status,
+			Buffer.byteLength(JSON.stringify(clientPlan)) > 1024 ? 413 : 400);
 		assert.equal(runs.length, 0);
 	} finally {
 		await host.close("test");
@@ -915,22 +911,6 @@ test("a failed setup passes only its bounded detail through, with rate-limit gui
 			await run.host.close("test");
 		}
 	}
-	// A failed Go download passes its folder conflict through, with guidance to remove that folder.
-	const conflict = "Conflicting Go destination: ~/.pi/gentle-ai/tools/go/1.25.14";
-	for (const [detail, expected] of [[conflict, guidance.goDestinationConflict], ["Error: size", guidance.failed["acquire-go"]]]) {
-		const run = await start({ runInstall: async () => ({ outcome: "failed", failedStep: "acquire-go", completed: [], detail }) });
-		try {
-			const cookie = await run.login();
-			const { planId } = await plan(run.port, cookie);
-			await post(run.port, "/api/install", cookie, { planId, consent: true });
-			await waitFor(() => run.host.outcome() !== null);
-			const progress = JSON.parse((await send(run.port, { path: "/api/progress", headers: { cookie, ...API } })).body);
-			assert.equal(progress.outcome.detail, detail);
-			assert.equal(progress.outcome.guidance, expected, detail);
-		} finally {
-			await run.host.close("test");
-		}
-	}
 	// The install, main-channel and update steps pass their detail through; GitHub's anonymous
 	// API limit (a main commit GitHub refused with HTTP 403) gets the rate-limit guidance.
 	const mainLimited = "main-commit-unavailable: GitHub did not return the latest main commit of Gentleman-Programming/gentle-shell (HTTP 403)";
@@ -943,8 +923,6 @@ test("a failed setup passes only its bounded detail through, with rate-limit gui
 		["install-version", "ERR_PNPM_FETCH_401 GET https://npm.acme.dev/x: Unauthorized", guidance.failed["install-version"]],
 		["install-shell-main", mainLimited, guidance.githubRateLimit],
 		["install-shell-main", "main-commit-unavailable: GitHub did not return the latest main commit of Gentleman-Programming/gentle-shell (HTTP 500)", guidance.failed["install-shell-main"]],
-		["build-gentle-ai-main", "main-commit-unavailable: GitHub did not return the latest main commit of Gentleman-Programming/gentle-ai (HTTP 403)", guidance.githubRateLimit],
-		["build-gentle-ai-main", "golang.org/x/sys/cpu: fork/exec ~/asm.exe: The directory name is invalid.", guidance.failed["build-gentle-ai-main"]],
 		["update-shell", mainLimited, guidance.githubRateLimit],
 		["update-shell", "tar: Error is not recoverable: exiting now", guidance.failed["update-shell"]],
 	]) {
@@ -963,14 +941,11 @@ test("a failed setup passes only its bounded detail through, with rate-limit gui
 	}
 	assert.match(guidance.githubRateLimit, /GitHub/);
 	assert.match(guidance.githubRateLimit, /hour/);
-	assert.doesNotMatch(guidance.githubRateLimit, /gentle-shell setup|token|credential|password|log in|sign in/i);
+	assert.doesNotMatch(guidance.githubRateLimit, /tomidev setup|token|credential|password|log in|sign in/i);
 	assert.match(guidance.codeIntegrityBlocked, /Smart App Control/);
 	assert.match(guidance.codeIntegrityBlocked, /WSL/);
 	assert.match(guidance.codeIntegrityBlocked, /cannot be turned back on/);
 	assert.doesNotMatch(guidance.codeIntegrityBlocked, /network|registry/);
-	assert.match(guidance.goDestinationConflict, /earlier/);
-	assert.match(guidance.goDestinationConflict, /Remove that folder/);
-	assert.doesNotMatch(guidance.goDestinationConflict, /network/);
 	assert.match(guidance.persistPathShell, /SHELL/);
 	assert.match(guidance.persistPathShell, /regular terminal/);
 	assert.match(guidance.persistPathShell, /\$PNPM_HOME\/bin/);
@@ -1099,7 +1074,7 @@ test("entry helpers: fixed per-platform opener, exit codes and runner environmen
 	assert.equal(exitCodeFor({ outcome: "terminal-action-required" }), 0);
 	for (const outcome of [{ outcome: "blocked" }, { outcome: "failed" }, null]) assert.equal(exitCodeFor(outcome), 1);
 
-	const TOOLS = "/home/u/.gentle-shell-bootstrap-tools.Ab12";
+	const TOOLS = "/home/u/.tomidev-bootstrap-tools.Ab12";
 	const files = new Set([`${TOOLS}/pnpm/bin/pnpm`, "/usr/bin/pnpm"]);
 	const fs = { isFile: async (path: string) => files.has(path) };
 	const wizardEnv = { HOME: "/home/u", PATH: `${TOOLS}/node/bin:${TOOLS}/pnpm/bin:/opt/bin:/bin` };
@@ -1113,8 +1088,8 @@ test("entry helpers: fixed per-platform opener, exit codes and runner environmen
 	// The user's own pnpm, reused by the bootstrap, stays the one on PATH.
 	const reused = { HOME: "/home/u", PATH: `${TOOLS}/node/bin:/opt/bin:/bin` };
 	assert.deepEqual(await runnerEnvironment({ platform: "linux", env: reused, fs }), { HOME: "/home/u", PATH: "/opt/bin:/bin" });
-	const windowsEnv = { USERPROFILE: "C:\\Users\\u", Path: `C:\\Users\\u\\AppData\\Local\\.gentle-shell-bootstrap-tools.1\\node;C:\\Windows`,
-		GENTLE_INSTALL_PNPM_NODE: "C:\\t\\node.exe", GENTLE_INSTALL_PNPM_ENTRY: "C:\\t\\pnpm.mjs" };
+	const windowsEnv = { USERPROFILE: "C:\\Users\\u", Path: `C:\\Users\\u\\AppData\\Local\\.tomidev-bootstrap-tools.1\\node;C:\\Windows`,
+		TOMIDEV_INSTALL_PNPM_NODE: "C:\\t\\node.exe", TOMIDEV_INSTALL_PNPM_ENTRY: "C:\\t\\pnpm.mjs" };
 	assert.deepEqual(await runnerEnvironment({ platform: "win32", env: windowsEnv, fs }),
 		{ ...windowsEnv, Path: "C:\\Windows" });
 });
@@ -1152,7 +1127,7 @@ test("only authenticated traffic extends the idle timeout", async () => {
 		await send(port, { path: "/api/plan", host: `localhost:${port}` });
 		await send(port, { path: "/api/plan", headers: API });
 		await send(port, { path: "/session?code=wrong" });
-		await send(port, { path: "/", headers: { cookie: "gentle_install_session=forged" } });
+		await send(port, { path: "/", headers: { cookie: "tomidev_install_session=forged" } });
 		await send(port, { path: "/nope" });
 		clock.value += 1_000;
 		assert.equal(host.checkIdle(), true);
@@ -1385,21 +1360,21 @@ test("/api/plan names the folder, principal, rights and remedy when PNPM_HOME is
 	assert.ok(guidance.failed["prepare-pnpm-home"].includes("%USERPROFILE%\\.pnpm"));
 });
 
-// R2: an update's children (gentle-shell upgrade, its pnpm and postinstall) get the
+// R2: an update's children (tomidev upgrade, its pnpm and postinstall) get the
 // same private-mode environment as the runner's children; otherwise it is unchanged.
 test("upgradeEnvironment isolates TEMP, TMP and pnpm's folders in a private Windows PNPM_HOME only", () => {
 	const env = { USERPROFILE: "C:\\Users\\m", PNPM_HOME: W_PRIVATE, Path: "C:\\Windows", TEMP: "C:\\Users\\m\\AppData\\Local\\Temp" };
 	const privateHome = { available: true, path: W_PRIVATE, source: "private", rejected: { path: W_DEFAULT, check: "target-acl-mask" } };
-	const isolated = upgradeEnvironment({ platform: "win32", env, pnpmHome: privateHome, goPath: "C:\\go\\bin\\go.exe" });
+	const isolated = upgradeEnvironment({ platform: "win32", env, pnpmHome: privateHome });
 	assert.deepEqual([isolated.TEMP, isolated.TMP, isolated.XDG_CACHE_HOME, isolated.PNPM_HOME], [`${W_PRIVATE}\\tmp`, `${W_PRIVATE}\\tmp`, `${W_PRIVATE}\\.cache`, W_PRIVATE]);
-	assert.equal(isolated.Path.split(";")[0], "C:\\go\\bin");
+	assert.equal(isolated.Path.split(";")[0], `${W_PRIVATE}\\bin`);
 	assert.deepEqual(upgradeEnvironment({ platform: "win32", env, pnpmHome: { available: true, path: W_PRIVATE, source: "user" } }), env);
 	assert.deepEqual(upgradeEnvironment({ platform: "linux", env: { PATH: "/usr/bin" }, pnpmHome: null }), { PATH: "/usr/bin" });
 });
 
 // T1c: the bundled plan's copy, before consent.
 const bundledDistribution = { status: "published", manifest: { shell: "4.1.0", pi: "1.0.2" }, lockfile: "lock" };
-const bundledLine = 'export PATH="/home/u/.gentle-shell/bin:$PATH" # gentle-shell bundled install';
+const bundledLine = 'export PATH="/home/u/.tomidev/bin:$PATH" # tomidev bundled install';
 function bundledCollected(path: Record<string, unknown>, platform = "linux"): Collected {
 	const layout = platform === "win32" ? prefixLayout({ platform, env: { LOCALAPPDATA: "C:\\L" }, home: "C:\\U" }) : prefixLayout({ platform, env: {}, home: "/home/u" });
 	return { inventory: { ...cleanInventory, platform }, plan: bundledPlan({ platform, distribution: bundledDistribution, layout, path }) as never };
@@ -1412,19 +1387,19 @@ test("/api/plan describes the bundled install: its own pinned runtimes, the user
 		assert.deepEqual(view.actions.map((action: { id: string }) => action.id),
 			["bundled-prefix", "bundled-runtime", "bundled-version", "bundled-activate", "bundled-path", "bundled-setup"]);
 		const text = view.actions.map((action: { description: string }) => action.description).join("\n");
-		assert.match(text, /\/home\/u\/\.gentle-shell/);
+		assert.match(text, /\/home\/u\/\.tomidev/);
 		assert.match(text, /Node\.js 24\.21\.0 with its npm and pnpm 11\.1\.1/);
-		assert.match(text, /Gentle Shell 4\.1\.0 with Pi 1\.0\.2/);
+		assert.match(text, /Tomidev Shell 4\.1\.0 with Pi 1\.0\.2/);
 		assert.match(text, /--frozen-lockfile/);
 		assert.match(text, /\/home\/u\/\.bashrc/);
-		assert.match(text, /gentle-shell setup/);
+		assert.match(text, /tomidev setup/);
 		assert.deepEqual(view.persistence.tools, ["node", "npm", "pnpm"]);
-		assert.equal(view.persistence.pnpmHome, "/home/u/.gentle-shell");
-		assert.match(view.persistence.description, /Your own Node\.js, npm, pnpm, Go and Pi are not used or changed/);
+		assert.equal(view.persistence.pnpmHome, "/home/u/.tomidev");
+		assert.match(view.persistence.description, /Your own Node\.js, npm, pnpm and Pi are not used or changed/);
 		assert.match(view.persistence.description, /npm registry, authentication and proxy settings/);
 		assert.equal(view.profileChange.changesProfile, true);
 		assert.equal(view.profileChange.command, null);
-		assert.equal(view.profileChange.binDir, "/home/u/.gentle-shell/bin");
+		assert.equal(view.profileChange.binDir, "/home/u/.tomidev/bin");
 		assert.match(view.profileChange.description, /\/home\/u\/\.bashrc/);
 	} finally {
 		await host.close("test");
@@ -1438,16 +1413,16 @@ test("/api/plan describes the bundled install: its own pinned runtimes, the user
 		const view = await plan(server.port, await server.login());
 		assert.equal(view.actions.at(-1).id, "remove-global-shell");
 		assert.match(view.actions.at(-1).description, /`npm uninstall -g gentle-pi`/);
-		assert.match(view.actions.at(-1).description, /reports Gentle Shell 4\.1\.0 with Pi 1\.0\.2/);
-		assert.match(view.actions.at(-1).description, /Your Pi and ~\/\.gentle-shell\/agent are not changed/);
+		assert.match(view.actions.at(-1).description, /reports Tomidev Shell 4\.1\.0 with Pi 1\.0\.2/);
+		assert.match(view.actions.at(-1).description, /Your Pi and ~\/\.tomidev\/agent are not changed/);
 	} finally {
 		await server.host.close("test");
 	}
 	const cases: [Record<string, unknown>, RegExp, boolean, string?][] = [
 		[{ kind: "none" }, /already finds/, false],
-		[{ kind: "symlink", path: "/home/u/.local/bin/gentle-shell", target: "/home/u/.gentle-shell/bin/gentle-shell" }, /\/home\/u\/\.local\/bin\/gentle-shell/, true],
+		[{ kind: "symlink", path: "/home/u/.local/bin/gentle-shell", target: "/home/u/.tomidev/bin/gentle-shell" }, /\/home\/u\/\.local\/bin\/gentle-shell/, true],
 		[{ kind: "manual", path: "/home/u/.zshrc", line: bundledLine, reason: "symlink" }, /add this line to \/home\/u\/\.zshrc yourself/, false],
-		[{ kind: "registry", key: "HKCU\\Environment", name: "Path", entry: "C:\\L\\gentle-shell\\bin" }, /user PATH/, true, "win32"],
+		[{ kind: "registry", key: "HKCU\\Environment", name: "Path", entry: "C:\\L\\tomidev\\bin" }, /user PATH/, true, "win32"],
 	];
 	for (const [path, description, changes, platform] of cases) {
 		const server = await start({ collect: async () => bundledCollected(path, platform) });
@@ -1457,8 +1432,8 @@ test("/api/plan describes the bundled install: its own pinned runtimes, the user
 			assert.equal(view.profileChange.changesProfile, changes, String(path.kind));
 			if (path.kind === "manual") assert.ok(view.profileChange.description.includes(bundledLine));
 			if (platform === "win32") {
-				assert.deepEqual(view.persistence.tools, ["node", "npm", "pnpm", "go"]);
-				assert.match(view.actions[1].description, /Go 1\.25\.14/);
+				assert.deepEqual(view.persistence.tools, ["node", "npm", "pnpm"]);
+				assert.doesNotMatch(view.actions[1].description, /Go/);
 			}
 		} finally {
 			await server.host.close("test");
@@ -1489,10 +1464,10 @@ test("bundled outcomes: every bundled step has guidance, pnpm's error line is sh
 		[{ outcome: "ready", completed: [], removeGlobal: { status: "removed", command: "pnpm remove -g gentle-pi" } },
 			(view) => { assert.equal("removeCommand" in view, false); assert.equal(view.guidance, guidance.outcomes.ready); }],
 		[{ outcome: "failed", failedStep: "verify-launcher", completed: [], detail: "Error: no Pi" },
-			(view) => { assert.equal(view.detail, "Error: no Pi"); assert.match(String(view.guidance), /old global Gentle Shell was kept/); }],
+			(view) => { assert.equal(view.detail, "Error: no Pi"); assert.match(String(view.guidance), /old global Tomidev Shell was kept/); }],
 		// B3: a migration's failed bundled step shows its detail; a new install's sends none, so nothing changes there.
-		[{ outcome: "failed", failedStep: "claim-prefix", completed: [], detail: "Unsafe bundled prefix: ~/.gentle-shell" },
-			(view) => { assert.equal(view.detail, "Unsafe bundled prefix: ~/.gentle-shell"); assert.equal(view.guidance, guidance.failed["claim-prefix"]); }],
+		[{ outcome: "failed", failedStep: "claim-prefix", completed: [], detail: "Unsafe bundled prefix: ~/.tomidev" },
+			(view) => { assert.equal(view.detail, "Unsafe bundled prefix: ~/.tomidev"); assert.equal(view.guidance, guidance.failed["claim-prefix"]); }],
 		[{ outcome: "failed", failedStep: "claim-prefix", completed: [] }, (view) => { assert.equal("detail" in view, false); }],
 	];
 	for (const [result, check] of cases) {
@@ -1526,15 +1501,15 @@ test("wizardHandlers plans the bundled install only when the gate says so, and r
 			download: download(published), inventory: async () => structuredClone(inventory) });
 		const bundled = await handlers(true).collectPlan("release");
 		assert.equal(bundled.plan.bundled.shell, requirements.shell);
-		assert.equal(bundled.plan.bundled.root, join(home, ".gentle-shell"));
+		assert.equal(bundled.plan.bundled.root, join(home, ".tomidev"));
 		assert.equal(bundled.plan.bundled.path.kind, "profile");
-		assert.deepEqual(urls, [`https://github.com/Gentleman-Programming/gentle-shell/releases/download/v${requirements.shell}/gentle-shell-distribution.json`,
-			`https://github.com/Gentleman-Programming/gentle-shell/releases/download/v${requirements.shell}/gentle-shell-distribution-lock.yaml`]);
-		// Without the assets (v4.0.0 today), on main, or with an existing Gentle Shell: the standard plan, unchanged.
+		assert.deepEqual(urls, [`https://github.com/TommiL90/tomidev-shell/releases/download/v${requirements.shell}/tomidev-distribution.json`,
+			`https://github.com/TommiL90/tomidev-shell/releases/download/v${requirements.shell}/tomidev-distribution-lock.yaml`]);
+		// Without the assets (v4.0.0 today), on main, or with an existing Tomidev Shell: the standard plan, unchanged.
 		urls.length = 0;
 		assert.deepEqual((await handlers(false).collectPlan("release")).plan, planPreflight(cleanInventory));
 		assert.deepEqual((await handlers(true).collectPlan("main")).plan, planPreflight(cleanInventory, { channel: "main" }));
-		// T3: an existing Gentle Shell that pnpm or npm owns moves to the bundled install and its old package is removed last.
+		// T3: an existing Tomidev Shell that pnpm or npm owns moves to the bundled install and its old package is removed last.
 		const existing = { ...cleanInventory, shell: { available: true, version: requirements.shell, usable: true, global: true, owner: "pnpm" } };
 		const migration = (await handlers(true, existing).collectPlan("release")).plan;
 		assert.deepEqual(migration.bundled.migrate, { manager: "pnpm", command: "pnpm remove -g gentle-pi", removal: "plan" });
@@ -1555,7 +1530,7 @@ test("wizardHandlers plans the bundled install only when the gate says so, and r
 
 // Git is not needed to install; the plan notes a missing Git, never as a blocker,
 // for the standard and the bundled plan alike (both inventories carry the probe).
-const gitNoticeText = (install: string) => "Git was not found on this computer. Gentle Shell installs and starts without it, but code review, worktrees and other " +
+const gitNoticeText = (install: string) => "Git was not found on this computer. Tomidev Shell installs and starts without it, but code review, worktrees and other " +
 	`repository features need it. Install it with ${install}, then open a new terminal. This is not a blocker.`;
 test("/api/plan notes a missing Git for the standard and the bundled plan, never as a blocker", async () => {
 	const cases = [

@@ -12,7 +12,8 @@ import type { AgentModelConfig } from "../../../lib/model-routing-authority.ts";
 import * as currentAuthority from "../../../lib/session-profile-authority.ts";
 import * as currentBinding from "../../../lib/session-profile-binding.ts";
 import * as currentFreeze from "../../../lib/session-profile-freeze.ts";
-import { SESSION_PROFILE_CUSTOM_TYPE } from "../../../lib/session-profile-persistence.ts";
+// The customType the vendored v1 chain wrote; every reader must still accept it (S7).
+const V1_SESSION_PROFILE_CUSTOM_TYPE = "gentle-pi.session-profile/v1";
 import type { WorktreeIdentity } from "../../../lib/session-worktree-registry.ts";
 import * as v1Authority from "./session-profile-authority.ts";
 import * as v1Binding from "./session-profile-binding.ts";
@@ -80,7 +81,7 @@ function writeSession(base: string, records: unknown[]) {
 		id: `record-${index}`,
 		parentId: index === 0 ? null : `record-${index - 1}`,
 		timestamp: "2026-11-03T00:00:00Z",
-		customType: SESSION_PROFILE_CUSTOM_TYPE,
+		customType: V1_SESSION_PROFILE_CUSTOM_TYPE,
 		data,
 	}));
 	const file = join(base, "session.jsonl");
@@ -151,7 +152,7 @@ export function replay(version: Version, transcript: Transcript): ReplayObservat
  */
 export function replayReviewerRouting(version: Version, transcript: Transcript): AgentModelConfig {
 	return resume(version, transcript, ({ options, agentHome }) => {
-		const replayed: NodeJS.ProcessEnv = { GENTLE_PI_AGENTS_CHILD: undefined, GENTLE_PI_PROFILE_FOLLOW: undefined, ...options.env, GENTLE_PI_CONFIG_HOME: options.configHome, GENTLE_PI_AGENT_HOME: agentHome };
+		const replayed: NodeJS.ProcessEnv = { TOMIDEV_AGENTS_CHILD: undefined, TOMIDEV_PROFILE_FOLLOW: undefined, ...options.env, TOMIDEV_CONFIG_HOME: options.configHome, TOMIDEV_AGENT_HOME: agentHome };
 		const previous = Object.fromEntries(Object.keys(replayed).map((key) => [key, process.env[key]]));
 		const assign = (values: NodeJS.ProcessEnv) => {
 			for (const [key, value] of Object.entries(values)) {

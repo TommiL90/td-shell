@@ -62,7 +62,11 @@ test("T11.5: verify distinguishes unit exclusions from unmet spec items", () => 
 		"unrelated future work must not block that unit",
 		"the parent resolves every in-scope unmet item before closing, with one correction batch and one recheck limited to the reported blockers",
 	], "verdict item");
-	assert.ok(verify.includes("verdict per `S#`"), "the feature-document verdict per S# must stay");
+	containsAll(verify, [
+		"return a verdict per project acceptance ID with evidence",
+		"Project workflow, criteria and delivery gates are authoritative",
+		"When the builtin feature contract is selected, read all of its `plan.md`/`checks.md` or feature document, including verbatim entries in `## Log`, and use `S#`/`C#` IDs",
+	], "project verdict and builtin fallback");
 });
 
 test("T11.6: verify leaves its probes as regression tests the writer commits", () => {

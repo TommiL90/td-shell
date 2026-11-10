@@ -33,9 +33,9 @@ function fixture(name: string) {
 			writeFileSync(join(agentHome, "subagents.json"), JSON.stringify(config));
 		},
 		writePinnedProfile(profiles: Record<string, unknown>, pin: string) {
-			writeFileSync(join(configHome, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, profiles }));
+			writeFileSync(join(configHome, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, profiles }));
 			mkdirSync(join(commonDir, "gentle-ai"), { recursive: true });
-			writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: pin }));
+			writeFileSync(join(commonDir, "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: pin }));
 		},
 	};
 }
@@ -105,9 +105,9 @@ test("resolvePinnedAgentProfile returns the launch profile with its model and th
 
 test("resolveAgentHomeDirectory follows the environment, expands tildes, and keeps explicit overrides literal", () => {
 	const home = "/home/tester";
-	assert.equal(resolveAgentHomeDirectory({ env: { GENTLE_PI_AGENT_HOME: "/opt/agents" }, home }), resolve("/opt/agents"));
+	assert.equal(resolveAgentHomeDirectory({ env: { TOMIDEV_AGENT_HOME: "/opt/agents" }, home }), resolve("/opt/agents"));
 	assert.equal(resolveAgentHomeDirectory({ env: { PI_CODING_AGENT_DIR: "~/pi-agent" }, home }), resolve(join(home, "pi-agent")));
-	assert.equal(resolveAgentHomeDirectory({ env: { GENTLE_PI_AGENT_HOME: "~" }, home }), resolve(home));
-	assert.equal(resolveAgentHomeDirectory({ env: { GENTLE_PI_AGENT_HOME: "/ignored" }, home, homeOverridden: true }), resolve(join(home, ".pi", "agent")));
+	assert.equal(resolveAgentHomeDirectory({ env: { TOMIDEV_AGENT_HOME: "~" }, home }), resolve(home));
+	assert.equal(resolveAgentHomeDirectory({ env: { TOMIDEV_AGENT_HOME: "/ignored" }, home, homeOverridden: true }), resolve(join(home, ".pi", "agent")));
 	assert.equal(resolveAgentHomeDirectory({ env: {}, home, agentHome: "/explicit" }), resolve("/explicit"));
 });

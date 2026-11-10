@@ -65,7 +65,7 @@ test("POSIX unreadable preference files read as default and are never overwritte
 });
 
 test("the live slot shares one content level per process and an unset slot reads default", (t) => {
-	const slot = Symbol.for("gentle-pi.card-content");
+	const slot = Symbol.for("tomidev.card-content");
 	const state = globalThis as typeof globalThis & { [slot]?: unknown };
 	const found = state[slot];
 	t.after(() => { state[slot] = found; });

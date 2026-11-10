@@ -1,3 +1,4 @@
+import { brandCommand } from "./brand.ts";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -7,7 +8,7 @@ import { gentlePiConfigHome } from "./agent-home.ts";
 // User keymaps: the single registry every Gentle shortcut reads. Each action
 // keeps its historical environment variable (which still wins, so existing
 // setups are unchanged) and its default key; `keymaps.json` under the Gentle
-// config home stores what the user assigned in /gentle:customize or the
+// config home stores what the user assigned in /td:customize or the
 // command palette. Pi reads extension shortcuts only at startup and on
 // /reload, so a saved change applies after a reload. Pure apart from the
 // read/write helpers, so the extensions and their tests share it.
@@ -28,16 +29,16 @@ export interface KeymapAction {
 }
 
 export const KEYMAP_ACTIONS: readonly KeymapAction[] = [
-	{ id: "commands", label: "Command palette", env: "GENTLE_PI_COMMANDS_KEY", defaultKey: "alt+k", command: "gentle:commands" },
-	{ id: "changes", label: "Browse changes", env: "GENTLE_PI_SHELL_CHANGES_KEY", defaultKey: "alt+g", command: "gentle:changes" },
-	{ id: "usage", label: "Subscription usage", env: "GENTLE_PI_SHELL_USAGE_KEY", defaultKey: "alt+u", command: "gentle:usage" },
-	{ id: "preset", label: "Cycle visual preset", env: "GENTLE_PI_SHELL_PRESET_KEY", defaultKey: "alt+l" },
-	{ id: "agents.view", label: "Subagents overlay", env: "GENTLE_PI_AGENTS_VIEW_KEY", defaultKey: "alt+a", command: "gentle:agents" },
-	{ id: "agents.stop", label: "Stop active subagents", env: "GENTLE_PI_AGENTS_STOP_KEY", defaultKey: "alt+s" },
-	{ id: "agents.collapse", label: "Collapse the agents card", env: "GENTLE_PI_AGENTS_KEY", defaultKey: "ctrl+shift+a" },
-	{ id: "jobs.collapse", label: "Collapse the jobs card", env: "GENTLE_PI_JOBS_KEY", defaultKey: "ctrl+shift+j" },
-	{ id: "todo.collapse", label: "Collapse the todo list", env: "GENTLE_PI_TODO_KEY", defaultKey: "ctrl+shift+t" },
-	{ id: "stats.view", label: "Usage stats", env: "GENTLE_PI_STATS_VIEW_KEY", command: "gentle:stats" },
+	{ id: "commands", label: "Command palette", env: "TOMIDEV_COMMANDS_KEY", defaultKey: "alt+k", command: brandCommand("commands") },
+	{ id: "changes", label: "Browse changes", env: "TOMIDEV_SHELL_CHANGES_KEY", defaultKey: "alt+g", command: brandCommand("changes") },
+	{ id: "usage", label: "Subscription usage", env: "TOMIDEV_SHELL_USAGE_KEY", defaultKey: "alt+u", command: brandCommand("usage") },
+	{ id: "preset", label: "Cycle visual preset", env: "TOMIDEV_SHELL_PRESET_KEY", defaultKey: "alt+l" },
+	{ id: "agents.view", label: "Subagents overlay", env: "TOMIDEV_AGENTS_VIEW_KEY", defaultKey: "alt+a", command: brandCommand("agents") },
+	{ id: "agents.stop", label: "Stop active subagents", env: "TOMIDEV_AGENTS_STOP_KEY", defaultKey: "alt+s" },
+	{ id: "agents.collapse", label: "Collapse the agents card", env: "TOMIDEV_AGENTS_KEY", defaultKey: "ctrl+shift+a" },
+	{ id: "jobs.collapse", label: "Collapse the jobs card", env: "TOMIDEV_JOBS_KEY", defaultKey: "ctrl+shift+j" },
+	{ id: "todo.collapse", label: "Collapse the todo list", env: "TOMIDEV_TODO_KEY", defaultKey: "ctrl+shift+t" },
+	{ id: "stats.view", label: "Usage stats", env: "TOMIDEV_STATS_VIEW_KEY", command: brandCommand("stats") },
 ];
 
 // Pi refuses extension shortcuts on these editor-global keybindings

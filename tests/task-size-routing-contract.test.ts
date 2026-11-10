@@ -15,7 +15,6 @@ const read = (relative: string): string => readFileSync(join(REPO_ROOT, relative
 
 const core = read("assets/orchestrator.md");
 const delegation = readDelegationDetail();
-const skill = read("skills/gentle-ai/SKILL.md");
 const extension = read("extensions/gentle-ai.ts");
 
 function sectionOf(text: string, heading: string): string {
@@ -38,7 +37,7 @@ test("AC1: the always-on core defines task size once with the three criteria", (
 	]) {
 		assert.ok(size.includes(clause), `task size section is missing: ${clause}`);
 	}
-	for (const [path, text] of Object.entries({ delegation, skill })) {
+	for (const [path, text] of Object.entries({ delegation })) {
 		assert.ok(!text.includes("**Resumable from the diff**"), `${path} restates the task-size criteria instead of referencing them`);
 		assert.ok(text.includes("Task Size"), `${path} must reference the always-on Task Size section`);
 	}
@@ -50,10 +49,10 @@ test("AC2: counts never classify, and the step-count classifier is gone", () => 
 		size.includes("The number of files, commands or tests, fixes, or a requested `todo` list never decides size"),
 		"task size must say counts never classify",
 	);
-	for (const [path, text] of Object.entries({ core, delegation, skill, extension, readme: read("docs/readme-reference.md") })) {
+	for (const [path, text] of Object.entries({ core, delegation, extension, readme: read("docs/readme-reference.md") })) {
 		assert.ok(!text.includes("two or more meaningful implementation steps"), `${path} keeps the step-count classifier`);
 	}
-	const prompt = __testing.buildGentlePrompt("gentleman");
+	const prompt = __testing.buildGentlePrompt();
 	const classify = prompt.slice(prompt.indexOf("4. **Classify.**"), prompt.indexOf("5. **Track before the first write.**"));
 	assert.ok(classify.includes("Task Size"), "ODD step 4 must classify by the Task Size section");
 });
@@ -69,7 +68,7 @@ test("AC3: small work runs its checks inline and keeps test-first", () => {
 	]) {
 		assert.ok(size.includes(clause), `small path is missing: ${clause}`);
 	}
-	for (const [path, text] of Object.entries({ core, delegation, skill })) {
+	for (const [path, text] of Object.entries({ core, delegation })) {
 		assert.ok(!text.includes("only a read-only check within the evidence budget stays inline"), `${path} keeps the read-only-only inline check`);
 		assert.ok(!text.includes("Only a truly local read-only check within the evidence budget stays inline"), `${path} keeps the read-only-only inline check`);
 		assert.ok(!text.includes("running focused tests/builds"), `${path} still delegates focused test runs`);
@@ -102,14 +101,14 @@ test("AC4: each mechanism turns on only by its own trigger and size is re-evalua
 		"7. **Context backstop**",
 		"open product or design decision",
 		// Verification by named risk: rule 3 names the escalated high-risk item.
-		"named high-risk item (assess `escalate` when RDD is on or unknown)",
+		"named high-risk item (on Full Lean lane or when risk is high)",
 		"never by file count",
 		// gentle-shell#1731: the writer fires on reasons, not on size alone.
 		"never by file count or a large task alone",
 	]) {
 		assert.ok(triggers.includes(clause), `mechanism list is missing: ${clause}`);
 	}
-	for (const [path, text] of Object.entries({ core, delegation, skill })) {
+	for (const [path, text] of Object.entries({ core, delegation })) {
 		assert.ok(!/2\+ non-trivial files|2 or more non-trivial files|Multi-file write rule/.test(text), `${path} keeps the file-count writer trigger`);
 	}
 });
@@ -129,14 +128,13 @@ test("AC5: the high-risk list lives once in the core, native tier wins, unclear 
 		"(5) delivery or environment",
 		"(6) no test would catch a regression",
 		"only when a bounded look cannot tell whether (1)-(5) apply",
-		"When RDD is on and native assess returns a tier, that tier wins",
 	]) {
 		assert.ok(size.includes(clause), `high-risk definition is missing: ${clause}`);
 	}
 	for (const broad of ["(1) data or irreversible effects (migrations, persisted data or formats)", "(3) contracts others consume"]) {
 		assert.ok(!size.includes(broad), `high-risk list keeps the broad form: ${broad}`);
 	}
-	for (const [path, text] of Object.entries({ delegation, skill })) {
+	for (const [path, text] of Object.entries({ delegation })) {
 		assert.ok(!text.includes("(1) data or irreversible effects"), `${path} restates the high-risk list`);
 	}
 });
@@ -155,7 +153,9 @@ const MODULE_BUDGETS: Record<string, number> = {
 	// read and to pass paths, not content (7,000 -> 7,100 B; every other card sentence is pinned by a contract).
 	// S15: units of about 100 changed lines or less always run inline (7,100 -> 7,300 B).
 	// RDD-off verification keeps the named-risk rule while conditioning assess on mode (7,300 -> 7,350 B).
-	"orchestrator-delegation.md": 7_350,
+	// T14 S12/S13: additive project-artifact composition and removal of the retired admission claim.
+	// Retain useful instructions instead of removing capability to satisfy the inherited token budget.
+	"orchestrator-delegation.md": 8_000,
 	"orchestrator-delegation-reference.md": 14_800,
 	// gentle-shell#1731 T23: Close gate accepts one Needs your decision result as a stop (12,500 -> 12,600 B).
 	// S14: close the open slice before a high-risk commit; outcomes per commit (12,600 -> 12,850 B).
@@ -215,7 +215,7 @@ test("S11: the default delegation pointer resolves to the lean card and the refe
 		"Each trigger holds only when its condition truly holds",
 		"A unit is one independent piece of behavior with its code, tests, and docs together",
 		"`## Allowed edit surfaces`",
-		"Spec: odd/tasks/<feature>.md (read until \"## Log\"). Do T#; S#.",
+		"Spec: .agents/designs/features/<feature>/ (read until \"## Log\"). Do T#; S#.",
 		"`## Skills to load before work`",
 		"`orchestrator-verification.md`",
 		"#### Key Learnings closing block",
@@ -261,7 +261,6 @@ test("work usage stays complete in the human guide while routing precedence stay
 	]) assert.ok(guide.includes(clause), `human guide must retain: ${clause}`);
 	assert.equal(asset.split("For a large task's bounded writes, prefer").length - 1, 1);
 	assert.equal(asset.split("Route generic exploration first to the installed package-owned `gentle-ai-explore`").length - 1, 1);
-	assert.ok(asset.includes("Judgment Day phase roles are never generic fallbacks."));
 	assert.ok(asset.includes("same read-only mapping task and report the fallback."));
 });
 
@@ -285,16 +284,17 @@ test("T4: tracking updates edit in place and mirror without re-emitting the docu
 // moved clause must live in the module its pointer names.
 test("T6: each delegation module carries its own clauses and names the modules it depends on", () => {
 	const placement: Record<string, readonly string[]> = {
-		"orchestrator-tracking.md": ["#### Authorization and progress", "Delivery follows work units", "Raise a candidate you know is high risk"],
-		// The tier table header lost "Native risk" with verification by named
-		// risk: the high row is reached only through escalate, not a native tier.
+		"orchestrator-tracking.md": ["#### Authorization and progress", "## Delivery", "Commit only when asked, usually after code review"],
+		// Verification follows the lane and the named high-risk item; judges and review
+		// lenses are separate sections, and the parallel protocol keeps its own.
 		"orchestrator-verification.md": [
-			"| Tier | Verification (any RDD state) |",
-			"## Agent escalation (gentle-shell#1494)",
+			"| Lane and risk | Verification after the writer returns |",
+			"## Judges and consensus loop",
+			"## Review lenses",
 			"## Parallel review protocol (gentle-shell#1731)",
 		],
-		"orchestrator-writer.md": ["#### Allowed edit surfaces (MANDATORY)", "#### Judgment Day fix dispatch"],
-		"orchestrator-prompts.md": ["### Lossless Blocking Prompts (MANDATORY)", "#### Gentle AI Provider Defect Handoff (MANDATORY)"],
+		"orchestrator-writer.md": ["#### Allowed edit surfaces (MANDATORY)"],
+		"orchestrator-prompts.md": ["### Lossless Blocking Prompts (MANDATORY)"],
 	};
 	for (const [file, clauses] of Object.entries(placement)) {
 		const text = read(`assets/${file}`);
@@ -337,7 +337,6 @@ test("S1: routing guidance mirrors cumulative precedence and the narrow preparat
 		"the trigger overrides initial size, including for read-only work",
 		"Preparation for an already understood inline write stays inline, not further discovery",
 	]) assert.ok(card.includes(clause), `delegation card is missing: ${clause}`);
-	assert.ok(skill.includes("A fired trigger overrides initial task size; read-only restricts mutation, not exploration"));
 	assert.ok(read("docs/readme-reference.md").includes("a fired evidence-budget trigger takes precedence over initial size"));
 	assert.match(sectionOf(core, "## Task Size"), /No explore, worker, or verifier unless a trigger fires/);
 	assert.doesNotMatch(sectionOf(core, "## Mechanisms"), /when in doubt work inline(?! within the evidence budget)/);

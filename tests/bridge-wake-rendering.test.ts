@@ -11,7 +11,7 @@ const sdk = import.meta.resolve("@earendil-works/pi-coding-agent");
 const { UserMessageComponent } = await import(new URL("./modes/interactive/components/user-message.js", sdk).href);
 const { initTheme } = await import(new URL("./modes/interactive/theme/theme.js", sdk).href);
 initTheme("dark");
-const oldWake = "[System-generated Gentle Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue.";
+const oldWake = "[System-generated Tomidev Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue.";
 
 test("real user renderer preserves ordinary content and removes only the owned reserved wake", async () => {
 	// Every path is owned by this test so CI never depends on ambient TMPDIR, HOME, or agent directories.

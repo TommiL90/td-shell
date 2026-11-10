@@ -6,9 +6,9 @@ import { join, resolve } from "node:path";
 import test, { type TestContext } from "node:test";
 import { commitSliceReport, commitSliceToolResult, commitTargetDirectory, isGitCommitCommand } from "../lib/commit-slice-signal.ts";
 
-// Harness roadmap T4 (R1): the ~400-line slice rule lived in the prompt and the
-// model had to estimate line counts. After each parent commit the runtime now
-// reports the authored changed lines on the branch, so slicing reads a number.
+// After an explicitly requested parent commit, report authored-line metrics.
+// These include tests/docs and are not diff_budget production measurements;
+// metrics alone must never choose delivery or recommend a split.
 
 function repo(t: TestContext): { dir: string; git: (...args: string[]) => string; commitFile: (path: string, lines: number) => void } {
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), "commit-slice-")));
@@ -71,7 +71,7 @@ test("a feature branch reports authored changed lines since the default branch, 
 	commitFile("tests/a.test.ts", 30);
 	const report = await commitSliceReport(dir);
 	assert.match(report ?? "", /^Commit slice: 150 authored changed lines in 3 commits on feat\/slice since main/);
-	assert.match(report ?? "", /250 lines left before the ~400-line slice/);
+	assert.doesNotMatch(report ?? "", /lines left|delivery strategy|before the next commit/);
 });
 
 // PR #2290 review: `--no-renames` counted a moved file as all of its lines deleted
@@ -100,11 +100,11 @@ test("a lock file whose path Git quotes is still excluded", async (t) => {
 	assert.match(await commitSliceReport(dir) ?? "", /^Commit slice: 10 authored changed lines in 2 commits on feat\/quoted/);
 });
 
-test("past ~400 lines the report says to apply the delivery strategy before the next commit", async (t) => {
+test("S2/T11: a large authored diff reports metrics without selecting delivery or recommending a split", async (t) => {
 	const { dir, git, commitFile } = repo(t);
 	git("switch", "-q", "-c", "feat/big");
 	commitFile("src/big.ts", 450);
-	assert.match(await commitSliceReport(dir) ?? "", /450 authored changed lines in 1 commit on feat\/big since main\b.*Past the ~400-line slice: apply the feature's delivery strategy before the next commit/);
+	assert.equal(await commitSliceReport(dir), "Commit slice: 450 authored changed lines in 1 commit on feat/big since main (lock files excluded).");
 });
 
 // R1 review advisory: the report ran git synchronously in the parent's

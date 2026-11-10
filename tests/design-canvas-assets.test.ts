@@ -158,13 +158,19 @@ class FakeDocument {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function loadCanvas(firstHeight = 300, extraReplies: Record<string, unknown> = {}) {
+async function loadCanvas(firstHeight = 300, extraReplies: Record<string, unknown> = {}, layout?: { width: number; height: number; observer?: boolean }) {
 	const document = new FakeDocument();
 	document.getElementById("gd-config").textContent = JSON.stringify({ base: "/t/", slug: "alpha" });
 	const viewport = document.getElementById("gd-viewport");
 	const world = document.getElementById("gd-world");
 	viewport.append(world);
 	viewport.rect = { left: 0, top: 50, width: 1000, height: 700 };
+	if (layout) {
+		Object.defineProperty(world, "offsetWidth", { get: () => layout.width });
+		Object.defineProperty(world, "offsetHeight", { get: () => layout.height });
+	}
+	let viewportResized = () => {};
+	document.getElementById("gd-popover").hidden = true;
 	const windowListeners = new Map<string, Listener[]>();
 	const replies: Record<string, unknown> = {
 		"/t/api/system": { exists: false },
@@ -213,6 +219,12 @@ async function loadCanvas(firstHeight = 300, extraReplies: Record<string, unknow
 			fetched.push(url);
 			return { ok: url in replies, status: url in replies ? 200 : 404, json: async () => replies[url] ?? {} };
 		},
+		FileReader: class {
+			result = "data:image/png;base64,c2NyZWVuc2hvdA==";
+			listeners = new Map<string, () => void>();
+			addEventListener(type: string, listener: () => void) { this.listeners.set(type, listener); }
+			readAsDataURL() { this.listeners.get("load")?.(); }
+		},
 		EventSource: class {
 			addEventListener(type: string, listener: Listener) {
 				sourceListeners.set(type, [...(sourceListeners.get(type) ?? []), listener]);
@@ -221,6 +233,10 @@ async function loadCanvas(firstHeight = 300, extraReplies: Record<string, unknow
 		addEventListener(type: string, listener: Listener) {
 			windowListeners.set(type, [...(windowListeners.get(type) ?? []), listener]);
 		},
+	};
+	if (layout?.observer) context.ResizeObserver = class {
+		constructor(callback: () => void) { viewportResized = callback; }
+		observe() {}
 	};
 	context.window = context;
 	vm.runInNewContext(read("canvas.js"), context);
@@ -243,7 +259,7 @@ async function loadCanvas(firstHeight = 300, extraReplies: Record<string, unknow
 		for (let i = 0; i < 10; i++) await flush();
 	};
 	const frames = () => world.children.map((wrapper) => wrapper.children.find((child) => child.classes.has("gd-frame-box"))!.children.find((child) => child.localName === "iframe")!);
-	return { document, viewport, world, boards, message, windowEvent, serverEvent, frames, fetched, posts, urls, replies, zoomLevel: document.getElementById("gd-zoom-level"), navMode: document.getElementById("gd-nav-mode") };
+	return { document, viewport, world, boards, message, windowEvent, viewportResized: () => viewportResized(), serverEvent, frames, fetched, posts, urls, replies, zoomLevel: document.getElementById("gd-zoom-level"), navMode: document.getElementById("gd-nav-mode") };
 }
 
 function click(target: FakeElement, x: number, y: number) {
@@ -594,13 +610,105 @@ test("a show event for another design leaves focus, loads that design and replac
 
 	await canvas.serverEvent("show", { slug: null });
 	assert.equal(canvas.urls.at(-1), "/t/", "null shows the system-only view at the root URL");
-	assert.equal(canvas.document.getElementById("gd-title").textContent, "Gentle Design");
+	assert.equal(canvas.document.getElementById("gd-title").textContent, "Tomidev Design");
 	assert.deepEqual(canvas.frames(), []);
 
 	const fetches = canvas.fetched.length;
 	for (const data of [{ slug: 3 }, {}, "beta", { slug: "../x" }]) await canvas.serverEvent("show", data);
 	assert.equal(canvas.fetched.length, fetches, "a malformed show event is ignored");
 });
+
+// T2 [S2,S3]: viewport changes follow Fit, never a manually positioned camera.
+const settleViewport = () => new Promise((resolve) => setTimeout(resolve, 180));
+
+for (const observer of [false, true]) {
+	test(`settled viewport refits an automatic overview (${observer ? "panel observer" : "window fallback"})`, async () => {
+		const canvas = await loadCanvas(300, {}, { width: 2000, height: 900, observer });
+		assert.equal(canvas.world.style.transform, "translate(48px, 146.6px) scale(0.452)");
+		const resize = observer ? canvas.viewportResized : () => canvas.windowEvent("resize");
+		canvas.viewport.rect.width = 800;
+		resize();
+		assert.equal(canvas.world.style.transform, "translate(48px, 146.6px) scale(0.452)", "wait for layout to settle");
+		canvas.viewport.rect.width = 600;
+		resize();
+		await settleViewport();
+		assert.equal(canvas.world.style.transform, "translate(48px, 236.6px) scale(0.252)");
+		assert.equal(canvas.zoomLevel.textContent, "25%");
+		assert.deepEqual(canvas.posts, []);
+	});
+}
+
+for (const manual of ["zoom", "wheel pan", "drag", "keyboard pan"]) {
+	test(`settled viewport preserves manual ${manual}, and Fit re-enables following`, async () => {
+		const canvas = await loadCanvas(300, {}, { width: 2000, height: 900, observer: true });
+		canvas.viewport.rect.width = 800;
+		canvas.viewportResized(); // A queued automatic fit must also respect intervening input.
+		if (manual === "zoom") canvas.document.getElementById("gd-zoom-in").dispatch("click");
+		if (manual === "wheel pan") canvas.viewport.dispatch("wheel", { deltaX: 30, deltaY: 20, deltaMode: 0 });
+		if (manual === "drag") {
+			canvas.viewport.dispatch("pointerdown", { button: 0, pointerId: 1, clientX: 10, clientY: 10 });
+			canvas.viewport.dispatch("pointermove", { pointerId: 1, clientX: 40, clientY: 30 });
+			canvas.viewport.dispatch("pointerup", { pointerId: 1, clientX: 40, clientY: 30 });
+		}
+		if (manual === "keyboard pan") canvas.viewport.dispatch("keydown", { key: "ArrowRight" });
+		const camera = canvas.world.style.transform;
+		const zoom = canvas.zoomLevel.textContent;
+		await settleViewport();
+		assert.equal(canvas.world.style.transform, camera);
+		assert.equal(canvas.zoomLevel.textContent, zoom);
+		canvas.viewport.rect.width = 600;
+		canvas.viewportResized();
+		await settleViewport();
+		assert.equal(canvas.world.style.transform, camera);
+		assert.equal(canvas.zoomLevel.textContent, zoom);
+		canvas.document.getElementById("gd-fit").dispatch("click");
+		assert.equal(canvas.world.style.transform, "translate(48px, 236.6px) scale(0.252)");
+		canvas.viewport.rect.width = 800;
+		canvas.viewportResized();
+		await settleViewport();
+		assert.equal(canvas.world.style.transform, `translate(48px, ${(700 - 900 * 0.352) / 2}px) scale(0.352)`);
+		assert.equal(canvas.zoomLevel.textContent, "35%");
+		assert.deepEqual(canvas.posts, []);
+	});
+}
+
+for (const observer of [false, true]) {
+	test(`resize preserves the comment draft and defers fit until close (${observer ? "observer" : "fallback"})`, async () => {
+		const canvas = await loadCanvas(300, {}, { width: 2000, height: 900, observer });
+		canvas.document.getElementById("gd-comment").dispatch("click");
+		const frame = canvas.boards[0].frame;
+		canvas.message(frame.contentWindow, { type: "gd:pick", selector: "h1", excerpt: "Title", rect: { x: 10, y: 20, width: 100, height: 30 } });
+		const popover = canvas.document.getElementById("gd-popover");
+		const text = canvas.document.getElementById("gd-popover-text");
+		text.value = "Keep this unsent draft";
+		popover.dispatch("paste", { clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => ({ type: "image/png", size: 10 }) }] } });
+		const shot = canvas.document.getElementById("gd-shot-image");
+		const camera = canvas.world.style.transform;
+		const messages = frame.contentWindow!.posted.length;
+		canvas.viewport.rect.width = 600;
+		canvas.document.getElementById("gd-panel-toggle").dispatch("click");
+		if (observer) canvas.viewportResized();
+		else canvas.windowEvent("resize");
+		await settleViewport();
+		assert.equal(popover.hidden, false);
+		assert.equal(text.value, "Keep this unsent draft");
+		assert.equal(shot.src, "data:image/png;base64,c2NyZWVuc2hvdA==");
+		assert.equal(canvas.document.getElementById("gd-shot-preview").hidden, false);
+		assert.equal(canvas.document.getElementById("gd-shot-attach").hidden, true);
+		assert.equal(canvas.document.getElementById("gd-popover-target").textContent, "01-a.html · h1");
+		assert.equal(canvas.document.activeElement, text);
+		assert.equal(frame.contentWindow!.posted.length, messages, "the inspector selection is not cleared");
+		assert.equal(canvas.world.style.transform, camera);
+		assert.deepEqual(canvas.posts, [], "nothing is submitted on resize");
+		canvas.document.getElementById("gd-popover-cancel").dispatch("click");
+		assert.equal(popover.hidden, true);
+		await settleViewport();
+		assert.equal(canvas.world.style.transform, "translate(48px, 236.6px) scale(0.252)");
+		assert.equal(canvas.zoomLevel.textContent, "25%");
+		assert.deepEqual(frame.contentWindow!.posted.at(-1), { type: "gd:clear" });
+		assert.deepEqual(canvas.posts, []);
+	});
+}
 
 function loadInspector() {
 	const posted: any[] = [];

@@ -130,7 +130,7 @@ type ForkStore = {
  transfers: WeakMap<object, ForkTransfer>;
 };
 // Keep the key stable across code reloads; the value owns protocol negotiation.
-const forkStoreKey = Symbol.for("gentle-pi.session-profile.fork-evidence");
+const forkStoreKey = Symbol.for("tomidev.session-profile.fork-evidence");
 function forkStore(): ForkStore {
  const existing = Reflect.get(globalThis, forkStoreKey) as
   | ForkStore

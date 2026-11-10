@@ -15,7 +15,7 @@ async function fixture(run: (f: any) => Promise<void>, child = false) {
 		events: { on: (key, fn) => { listeners.set(key, fn); return () => listeners.delete(key); }, emit: (key, data) => listeners.get(key)?.(data) } };
 	let id = "session";
 	const ctx = { cwd:root, sessionManager: { getSessionId: () => id, getEntries: () => entries } };
-	installSessionChangeCapture(pi as never, child ? {GENTLE_PI_AGENTS_CHILD:"1"} : {}, () => ({root,commonDir:root}));
+	installSessionChangeCapture(pi as never, child ? {TOMIDEV_AGENTS_CHILD:"1"} : {}, () => ({root,commonDir:root}));
 	const fire = (key, event = {}) => handlers.get(key)?.(event, ctx);
 	try { await fire("session_start"); await run({root, entries, ctx, fire, pi, switchSession: () => id = "other"}); }
 	finally { await rm(root, {recursive:true,force:true}); }
@@ -81,7 +81,7 @@ test("child carries bounded evidence in the existing tool-result details transpo
 
 test("capture caps bound session entries without a Changes notice", async () => fixture(async ({root,entries,fire,pi}) => {
 	const events: unknown[] = [];
-	pi.events.on("gentle-pi:session-change", (data: unknown) => events.push(data));
+	pi.events.on("td:session-change", (data: unknown) => events.push(data));
 	for (let i = 0; i < 80; i++) {
 		const path = `f${i}`;
 		const content = "x".repeat(60 * 1024) + "\n";

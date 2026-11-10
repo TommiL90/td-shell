@@ -24,11 +24,10 @@ import {
 	type ShellBarModel,
 	type ShellBarTheme,
 } from "../lib/shell-bar.ts";
-import { REVIEW_SCOPE_UNAVAILABLE } from "../lib/review-sidebar-state.ts";
 import { stripAnsi } from "../lib/terminal-theme.ts";
 import { CARD_STYLE, cardStyle, setCardStyle, type CardStyle } from "../lib/shell-card.ts";
 
-// The Gentle Shell bar replaces pi's three-line footer with one line of
+// The Tomidev Shell bar replaces pi's three-line footer with one line of
 // segments. Rendering is pure so it can be verified without a TUI.
 
 const taggedTheme: ShellBarTheme = {
@@ -111,22 +110,6 @@ test("visual visibility hides only selected optional status segments", () => {
 	assert.doesNotMatch(renderShellHeaderBar(buildShellHeaderModel(data), plainTheme, 160, undefined, settings).text, /gpt-5\.5|ctx|\$9\.49|usage/);
 });
 
-test("Status keeps the Review section beside Changes while running jobs live in their own section", () => {
-	const data = model({ jobs: [
-		{ id: "job-2", label: "CI for PR 1860", startedAt: 2 },
-		{ id: "job-1", label: "Build runtime", startedAt: 1 },
-	], review: { state: "reviewing", scope: "first.ts" } });
-	for (const width of [30, 60]) {
-		const lines = renderShellSidebarBar(data, plainTheme, width);
-		const text = lines.join("\n");
-		// Running jobs live in their own rail section; Status never prints
-		// them, so the two surfaces cannot duplicate one job.
-		assert.doesNotMatch(text, /JOBS|CI for PR 1860|Build runtime/);
-		assert.match(text, /▾ REVIEW/);
-		assert.ok(lines.every((line) => visibleWidth(line) <= width));
-	}
-});
-
 test("header shows only the running job count when requested and preserves it at mobile widths", () => {
 	const data = model({ jobs: [{ id: "job-1", label: "CI for PR 1860", startedAt: 1 }] });
 	for (const width of [40, 80, 160]) {
@@ -149,45 +132,6 @@ test("bottom-only and hidden below-input chrome retain a compact jobs count", (t
 	assert.match(rows.join("\n"), /⧗ 1 job/);
 	assert.doesNotMatch(rows.join("\n"), /CI for PR/);
 	assert.ok(rows.every((line) => visibleWidth(line) <= 80));
-});
-
-test("Status opens with Changes and shows no Review section without an active review", () => {
-	const lines = renderShellSidebarBar(model(), plainTheme, 60);
-	assert.match(lines[0], /^▾ CHANGES/);
-	assert.doesNotMatch(lines.slice(1).join("\n"), /REVIEW/);
-});
-
-test("the Review section lists the lifecycle state and the candidate scope", () => {
-	const lines = renderShellSidebarBar(model({ review: { state: "reviewing", scope: "first.ts +2 files" } }), plainTheme, 60);
-	assert.match(lines[0], /^▾ CHANGES/);
-	assert.match(lines.slice(1).join("\n"), /▾ REVIEW[\s\S]*Reviewers running…[\s\S]*first\.ts \+2 files/);
-});
-
-test("review lifecycle block omits the scope line when the candidate scope is unknown", () => {
-	const known = renderShellSidebarBar(model({ review: { state: "checking", scope: "first.ts" } }), plainTheme, 60);
-	const unknown = renderShellSidebarBar(model({ review: { state: "checking", scope: REVIEW_SCOPE_UNAVAILABLE } }), plainTheme, 60);
-	const text = unknown.join("\n");
-	assert.match(text, /▾ REVIEW[\s\S]*Updating…/);
-	assert.doesNotMatch(text, /Candidate scope unavailable/);
-	assert.equal(unknown.length, known.length - 1);
-});
-
-test("rdd visibility hides only the review lifecycle block", () => {
-	const data = model({ review: { state: "reviewing", scope: "first.ts +2" }, changes: { files: 2, added: 1, deleted: 1 } });
-	assert.match(renderShellSidebarBar(data, plainTheme, 60, DEFAULT_VISUAL_SETTINGS).join("\n"), /▾ REVIEW[\s\S]*Reviewers running…/);
-	const hidden = renderShellSidebarBar(data, plainTheme, 60, { ...DEFAULT_VISUAL_SETTINGS, visibility: { ...DEFAULT_VISUAL_SETTINGS.visibility, rdd: false } }).join("\n");
-	assert.doesNotMatch(hidden, /REVIEW|Reviewers running|first\.ts \+2 files/);
-	assert.match(hidden, /CHANGES[\s\S]*2 files/);
-});
-
-test("Status and review lifecycle block respect terminal width", () => {
-	for (const width of [8, 12, 16, 20, 32, 60]) {
-		for (const review of [undefined, { state: "reviewing" as const, scope: "first.ts +2 files" }, { state: "approved" as const, scope: REVIEW_SCOPE_UNAVAILABLE }]) {
-			const lines = renderShellSidebarBar(model({ review }), plainTheme, width);
-			for (const line of lines) assert.ok(visibleWidth(line) <= width, `${width}: ${line}`);
-			if (width >= 20) assert.match(lines[0], /^▾ CHANGES/);
-		}
-	}
 });
 
 test("renderGauge fills cells proportionally to the percentage", () => {
@@ -219,7 +163,7 @@ test("renderShellBar renders one line with the segments in order", () => {
 	assert.equal(rest.length, 0);
 	assert.equal(
 		line,
-		"✿ gentle shell ⟡ ~/work/gentle-pi main ⟡ gpt-5.5 · medium ⟡ ctx ▰▰▰▰▱▱▱▱ 45% ⟡ $9.49 sub",
+		"✿ tomidev shell ⟡ ~/work/gentle-pi main ⟡ gpt-5.5 · medium ⟡ ctx ▰▰▰▰▱▱▱▱ 45% ⟡ $9.49 sub",
 	);
 });
 
@@ -232,7 +176,7 @@ test("renderShellBar paints the context gauge with the given gauge roles", () =>
 
 test("renderShellBar colors the brand, model, effort, and gauge by role", () => {
 	const [line] = renderShellBar(model(), taggedTheme, 400);
-	assert.match(line, /<accent>✿ gentle shell<\/accent>/);
+	assert.match(line, /<accent>✿ tomidev shell<\/accent>/);
 	assert.match(line, /<text>gpt-5\.5<\/text>/);
 	assert.match(line, /<syntaxFunction>medium<\/syntaxFunction>/);
 	assert.match(line, /<accent>▰▰▰▰<\/accent><border>▱▱▱▱<\/border>/);
@@ -337,18 +281,18 @@ test("renderShellBar drops the session name, then trailing segments, before trun
 
 	const [atFifty] = renderShellBar(wide, plainTheme, 50);
 	assert.ok(visibleWidth(atFifty) <= 50, `line overflowed: ${visibleWidth(atFifty)}`);
-	assert.match(atFifty, /^✿ gentle shell/);
+	assert.match(atFifty, /^✿ tomidev shell/);
 });
 
-test("shellEnabled stays off inside a Gentle Agents child", () => {
-	assert.equal(shellEnabled({ GENTLE_PI_AGENTS_CHILD: "1" }), false);
+test("shellEnabled stays off inside a Tomidev Agents child", () => {
+	assert.equal(shellEnabled({ TOMIDEV_AGENTS_CHILD: "1" }), false);
 });
 
-test("shellEnabled honors GENTLE_PI_SHELL=0", () => {
+test("shellEnabled honors TOMIDEV_SHELL=0", () => {
 	assert.equal(shellEnabled({}), true);
-	assert.equal(shellEnabled({ GENTLE_PI_SHELL: "1" }), true);
-	assert.equal(shellEnabled({ GENTLE_PI_SHELL: "0" }), false);
-	assert.equal(shellEnabled({ GENTLE_PI_SHELL: "false" }), false);
+	assert.equal(shellEnabled({ TOMIDEV_SHELL: "1" }), true);
+	assert.equal(shellEnabled({ TOMIDEV_SHELL: "0" }), false);
+	assert.equal(shellEnabled({ TOMIDEV_SHELL: "false" }), false);
 });
 
 test("renderShellSidebarBar draws panel section headers, never a card frame", () => {
@@ -369,7 +313,7 @@ test("the rail Status orders Changes before Integrations and keeps the location 
 	}
 	assert.match(text, /2 files/);
 	assert.match(text, /\+7 −3/);
-	assert.match(text, /\/gentle:changes/);
+	assert.match(text, /\/td:changes/);
 	assert.match(text, /MCP connected/);
 	assert.doesNotMatch(text, /main|Branch|Project/, "location lives in the header row, once");
 	for (const width of [1, 8, 24, 46]) assert.ok(renderShellSidebarBar(data, plainTheme, width).every((line) => visibleWidth(line) <= width));
@@ -468,7 +412,7 @@ test("buildShellHeaderModel keeps only the header's fields from the bar model", 
 test("renderShellHeaderBar draws the brand, identity, and right-aligned counters (plus the standing usage segment) in one line", () => {
 	const header = buildShellHeaderModel(model({ profile: "team" }));
 	const { text: line } = renderShellHeaderBar(header, plainTheme, 120);
-	const left = "✿ Gentle Shell ⟡ ~/work/gentle-pi main ⟡ gpt-5.5 · medium · team";
+	const left = "🐶 Tomidev Shell ⟡ ~/work/gentle-pi main ⟡ gpt-5.5 · medium · team";
 	const right = "ctx ▰▰▰▰▱▱▱▱ 45% ⟡ $9.49 sub ⟡ usage";
 	assert.equal(line, left + " ".repeat(120 - visibleWidth(left) - visibleWidth(right)) + right);
 	assert.equal(visibleWidth(line), 120);
@@ -485,7 +429,7 @@ test("renderShellHeaderBar colors the brand bold and by role", () => {
 	const bolding = { fg: (color: string, text: string) => `<${color}>${text}</${color}>`, bold: (text: string) => `**${text}**` };
 	const header = buildShellHeaderModel(model());
 	const { text: line } = renderShellHeaderBar(header, bolding, 120);
-	assert.match(line, /<accent>\*\*✿ Gentle Shell\*\*<\/accent>/);
+	assert.match(line, /<accent>\*\*🐶 Tomidev Shell\*\*<\/accent>/);
 });
 
 test("renderShellHeaderBar drops the profile, then the effort, then the whole location before the right group", () => {
@@ -514,7 +458,7 @@ test("renderShellHeaderBar drops the profile, then the effort, then the whole lo
 	const { text: noLocation } = renderShellHeaderBar(withProfile, plainTheme, 82);
 	assert.doesNotMatch(noLocation, /~\/work\/gentle-pi/);
 	assert.match(noLocation, /gpt-5\.5/);
-	assert.match(noLocation, /✿ Gentle Shell/);
+	assert.match(noLocation, /🐶 Tomidev Shell/);
 	assert.match(noLocation, /ctx ▰▰▰▰▱▱▱▱ 45% ⟡ \$9\.49 sub ⟡ usage$/);
 	assert.equal(visibleWidth(noLocation), 82);
 
@@ -523,14 +467,14 @@ test("renderShellHeaderBar drops the profile, then the effort, then the whole lo
 	assert.doesNotMatch(noUsage, /~\/work\/gentle-pi/);
 	assert.doesNotMatch(noUsage, /usage/);
 	assert.match(noUsage, /gpt-5\.5/);
-	assert.match(noUsage, /✿ Gentle Shell/);
+	assert.match(noUsage, /🐶 Tomidev Shell/);
 	assert.match(noUsage, /ctx ▰▰▰▰▱▱▱▱ 45% ⟡ \$9\.49 sub$/);
 	assert.equal(visibleWidth(noUsage), 60);
 });
 
 test("renderShellHeaderBar returns an empty string only once the brand itself cannot fit", () => {
 	assert.equal(renderShellHeaderBar(buildShellHeaderModel(model()), plainTheme, 3).text, "");
-	assert.match(renderShellHeaderBar(buildShellHeaderModel(model()), plainTheme, 40).text, /✿ Gentle Shell/);
+	assert.match(renderShellHeaderBar(buildShellHeaderModel(model()), plainTheme, 40).text, /🐶 Tomidev Shell/);
 });
 
 // T8: the usage segment. It rides after cost in the right group, shows every
@@ -562,7 +506,7 @@ test("header retains effort without location when it fits beside full usage wind
 		const right = density === "minimal"
 			? "ctx 45% ⟡ $9.49 sub ⟡ usage 5h 26% · week 12%"
 			: "ctx ▰▰▰▰▱▱▱▱ 45% ⟡ $9.49 sub ⟡ usage 5h ▰▰▱▱▱▱▱▱ 26% · week ▰▱▱▱▱▱▱▱ 12% · alt+u";
-		const left = density === "minimal" ? "gpt-5.5 · medium" : "✿ Gentle Shell ⟡ gpt-5.5 · medium";
+		const left = density === "minimal" ? "gpt-5.5 · medium" : "🐶 Tomidev Shell ⟡ gpt-5.5 · medium";
 		const width = visibleWidth(left) + 2 + visibleWidth(right);
 		const result = renderShellHeaderBar(header, plainTheme, width, "alt+u", settings);
 		assert.equal(result.text, left + "  " + right, density);
@@ -764,7 +708,7 @@ test("renderShellHeaderRule paints one full-width line in the editor frame color
 test("the rail Status is the same panel in the neon and float card styles", (t) => {
 	// Card styles dress transcript cards; the rail panel has its own surface.
 	const theme = withBackground(plainTheme);
-	const data = model({ review: { state: "reviewing", scope: "first.ts +2 files" } });
+	const data = model();
 	const neon = renderShellSidebarBar(data, theme, 60);
 	useCardStyle(t, CARD_STYLE.FLOAT);
 	assert.deepEqual(renderShellSidebarBar(data, theme, 60), neon);
@@ -1042,7 +986,7 @@ test("unified below-input float includes optional Changes inside one painted gro
 
 // The idle Changes row exists only when files are actually tracked; an empty
 // capture — including an unborn-only root, which the tracker never scans — is
-// silence (explained by /gentle:changes on demand), never an instruction row.
+// silence (explained by /td:changes on demand), never an instruction row.
 test("the below-input float shows no Changes row without tracked files", (t) => {
 	useCardStyle(t, CARD_STYLE.FLOAT);
 	const theme = withBackground(plainTheme);

@@ -1,5 +1,6 @@
 // Current admission/publication bridge. Controller evidence stays in the
 // integration owner; this module owns no quarantine, capability or cache.
+import { isBrandFamily } from "./brand.ts";
 import { existsSync } from "node:fs";
 import { readSessionProfileDisk } from "./session-profile-disk-reader.ts";
 import {
@@ -53,7 +54,7 @@ function noProfile(manager: SessionProfileLifecycleManager): boolean {
    return (
     value.type === "custom" &&
     typeof value.customType === "string" &&
-    value.customType.startsWith("gentle-pi.session-profile/")
+    isBrandFamily(value.customType, "session-profile/")
    );
   })
  );

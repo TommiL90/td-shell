@@ -57,7 +57,7 @@ const engram = Object.freeze({
 });
 /** The Engram version the bundled install publishes under runtime/. */
 export const engramPinVersion = engram.version;
-// uv for the /gentle:music offer (installMusicPlayer), never part of the default
+// uv for the /td:music offer (installMusicPlayer), never part of the default
 // install: the astral-sh/uv release. Each sha256 and size comes from GitHub's
 // asset digests; every archive was downloaded and re-hashed before pinning.
 const uv = Object.freeze({
@@ -310,9 +310,9 @@ function privateTools(home) {
 	if (!home || !home.startsWith("/") || realpathSync(home) !== resolve(home)) throw new Error("Unsafe tooling HOME");
 	const info = lstatSync(home);
 	if (!info.isDirectory() || info.uid !== process.getuid() || (info.mode & 0o022)) throw new Error("Unsafe tooling HOME ownership");
-	const tools = mkdtempSync(join(home, ".gentle-shell-bootstrap-tools."));
+	const tools = mkdtempSync(join(home, ".tomidev-bootstrap-tools."));
 	try {
-		writeFileSync(join(tools, ".bootstrap-owned"), "gentle-pi prerequisite tooling only\n", { mode: 0o600, flag: "wx" });
+		writeFileSync(join(tools, ".bootstrap-owned"), "tomidev prerequisite tooling only\n", { mode: 0o600, flag: "wx" });
 		return tools;
 	} catch {
 		rmSync(tools, { recursive: true, force: true });
@@ -320,18 +320,18 @@ function privateTools(home) {
 	}
 }
 
-/** Remove only the exact private `$HOME/.gentle-shell-bootstrap-tools.*` directory
+/** Remove only the exact private `$HOME/.tomidev-bootstrap-tools.*` directory
  * carrying this module's marker. rmSync never follows links inside it.
  * Returns false instead of throwing so success never turns into failure.
  */
 export function removeOwnedTools(tools, home) {
 	try {
 		if (typeof tools !== "string" || typeof home !== "string" || !home.startsWith("/") || resolve(tools) !== tools) return false;
-		if (dirname(tools) !== resolve(home) || !basename(tools).startsWith(".gentle-shell-bootstrap-tools.")) return false;
+		if (dirname(tools) !== resolve(home) || !basename(tools).startsWith(".tomidev-bootstrap-tools.")) return false;
 		const info = lstatSync(tools);
 		if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid()) return false;
 		const marker = join(tools, ".bootstrap-owned");
-		if (!regular(marker) || readFileSync(marker, "utf8") !== "gentle-pi prerequisite tooling only\n") return false;
+		if (!regular(marker) || readFileSync(marker, "utf8") !== "tomidev prerequisite tooling only\n") return false;
 		rmSync(tools, { recursive: true });
 		return true;
 	} catch {
@@ -531,7 +531,7 @@ function goZipEntries(bytes) {
 	return entries;
 }
 
-const GO_MARKER = ".gentle-shell-go";
+const GO_MARKER = ".tomidev-go";
 /** An existing directory owned by this user that no one else can write to. */
 function privateDirectory(path) {
 	const info = stat(path);
@@ -610,7 +610,7 @@ export async function acquireGo({ root, platform, arch, adapters = {} }) {
 
 /** No shell command or URL from the caller is executed: entry is fixed in bundle. */
 export async function launchWizard({ bundle, env }) {
-	const entry = join(bundle, "bin/gentle-shell-install.mjs");
+	const entry = join(bundle, "bin/tomidev-install.mjs");
 	if (!regular(entry)) throw new Error("Future wizard entry is missing; no live wizard is available");
 	await new Promise((resolveChild, reject) => {
 		const child = spawn(process.execPath, [entry], { env, stdio: "inherit", shell: false });
@@ -621,7 +621,7 @@ export async function launchWizard({ bundle, env }) {
 
 /** `env` and transport/process adapters are injectable for local fixtures only. */
 export async function bootstrap(bundle, suppliedTools, { env = process.env, adapters = {} } = {}) {
-	const entry = join(bundle, "bin/gentle-shell-install.mjs");
+	const entry = join(bundle, "bin/tomidev-install.mjs");
 	if (!regular(entry)) throw new Error("Future wizard entry is missing");
 	const metadata = JSON.parse(readFileSync(join(bundle, "package.json"), "utf8"));
 	if (!compatibleEngine(metadata.engines?.node, process.versions.node)) throw new Error("Node requirement rejected");

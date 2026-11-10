@@ -11,7 +11,7 @@ import { createProgramIdentityExtension } from "../extensions/gentle-program-ide
 
 type Handler = (event: unknown, ctx: ExtensionContext) => void;
 type Widget = Component & { dispose?: () => void };
-function harness(env: NodeJS.ProcessEnv = { PI_PROGRAM_STATUS_APP: "gentle-shell" }, initial: ProgramStatus = { state: "idle", app: "pi" }) {
+function harness(env: NodeJS.ProcessEnv = { PI_PROGRAM_STATUS_APP: "tomidev" }, initial: ProgramStatus = { state: "idle", app: "pi" }) {
 	const handlers = new Map<string, Handler>();
 	const reports: ProgramStatus[] = [];
 	const terminal = {
@@ -45,7 +45,7 @@ test("corrects the cached startup identity without inventing or changing native 
 	] satisfies ProgramStatus[]) {
 		const h = harness(undefined, initial);
 		h.fire("session_start");
-		assert.deepEqual(h.reports, [{ ...initial, app: "gentle-shell" }]);
+		assert.deepEqual(h.reports, [{ ...initial, app: "tomidev" }]);
 		assert.deepEqual(initial.app, "pi");
 		assert.deepEqual(h.component()?.render(80), []);
 		h.fire("session_shutdown");
@@ -64,7 +64,7 @@ test("forwards every native state unchanged apart from app and preserves clear",
 	] satisfies ProgramStatus[]) {
 		const snapshot = { ...status };
 		h.terminal.setProgramStatus(status);
-		assert.deepEqual(h.reports.at(-1), status.state === "clear" ? status : { ...status, app: "gentle-shell" });
+		assert.deepEqual(h.reports.at(-1), status.state === "clear" ? status : { ...status, app: "tomidev" });
 		assert.deepEqual(status, snapshot);
 	}
 	h.fire("session_shutdown");
@@ -74,11 +74,11 @@ test("plain Pi, delegated children and non-TUI modes retain their previous termi
 	for (const [env, mode, hasUI] of [
 		[{}, "tui", true],
 		[{ PI_PROGRAM_STATUS_APP: "another-app" }, "tui", true],
-		[{ PI_PROGRAM_STATUS_APP: "gentle-shell", GENTLE_PI_AGENTS_CHILD: "1" }, "tui", true],
-		[{ PI_PROGRAM_STATUS_APP: "gentle-shell" }, "rpc", true],
-		[{ PI_PROGRAM_STATUS_APP: "gentle-shell" }, "json", false],
-		[{ PI_PROGRAM_STATUS_APP: "gentle-shell" }, "print", false],
-		[{ PI_PROGRAM_STATUS_APP: "gentle-shell" }, "tui", false],
+		[{ PI_PROGRAM_STATUS_APP: "tomidev", TOMIDEV_AGENTS_CHILD: "1" }, "tui", true],
+		[{ PI_PROGRAM_STATUS_APP: "tomidev" }, "rpc", true],
+		[{ PI_PROGRAM_STATUS_APP: "tomidev" }, "json", false],
+		[{ PI_PROGRAM_STATUS_APP: "tomidev" }, "print", false],
+		[{ PI_PROGRAM_STATUS_APP: "tomidev" }, "tui", false],
 	] as const) {
 		const h = harness(env);
 		const original = h.terminal.setProgramStatus;
@@ -100,7 +100,7 @@ test("widget disposal, repeated shutdown and session replacement restore the ori
 	const count = h.reports.length;
 	h.terminal.setProgramStatus({ state: "done", app: "pi", message: "latest" });
 	assert.equal(h.reports.length, count + 1);
-	assert.equal(h.reports.at(-1)?.app, "gentle-shell");
+	assert.equal(h.reports.at(-1)?.app, "tomidev");
 	h.component()?.dispose?.();
 	assert.equal(h.terminal.setProgramStatus, original);
 	h.fire("session_shutdown"); h.fire("session_shutdown");
@@ -108,7 +108,7 @@ test("widget disposal, repeated shutdown and session replacement restore the ori
 	h.terminal.setProgramStatus({ state: "idle", app: "pi" });
 	assert.deepEqual(h.reports.at(-1), { state: "idle", app: "pi" });
 	h.fire("session_start");
-	assert.deepEqual(h.reports.at(-1), { state: "idle", app: "gentle-shell" });
+	assert.deepEqual(h.reports.at(-1), { state: "idle", app: "tomidev" });
 	h.fire("session_shutdown");
 });
 
@@ -165,7 +165,7 @@ test("real Pi reporter and terminal emit the corrected startup and native states
 			const index = pair.indexOf("="); return [pair.slice(0, index), pair.slice(index + 1)];
 		})));
 	try {
-		for (const [app, enabled] of [["gentle-shell", "1"], [undefined, "1"], ["gentle-shell", "0"]]) {
+		for (const [app, enabled] of [["tomidev", "1"], [undefined, "1"], ["tomidev", "0"]]) {
 			const result = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", script], {
 				cwd: root, encoding: "utf8", timeout: 5000,
 				env: { HOME: home, USERPROFILE: home, PATH: dirname(process.execPath), NODE_NO_WARNINGS: "1",

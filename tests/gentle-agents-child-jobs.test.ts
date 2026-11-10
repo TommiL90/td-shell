@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter, once } from "node:events";
 import { after } from "node:test";
 import test from "node:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -38,7 +39,7 @@ function build() {
 }
 
 function request(root: string, env: NodeJS.ProcessEnv, mode = AGENT_MODE.TASK): TaskRequest {
-	return { agent: explore, prompt: "p", label: undefined, context: undefined, mode, cwd: root, parentSessionId: "s1", model: { provider: "p", id: "m" }, thinking: "high", sessionDir: "/s", resumeSessionPath: undefined, env: { GENTLE_PI_CONFIG_HOME: join(root, "config"), ...env } };
+	return { agent: explore, prompt: "p", label: undefined, context: undefined, mode, cwd: root, parentSessionId: "s1", model: { provider: "p", id: "m" }, thinking: "high", sessionDir: "/s", resumeSessionPath: undefined, env: { TOMIDEV_CONFIG_HOME: join(root, "config"), ...env } };
 }
 
 test("P-D policy off fails before spawn and never forwards the job capability", async (t) => {
@@ -48,7 +49,7 @@ test("P-D policy off fails before spawn and never forwards the job capability", 
 	const task = h.runner.run(request(root, {}));
 	await tick();
 	assert.equal(h.store.get(task.id)?.status, TASK_STATUS.FAILED);
-	assert.equal(h.store.get(task.id)?.error, `could not start pi: explicit tool bash_background requires background-subagents policy on. Set ${join(root, ".pi", "gentle-ai", "background-subagents.json")} to {"schema":"gentle-pi.background-subagents/v1","policy":"on"}; inspect or change policy with /gentle:background-subagents enable|disable|status.`);
+	assert.equal(h.store.get(task.id)?.error, `could not start pi: explicit tool bash_background requires background-subagents policy on. Set ${join(root, ".pi", "gentle-ai", "background-subagents.json")} to {"schema":"tomidev.background-subagents/v1","policy":"on"}; inspect or change policy with /td:background-subagents enable|disable|status.`);
 	assert.equal(h.spawned.length, 0, "nothing spawned, so no child env exists");
 });
 
@@ -57,9 +58,9 @@ test("P-D policy on forwards exactly one job marker, and a malformed policy stil
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	mkdirSync(join(root, "config"), { recursive: true });
 	const file = join(root, "config", "background-subagents.json");
-	writeFileSync(file, JSON.stringify({ schema: "gentle-pi.background-subagents/v1", policy: "on" }));
+	writeFileSync(file, JSON.stringify({ schema: "tomidev.background-subagents/v1", policy: "on" }));
 	const on = build();
-	const task = on.runner.run(request(root, { GENTLE_PI_BACKGROUND_SUBAGENTS: "off" }));
+	const task = on.runner.run(request(root, { TOMIDEV_BACKGROUND_SUBAGENTS: "off" }));
 	await tick();
 	assert.equal(on.store.get(task.id)?.status, TASK_STATUS.RUNNING);
 	assert.equal(on.spawned.length, 1);
@@ -81,7 +82,7 @@ test("P-D an agent without bash_background never gets the job capability", async
 	const root = mkdtempSync(join(tmpdir(), "probe-admission-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	mkdirSync(join(root, "config"), { recursive: true });
-	writeFileSync(join(root, "config", "background-subagents.json"), JSON.stringify({ schema: "gentle-pi.background-subagents/v1", policy: "on" }));
+	writeFileSync(join(root, "config", "background-subagents.json"), JSON.stringify({ schema: "tomidev.background-subagents/v1", policy: "on" }));
 	const h = build();
 	const task = h.runner.run({ ...request(root, {}), agent: { ...explore, tools: ["read", "grep"] } });
 	await tick();
@@ -95,7 +96,7 @@ test("P-D a job marker inherited through request.env never reaches a child witho
 	const root = mkdtempSync(join(tmpdir(), "probe-admission-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	mkdirSync(join(root, "config"), { recursive: true });
-	writeFileSync(join(root, "config", "background-subagents.json"), JSON.stringify({ schema: "gentle-pi.background-subagents/v1", policy: "on" }));
+	writeFileSync(join(root, "config", "background-subagents.json"), JSON.stringify({ schema: "tomidev.background-subagents/v1", policy: "on" }));
 	const h = build();
 	const task = h.runner.run({ ...request(root, { [CHILD_JOBS_ENV]: "1" }), agent: { ...explore, tools: ["read", "grep"] } });
 	await tick();
@@ -114,6 +115,7 @@ function fakePi() {
 	const tools = new Map<string, any>();
 	const handlers = new Map<string, Array<(ctx?: any) => unknown>>();
 	const sent: Array<{ message: any; options: any }> = [];
+	const messages = new EventEmitter();
 	const base: any = {
 		registerTool: (tool: any) => { tools.set(tool.name, tool); },
 		registerMessageRenderer: () => undefined,
@@ -121,13 +123,13 @@ function fakePi() {
 		registerShortcut: () => undefined,
 		registerMarkdownTransformer: () => undefined,
 		appendEntry: () => undefined,
-		sendMessage: (message: any, options: any) => { sent.push({ message, options }); return true; },
+		sendMessage: (message: any, options: any) => { sent.push({ message, options }); messages.emit("sent", message, options); return true; },
 		events: { emit: () => undefined, on: () => () => undefined },
 		on: (event: string, handler: (ctx?: any) => unknown) => { handlers.set(event, [...(handlers.get(event) ?? []), handler]); return () => undefined; },
 	};
 	const api: any = new Proxy(base, { get: (target, prop) => (prop in target ? target[prop] : () => undefined) });
 	const fire = async (event: string, ctx?: any) => { for (const handler of handlers.get(event) ?? []) await handler(ctx); };
-	return { api, tools, handlers, sent, fire };
+	return { api, tools, handlers, sent, messages, fire };
 }
 
 function fakeJobShell() {
@@ -145,24 +147,25 @@ function fakeJobShell() {
 }
 
 function childEnv(extra: NodeJS.ProcessEnv = {}) {
-	return { GENTLE_PI_AGENTS_CHILD: "1", GENTLE_PI_AGENTS_OWNED_IPC: "probe-token", ...extra } as NodeJS.ProcessEnv;
+	return { TOMIDEV_AGENTS_CHILD: "1", TOMIDEV_AGENTS_OWNED_IPC: "probe-token", ...extra } as NodeJS.ProcessEnv;
 }
 
 function ownedIpc() {
 	const frames: Array<Record<string, unknown>> = [];
-	return { frames, ipc: { send: (frame: Record<string, unknown>) => { frames.push(frame); return true; }, on: () => undefined } };
+	const events = new EventEmitter();
+	return { frames, events, ipc: { send: (frame: Record<string, unknown>) => { frames.push(frame); events.emit("frame", frame); return true; }, on: () => undefined } };
 }
 
 const ctx = { cwd: "/repo", sessionManager: { getSessionId: () => "child-session" } } as any;
 const toolNames = (pi: Fake) => [...pi.tools.keys()].sort();
 
 for (const { label, env, ipc, expected } of [
-	{ label: "child + owned IPC + jobs=1", env: childEnv({ GENTLE_PI_AGENTS_CHILD_JOBS: "1" }), ipc: true, expected: ["bash_background", "job_list", "job_stop", "subagent_parent_message"] },
+	{ label: "child + owned IPC + jobs=1", env: childEnv({ TOMIDEV_AGENTS_CHILD_JOBS: "1" }), ipc: true, expected: ["bash_background", "job_list", "job_stop", "subagent_parent_message"] },
 	{ label: "child + owned IPC, no capability", env: childEnv(), ipc: true, expected: ["subagent_parent_message"] },
-	{ label: "child + jobs=1, no owned IPC", env: childEnv({ GENTLE_PI_AGENTS_CHILD_JOBS: "1" }), ipc: false, expected: [] },
-	{ label: 'child + owned IPC + jobs="true"', env: childEnv({ GENTLE_PI_AGENTS_CHILD_JOBS: "true" }), ipc: true, expected: ["subagent_parent_message"] },
-	{ label: 'child + owned IPC + jobs="0"', env: childEnv({ GENTLE_PI_AGENTS_CHILD_JOBS: "0" }), ipc: true, expected: ["subagent_parent_message"] },
-	{ label: 'child + owned IPC + jobs=""', env: childEnv({ GENTLE_PI_AGENTS_CHILD_JOBS: "" }), ipc: true, expected: ["subagent_parent_message"] },
+	{ label: "child + jobs=1, no owned IPC", env: childEnv({ TOMIDEV_AGENTS_CHILD_JOBS: "1" }), ipc: false, expected: [] },
+	{ label: 'child + owned IPC + jobs="true"', env: childEnv({ TOMIDEV_AGENTS_CHILD_JOBS: "true" }), ipc: true, expected: ["subagent_parent_message"] },
+	{ label: 'child + owned IPC + jobs="0"', env: childEnv({ TOMIDEV_AGENTS_CHILD_JOBS: "0" }), ipc: true, expected: ["subagent_parent_message"] },
+	{ label: 'child + owned IPC + jobs=""', env: childEnv({ TOMIDEV_AGENTS_CHILD_JOBS: "" }), ipc: true, expected: ["subagent_parent_message"] },
 ]) {
 	test(`P-C registration gating: ${label}`, () => {
 		const pi = fakePi();
@@ -181,13 +184,20 @@ test("P-C child job reports go over the owned IPC and the notice stays in the ch
 	const jobs = fakeJobShell();
 	const wire = ownedIpc();
 	try {
-		gentleAgents(pi.api, childEnv({ GENTLE_PI_AGENTS_CHILD_JOBS: "1" }), { childIpc: wire.ipc, jobShell: jobs.shell, jobOutputDir: () => jobs.dir, now: () => 1_000 });
+		gentleAgents(pi.api, childEnv({ TOMIDEV_AGENTS_CHILD_JOBS: "1" }), { childIpc: wire.ipc, jobShell: jobs.shell, jobOutputDir: () => jobs.dir, now: () => 1_000 });
 		await pi.tools.get("bash_background").execute("b1", { command: "gh run watch 7 --exit-status", label: "CI" }, undefined, undefined, ctx);
 		assert.deepEqual(wire.frames.at(-1), { id: "j1", kind: "job", message: '{"running":1,"pending":true}' });
 		await pi.fire("agent_settled", ctx);
 		assert.deepEqual(wire.frames.at(-1), { id: "j2", kind: "job", message: '{"running":1,"pending":true}' });
+		// Settlement reports only after the log stream closes. Observe both deliveries,
+		// rather than assuming filesystem I/O finishes within an arbitrary sleep.
+		const signal = AbortSignal.timeout(5_000);
+		const settled = Promise.all([
+			once(wire.events, "frame", { signal }),
+			once(pi.messages, "sent", { signal }),
+		]);
 		jobs.runs[0]!.exit(0);
-		await new Promise((done) => setTimeout(done, 60));
+		await settled;
 		assert.deepEqual(wire.frames.at(-1), { id: "j3", kind: "job", message: '{"running":0,"pending":false}' });
 		const notice = pi.sent.at(-1)!;
 		assert.equal(notice.message.customType, "gentle-jobs.notice");
@@ -203,7 +213,7 @@ test("P-C a child job_list only sees its own session's jobs", async () => {
 	const jobs = fakeJobShell();
 	const wire = ownedIpc();
 	try {
-		gentleAgents(pi.api, childEnv({ GENTLE_PI_AGENTS_CHILD_JOBS: "1" }), { childIpc: wire.ipc, jobShell: jobs.shell, jobOutputDir: () => jobs.dir, now: () => 1_000 });
+		gentleAgents(pi.api, childEnv({ TOMIDEV_AGENTS_CHILD_JOBS: "1" }), { childIpc: wire.ipc, jobShell: jobs.shell, jobOutputDir: () => jobs.dir, now: () => 1_000 });
 		const other = { cwd: "/repo", sessionManager: { getSessionId: () => "other-session" } } as any;
 		await pi.tools.get("bash_background").execute("b1", { command: "sleep 1" }, undefined, undefined, ctx);
 		const listed = await pi.tools.get("job_list").execute("l1", {}, undefined, undefined, other);
@@ -222,7 +232,7 @@ test("P-C the child's own job output directory is removed at session shutdown", 
 	const previous = process.env.TMPDIR;
 	process.env.TMPDIR = root;
 	try {
-		gentleAgents(pi.api, childEnv({ GENTLE_PI_AGENTS_CHILD_JOBS: "1" }), { childIpc: wire.ipc, jobShell: jobs.shell });
+		gentleAgents(pi.api, childEnv({ TOMIDEV_AGENTS_CHILD_JOBS: "1" }), { childIpc: wire.ipc, jobShell: jobs.shell });
 		const result = await pi.tools.get("bash_background").execute("b1", { command: "echo hi" }, undefined, undefined, ctx);
 		const outputPath = String(result.content[0].text).match(/Output: (.+)/)![1]!.trim();
 		assert.match(outputPath, /gentle-jobs-/);

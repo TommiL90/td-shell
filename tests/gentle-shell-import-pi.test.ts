@@ -7,7 +7,7 @@ import test from "node:test";
 import { formatImportPiReport, importPi, nodeImportPiFs } from "../lib/gentle-shell-import-pi.ts";
 
 // `gentle-shell home import-pi` core: real temp directories, never the real
-// ~/.pi or ~/.gentle-shell. Credential contents never appear in assertions.
+// ~/.pi or ~/.tomidev. Credential contents never appear in assertions.
 
 const AUTH = JSON.stringify({ anthropic: { type: "oauth", refresh: "dummy-refresh", access: "dummy-access" } });
 const MCP = JSON.stringify({ mcpServers: { demo: { command: "demo" } } }, null, 2);

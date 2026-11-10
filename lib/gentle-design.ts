@@ -10,7 +10,7 @@ import { detectDesignSources, staleDesignSources } from "./design-sources.ts";
 // open/stop drive, and the comments tool. The extension stays a thin wrapper.
 
 export const DESIGN_SKILL_NAME = "gentle-design";
-/** Paired with every design request: gentle-design owns delivery, this skill owns UX quality. */
+/** Optional UX fallback when the project leaves gaps; never a mandatory pairing. */
 export const UI_DESIGN_SKILL_NAME = "gentle-ui-design";
 
 export const DESIGN_SUBCOMMANDS = ["open", "stop", "sync", "implement"] as const;
@@ -47,14 +47,14 @@ export function hasSystemBoard(cwd: string): boolean {
 }
 
 export const DESIGN_HELP =
-	"Design HTML artboards with any model: /gentle:design <brief> starts a design run; no arguments open the latest design (or the system board alone) on the local canvas. Subcommands: open [slug], stop, sync (write design/system.md and design/system.html from the project's design sources; the canvas shows that system board first), implement <slug>/<artboard> (hand an artboard off to the project's real stack, also from the canvas Implement button).";
+	"Design with any model: /td:design <brief> asks for canvas (HTML artboards), direct application work, or repository-defined workflow; cancel starts nothing. Without UI, explicitly select a route in a plain-language request or use an interactive/UI-capable RPC session. No preference is saved. Canvas utilities do not ask again; no arguments open the latest design (or the system board alone) on the local canvas. Subcommands: open [slug], stop, sync (write design/system.md and design/system.html from the project's design sources; the canvas shows that system board first), implement <slug>/<artboard> (hand an artboard off to the project's real stack, also from the canvas Implement button).";
 
-/** What /gentle:design sync asks the skill to do; it rides designRunMessage like a brief. */
+/** What /td:design sync asks the skill to do; it rides designRunMessage like a brief. */
 export const DESIGN_SYNC_REQUEST =
 	'sync the project design system: follow "Design system sync" to read the project\'s design sources and write design/system.md and design/system.html.';
 
 export function designUsage(designs: readonly DesignSummary[]): string {
-	const lines = ["Usage: /gentle:design <brief>", "Describe the goal, layout, content, and audience. Directions are written to design/<slug>/."];
+	const lines = ["Usage: /td:design <brief>", "Describe the goal, layout, content, and audience. Choose canvas, direct application work, or repository-defined workflow; cancel starts nothing. Canvas directions use design/<slug>/; other routes follow the project. Without UI, send a plain-language request explicitly naming your route or use an interactive/UI-capable RPC session."];
 	if (designs.length > 0) {
 		lines.push("", "Designs in this project:");
 		for (const design of designs) lines.push(`  ${design.title} (${design.slug})`);
@@ -114,8 +114,8 @@ export function designImplementMessage(input: DesignImplementInput): string {
 		"",
 		`Report progress with the ${DESIGN_TOOL_NAME} tool: action "handoff", target "${input.slug}/${input.artboard.file}", status "in_progress" when you start; status "implemented" when it is done, with previewUrl set to the running app's loopback URL (localhost, 127.0.0.1 or [::1]) when one is running, so the canvas can compare it with the artboard.`,
 		input.feature
-			? `This design belongs to an ODD feature: track this implementation in ${input.feature} (add or reopen its task there and log this handoff).`
-			: "This design is not linked to an ODD feature document: size it under the project's ODD rules as usual.",
+			? `Reuse the existing project tracking at ${input.feature} in its current format; track this implementation there without creating competing artifacts.`
+			: "Follow the project's workflow and existing feature tracking; do not create competing tracking just for this handoff.",
 		"This handoff itself commits nothing.",
 	);
 	return lines.join("\n");
@@ -145,7 +145,7 @@ function unknownTarget(cwd: string, reason: string): DesignRefusal {
 	const targets = implementTargets(cwd);
 	if (targets.length === 0) return { kind: "refuse", notice: { message: `${reason}\nNo designs in design/ yet.\n${designUsage([])}`, level: "warning" } };
 	const shown = targets.length > 30 ? [...targets.slice(0, 30), `… ${targets.length - 30} more`] : targets;
-	return { kind: "refuse", notice: { message: `${reason}\nUsage: /gentle:design implement <slug>/<artboard>. Available: ${shown.join(", ")}.`, level: "warning" } };
+	return { kind: "refuse", notice: { message: `${reason}\nUsage: /td:design implement <slug>/<artboard>. Available: ${shown.join(", ")}.`, level: "warning" } };
 }
 
 type ResolvedTarget = { kind: "artboard"; slug: string; artboard: DesignArtboard; feature?: string; warnings: string[] };
@@ -264,7 +264,7 @@ export function createDesignCanvas(deliver: (message: DesignSessionContent) => D
 				designRoot: root,
 				onComment: async (comment) => { await deliver(designCommentContent(comment)); },
 				onComments: async (batch) => { await deliver(designCommentBatchContent(batch)); },
-				// The same plan as /gentle:design implement, so both send identical text; the server
+				// The same plan as /td:design implement, so both send identical text; the server
 				// has already recorded the handoff, and this answers whether it was queued.
 				onImplement: async ({ slug, file }) => {
 					const plan = await planDesignImplement(cwd, `${slug}/${file}`);
@@ -366,11 +366,11 @@ export const DESIGN_TOOL_NAME = "gentle_design";
 
 /** Appended to the system prompt while the gentle-design skill is available (S11). */
 export const DESIGN_PROMPT_HINT = [
-	`Gentle Design: any request for a UI design, mockup, screen, landing page or visual directions uses the ${DESIGN_SKILL_NAME} skill by default; read the skill first when it is not loaded.`,
-	`Pair it with the ${UI_DESIGN_SKILL_NAME} skill for UX quality: read that skill and only the references relevant to the brief before choosing directions.`,
-	`Before designing, call the ${DESIGN_TOOL_NAME} tool (action "list"); when the project has design sources but no design/system.md, run the skill's design system sync first.`,
-	`After writing or changing a design, open or refresh it on the canvas with the ${DESIGN_TOOL_NAME} tool (action "open" with the slug), unless the user said not to.`,
-	"Designs stay under design/<slug>/.",
+	"Tomidev Design: at entry to each new UI design, mockup, screen, landing page or visual-directions task, ask once whether the user prefers canvas (HTML artboards), direct application work, or the repository-defined workflow. Start nothing until the human selects a route; never assume a default.",
+	"Honor the chosen route throughout that task; do not ask again for continuations or explicit canvas utilities (list/open/stop/sync/implement/comments). A subsequent independent task asks anew; there is no global preference.",
+	"Direct: work in the application's real stack using project skills and conventions; do not invoke builtin canvas skills, gentle_design list, system sync, canvas artifacts or server.",
+	"Repository: inspect the project's instructions and relevant skills through existing skill discovery, follow its workflow and artifacts, and report clearly if no repository design workflow is defined; do not invent one or fall back to canvas.",
+	"Canvas only after selection: follow project design/UX skills and conventions first; gentle-design supplies missing canvas delivery guidance, gentle-ui-design only missing UX guidance. Reuse compatible artifacts and existing feature tracking; never create competing tracking. The integrated canvas requires self-contained HTML artboards and its design/<slug>/ manifest layout; explain incompatible project formats rather than claiming they work. Explicit project prohibitions and runtime safety remain binding.",
 ].join("\n");
 
 export type DesignToolParams = {
@@ -492,7 +492,7 @@ async function handoffTool(cwd: string, params: DesignToolParams): Promise<Desig
 	return { texts: [lines.join("\n")], details: { target: `${slug}/${artboard.file}`, chosen, handoff } };
 }
 
-/** The gentle_design tool: the /gentle:design actions on the session's canvas, without sending a user message. */
+/** The gentle_design tool: the /td:design actions on the session's canvas, without sending a user message. */
 export async function runDesignTool(cwd: string, params: DesignToolParams, canvas: DesignCanvas): Promise<DesignToolResult> {
 	if (params.action === "handoff") return handoffTool(cwd, params);
 	if (params.action === "list") return listDesignTool(cwd, canvas);

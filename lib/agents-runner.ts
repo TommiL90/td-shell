@@ -14,10 +14,10 @@ import { resolveBackgroundSubagentsPolicy } from "./background-subagents-policy.
 import { childPackageExtensionArgs } from "./child-package-injection.ts";
 import { AGENT_MODE, formatModelRef, parseModelRef, type AgentDefinition, type AgentMode, type ModelRef } from "./agents-config.ts";
 import { CHILD_QUERY_MAX_INFLIGHT, CHILD_QUERY_TIMEOUT_MS, parseChildFrame, parseChildJobState, validChildMessage, validChildQueryId } from "./agents-messaging.ts";
-import { ParentStandingReviewPermissionBroker } from "./review-session-standing-permission-ipc.ts";
 import { isFinished, normalizeRpcEvent, ToolArgumentProgress, TASK_EVENT, TASK_STATUS, taskLabel, type AskRequest, type ChildResponseObservation, type TaskRecord, type TaskStore, type TerminalErrorCategory } from "./agents-protocol.ts";
 import { WriterSurfaceRegistry, writerSurfaceConflictMessage } from "./writer-surfaces.ts";
 import { holdSubagentScratch, releaseSubagentScratch, SUBAGENT_SCRATCH_PREFIX } from "./session-scratch.ts";
+import { ENV_AGENTS_CHILD, ENV_AGENTS_PI, ENV_PREFIX } from "./brand.ts";
 
 // Gentle Agents runner. Every subagent is its own `pi --mode rpc` process:
 // the host never runs subagent work on the TUI thread. It writes JSON
@@ -237,7 +237,7 @@ interface LiveTask {
 	drain?: { status: TaskRecord["status"]; error: string | null; cancel: () => void };
 	quarantined: boolean;
 	nextId: number;
-	permissionBroker?: ParentStandingReviewPermissionBroker;
+	permissionBroker?: { close(): void };
 	ipcClosed: boolean;
 	acknowledgedIpcIds: Set<string>;
 	acknowledgedIpcOrder: string[];
@@ -259,13 +259,13 @@ const FILE_MODE = 0o600;
 // UTF-8 bytes, not characters: argv size is what kills the child on macOS.
 export const MAX_INLINE_INSTRUCTIONS_BYTES = 1000;
 const MAX_TRANSPORT_PREFIX_CHARS = 64;
-const CHILD_MARKER = "GENTLE_PI_AGENTS_CHILD";
-const IPC_MARKER = "GENTLE_PI_AGENTS_OWNED_IPC";
+const CHILD_MARKER = ENV_AGENTS_CHILD;
+const IPC_MARKER = `${ENV_PREFIX}AGENTS_OWNED_IPC`;
 /** Forwarded to the child only when a declared `bash_background` admitted its policy (#2266). */
-export const CHILD_JOBS_ENV = "GENTLE_PI_AGENTS_CHILD_JOBS";
+export const CHILD_JOBS_ENV = `${ENV_PREFIX}AGENTS_CHILD_JOBS`;
 const PARENT_NOTIFICATION_TOOL = "subagent_parent_message";
 /** The exact --tools list, so the child can report requested names Pi dropped silently (#1690). */
-export const REQUESTED_TOOLS_ENV = "GENTLE_PI_AGENTS_REQUESTED_TOOLS";
+export const REQUESTED_TOOLS_ENV = `${ENV_PREFIX}AGENTS_REQUESTED_TOOLS`;
 const DEFAULT_TOOLS: readonly string[] = [];
 const TERMINATION_GRACE_MS = 250;
 const GROUP_CONFIRM_MS = 25;
@@ -464,7 +464,7 @@ export function piCommand(
 	exists: (path: string) => boolean = existsSync,
 	readFile: (path: string) => string = (p) => readFileSync(p, "utf8"),
 ): PiCommand {
-	const override = proc.env.GENTLE_PI_AGENTS_PI?.trim();
+	const override = proc.env[ENV_AGENTS_PI]?.trim();
 	if (override) {
 		const [command, ...args] = override.split(/\s+/);
 		if (/\.(?:cmd|bat)$/i.test(command) && exists(command)) {
@@ -683,18 +683,18 @@ export class AgentRunner {
 			...request.env,
 			[CHILD_MARKER]: "1",
 			[IPC_MARKER]: `${this.deps.now()}-${Math.random().toString(36).slice(2)}`,
-			...(hasParentPermissionChannel ? { GENTLE_PI_AGENTS_PARENT_PERMISSION_FD: "3" } : {}),
+			...(hasParentPermissionChannel ? { TOMIDEV_AGENTS_PARENT_PERMISSION_FD: "3" } : {}),
 		});
 		// Do not forward stale legacy child selection or authorization.
-		delete env.GENTLE_PI_SDD_REMEDIATION_PLAN;
-		delete env.GENTLE_PI_RESEARCH_SELECTION;
+		delete env.TOMIDEV_SDD_REMEDIATION_PLAN;
+		delete env.TOMIDEV_RESEARCH_SELECTION;
 		const tools = requestedTools(request);
 		if (request.agent.tools.includes("bash_background")) {
 			const policy = resolveBackgroundSubagentsPolicy(request.cwd, { env: request.env, gentlePiConfigHome: gentlePiConfigHome(request.env) });
 			if (policy.policy === "off") {
 				const file = policy.source === "global_file" ? policy.globalFile : policy.projectFile;
 				this.store.update(id, { status: TASK_STATUS.RUNNING, startedAt: this.deps.now(), lastStep: "starting" });
-				this.finish(id, TASK_STATUS.FAILED, `could not start pi: explicit tool bash_background requires background-subagents policy on. Set ${file} to {"schema":"gentle-pi.background-subagents/v1","policy":"on"}; inspect or change policy with /gentle:background-subagents enable|disable|status.`);
+				this.finish(id, TASK_STATUS.FAILED, `could not start pi: explicit tool bash_background requires background-subagents policy on. Set ${file} to {"schema":"tomidev.background-subagents/v1","policy":"on"}; inspect or change policy with /td:background-subagents enable|disable|status.`);
 				return;
 			}
 			// Admission passed: the child registers its own private job tools and is
@@ -775,10 +775,7 @@ export class AgentRunner {
 		this.live.set(id, live);
 		const permissionPipe = child.stdio?.[3];
 		if (hasParentPermissionChannel && permissionPipe instanceof Duplex) {
-			live.permissionBroker = new ParentStandingReviewPermissionBroker(
-				{ readable: permissionPipe, writable: permissionPipe },
-				(repositoryIdentity) => this.live.get(id) === live && !live.terminal && request.authorizeParentStandingReviewPermission?.(repositoryIdentity) === true,
-			);
+			// Standing review permission IPC is retired.
 		}
 		this.store.update(id, { status: TASK_STATUS.RUNNING, startedAt: this.deps.now(), lastStep: "starting" });
 		child.channel?.unref?.();

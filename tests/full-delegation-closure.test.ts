@@ -40,7 +40,7 @@ test("S6: the closure rule recognises the organic sentences a narrower pattern l
 });
 
 function render(mode: "organic" | "full-delegation"): string {
-	return __testing.buildGentlePrompt("gentleman", REPO_ROOT, undefined, undefined, undefined, mode);
+	return __testing.buildGentlePrompt(REPO_ROOT, undefined, undefined, mode);
 }
 
 function namesIn(text: string): string[] {
@@ -90,7 +90,7 @@ test("S3: full delegation keeps a Task Size that decides tracking and risk, neve
 
 test("S4: full delegation tells the agent how the human switches the mode, and that no new session is needed", () => {
 	const prompt = render("full-delegation");
-	assert.match(prompt, /\/gentle:profiles/);
+	assert.match(prompt, /\/td:profiles/);
 	assert.match(prompt, /`w`/);
 	assert.match(prompt, /next turn/i);
 	assert.match(prompt, /no new session/i);

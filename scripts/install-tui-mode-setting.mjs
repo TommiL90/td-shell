@@ -7,21 +7,24 @@ import { setTimeout as delay } from "node:timers/promises";
 
 // The two directory layouts Pi's own package manager creates when it installs
 // a package into an agent home: the npm-backed `npm/node_modules/<package>`
-// (user scope `<agent dir>/npm/node_modules/gentle-pi`, project scope
-// `.pi/npm/node_modules/gentle-pi`) and the git-backed
-// `git/github.com/Gentleman-Programming/<package>` layout. A path is checked
+// (user scope `<agent dir>/npm/node_modules/tomidev`, project scope
+// `.pi/npm/node_modules/tomidev`) and the git-backed
+// `git/github.com/<owner>/<repo>` layout, for the owners this package is
+// installed from: the fork (TommiL90) and the upstream it was forked from
+// (Gentleman-Programming). A path is checked
 // for these sequences anywhere in its segments, not anchored to a specific
 // resolved agent home — unlike installTuiModeSetting's own ownership check.
 const PI_MANAGED_SEGMENT_SEQUENCES = [
 	["npm", "node_modules"],
 	["git", "github.com", "Gentleman-Programming"],
+	["git", "github.com", "TommiL90"],
 ];
 
-// Gentle Shell's default theme (themes/Gentleman-Cute.json, "name":
-// "Gentleman-Cute"): applied by withIsolatedHomeDefaults below whenever a
+// tomidev-shell's default theme (themes/tomidev.json, "name": "tomidev",
+// built from the Omni palette): applied by withIsolatedHomeDefaults below whenever a
 // home's settings do not already declare one, never overriding a user's own
 // choice.
-export const DEFAULT_THEME_NAME = "Gentleman-Cute";
+export const DEFAULT_THEME_NAME = "tomidev";
 
 // Pure merge: returns `value` with fullscreen tuiMode always applied, and —
 // only when `value` does not already declare a "theme" key — the default
@@ -45,7 +48,7 @@ function containsSequence(segments, sequence) {
  * installTuiModeSetting or installIsolatedTuiModeSetting: true when
  * `packageDir` (the directory of the gentle-pi package actually running,
  * typically derived from that script's own import.meta.url) sits under one of
- * the directory layouts above. A plain `npm install -g gentle-pi`, a
+ * the directory layouts above. A plain `npm install -g tomidev`, a
  * development git checkout, an `npx` cache directory, or a pnpm store never
  * match, so the postinstall entry skips writing the user's global Pi settings
  * for those instead of relying solely on installTuiModeSetting's own,
@@ -119,19 +122,25 @@ async function acquireLock(path) {
  */
 export async function installTuiModeSetting(options = {}) {
 	const env = options.env ?? process.env;
-	const requestedHome = resolve(env.GENTLE_PI_AGENT_HOME || env.PI_CODING_AGENT_DIR || join(options.home ?? homedir(), ".pi", "agent"));
+	// Standalone on purpose: this postinstall helper must not import package modules.
+	const requestedHome = resolve(env.TOMIDEV_AGENT_HOME || env.PI_CODING_AGENT_DIR || join(options.home ?? homedir(), ".pi", "agent"));
 	const packageRoot = resolve(options.packageRoot ?? dirname(dirname(fileURLToPath(import.meta.url))));
 	let home;
 	try { home = realpathSync(requestedHome); }
 	catch (error) { if (error.code === "ENOENT") return { changed: false, recognized: false }; throw error; }
 	const installations = [
 		{
-			packageRoot: join(home, "npm", "node_modules", "gentle-pi"),
-			paths: [home, join(home, "npm"), join(home, "npm", "node_modules"), join(home, "npm", "node_modules", "gentle-pi")],
+			packageRoot: join(home, "npm", "node_modules", "tomidev"),
+			paths: [home, join(home, "npm"), join(home, "npm", "node_modules"), join(home, "npm", "node_modules", "tomidev")],
 		},
 		{
-			packageRoot: join(home, "git", "github.com", "Gentleman-Programming", "gentle-pi"),
-			paths: [home, join(home, "git"), join(home, "git", "github.com"), join(home, "git", "github.com", "Gentleman-Programming"), join(home, "git", "github.com", "Gentleman-Programming", "gentle-pi")],
+			packageRoot: join(home, "git", "github.com", "Gentleman-Programming", "tomidev"),
+			paths: [home, join(home, "git"), join(home, "git", "github.com"), join(home, "git", "github.com", "Gentleman-Programming"), join(home, "git", "github.com", "Gentleman-Programming", "tomidev")],
+		},
+		{
+			// The fork is installed from its repository, so Pi names the folder after it.
+			packageRoot: join(home, "git", "github.com", "TommiL90", "tomidev-shell"),
+			paths: [home, join(home, "git"), join(home, "git", "github.com"), join(home, "git", "github.com", "TommiL90"), join(home, "git", "github.com", "TommiL90", "tomidev-shell")],
 		},
 	];
 	// Canonical agent-home aliases (including macOS /var) are supported.

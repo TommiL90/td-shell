@@ -27,10 +27,7 @@ import { readSessionProfileAuthority } from "../lib/session-profile-authority.ts
 import type { AgentModelConfig, AgentRoutingEntry, ThinkingLevel } from "../lib/model-routing-authority.ts";
 type LiveSession = Pick<ExtensionAPI, "setModel" | "setThinkingLevel" | "getThinkingLevel">;
 import { PROFILE_PIN_KIND, PROFILE_PIN_VERSION, setProfilePinWorktreeResolverForTesting, writeProfilePinSync } from "../lib/agent-profile-pin.ts";
-import { NATIVE_REVIEW_ERROR_CODE, NativeReviewCliError, type NativeReviewCli } from "../lib/native-review-cli.ts";
-import { CandidateViewError, type CandidateViewRegistry } from "../lib/review-candidate-view.ts";
 import { installPackageAssets } from "../lib/agent-assets.ts";
-import type { ReviewCollectInputV3, ReviewStatusV3 } from "../lib/review-integration-v2.ts";
 import { stripAnsi } from "../lib/terminal-theme.ts";
 import { cardBody, cardTitle, cardTone } from "./gentle-card-text.ts";
 import { readDelegationDetail } from "./support/orchestrator-modules.ts";
@@ -103,274 +100,6 @@ function lifecycleContext(overrides: Record<string, unknown> = {}): Record<strin
 	};
 }
 
-// gentle-pi#874: the provider's fresh_target_ready offer. The argument order
-// mirrors the live selectorless STATUS a clean, fully committed worktree
-// receives: it names the merge-base it wants so a plain START can adopt it.
-function offeredCommittedRangeStatus(baseRef: string, baseTree: string, candidateTree: string, paths: readonly string[] = ["app.ts"]): ReviewStatusV3 {
-	const targetIdentity = `sha256:${"a".repeat(64)}`;
-	return {
-		contract: "gentle-ai.review-integration/v2",
-		applicability: "unrelated",
-		action: "start",
-		replayability: "not_replayable",
-		targetIdentity,
-		projection: {
-			schema: "gentle-ai.review-candidate-projection/v1",
-			kind: "base-diff",
-			projection: "workspace",
-			baseTree,
-			initialReviewTree: candidateTree,
-			currentCandidateTree: candidateTree,
-			pathsDigest: `sha256:${"b".repeat(64)}`,
-			paths: [...paths],
-			intendedUntracked: [],
-			intendedUntrackedProof: `sha256:${"c".repeat(64)}`,
-			initialSnapshotIdentity: `sha256:${"d".repeat(64)}`,
-			currentSnapshotIdentity: `sha256:${"d".repeat(64)}`,
-		},
-		candidates: [],
-		nextTransition: {
-			kind: "execute",
-			reasonCode: "fresh_target_ready",
-			execute: {
-				operation: "review.start",
-				arguments: [
-					{ name: "target", value: targetIdentity, token: `--target=${targetIdentity}` },
-					{ name: "target-evidence", value: `v1:base-diff:workspace:${baseTree}:${candidateTree}:sha256:${"e".repeat(64)}`, token: `--target-evidence=v1:base-diff:workspace:${baseTree}:${candidateTree}:sha256:${"e".repeat(64)}` },
-					{ name: "projection", value: "workspace", token: "--projection=workspace" },
-					{ name: "base-ref", value: baseRef, token: `--base-ref=${baseRef}` },
-					{ name: "committed-only", value: "true", token: "--committed-only=true" },
-					{ name: "lineage", value: "review-offered", token: "--lineage=review-offered" },
-					{ name: "agent", value: "pi", token: "--agent=pi" },
-					{ name: "consent", value: "relay", token: "--consent=relay" },
-				],
-				preconditions: [],
-				binding: { targetIdentity },
-			},
-		},
-		raw: { schema: "gentle-ai.review-integration.status/v5" },
-	} as unknown as ReviewStatusV3;
-}
-
-// The clean, fully committed worktree STATUS with no committed-range offer:
-// the current-changes candidate view a plain START builds today.
-function cleanWorkspaceStatus(headTree: string, nextTransition?: ReviewStatusV3["nextTransition"]): ReviewStatusV3 {
-	const targetIdentity = `sha256:${"a".repeat(64)}`;
-	return {
-		contract: "gentle-ai.review-integration/v2",
-		applicability: "unrelated",
-		action: "start",
-		replayability: "not_replayable",
-		targetIdentity,
-		projection: {
-			schema: "gentle-ai.review-candidate-projection/v1",
-			kind: "current-changes",
-			projection: "workspace",
-			baseTree: headTree,
-			initialReviewTree: headTree,
-			currentCandidateTree: headTree,
-			pathsDigest: `sha256:${"b".repeat(64)}`,
-			paths: [],
-			intendedUntracked: [],
-			intendedUntrackedProof: `sha256:${"c".repeat(64)}`,
-			initialSnapshotIdentity: `sha256:${"d".repeat(64)}`,
-			currentSnapshotIdentity: `sha256:${"d".repeat(64)}`,
-		},
-		candidates: [],
-		...(nextTransition === undefined ? {} : { nextTransition }),
-		raw: { schema: "gentle-ai.review-integration.status/v5" },
-	} as unknown as ReviewStatusV3;
-}
-
-function startedReviewResult(): Record<string, unknown> {
-	return { lineageId: "adopted-range", state: "reviewing", riskLevel: "low", selectedLenses: [], changedFiles: 1, changedLines: 1, correctionBudget: 1, action: "created", lensesRequired: false, riskReasons: [], raw: {} };
-}
-
-interface ReviewStartRepository {
-	cwd: string;
-	baseCommit: string;
-	baseTree: string;
-	headTree: string;
-}
-
-// A hermetic two-commit repository whose candidate range is a real committed
-// change, so both the adopted and explicit base-ref paths resolve through the
-// real candidate-view guard.
-function reviewRepository(t: test.TestContext): ReviewStartRepository {
-	const cwd = realpathSync(mkdtempSync(join(tmpdir(), "gentle-pi-review-start-")));
-	t.after(() => {
-		try { execFileSync("chmod", ["-R", "u+w", cwd], { stdio: "ignore" }); } catch { /* best effort */ }
-		rmSync(cwd, { recursive: true, force: true });
-	});
-	execFileSync("git", ["init", "-b", "main"], { cwd, stdio: "ignore" });
-	writeFileSync(join(cwd, "app.ts"), "export const value = 1;\n");
-	execFileSync("git", ["add", "app.ts"], { cwd, stdio: "ignore" });
-	execFileSync("git", ["-c", "user.name=Review Test", "-c", "user.email=review@example.invalid", "commit", "-m", "base"], { cwd, stdio: "ignore" });
-	const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
-	writeFileSync(join(cwd, "app.ts"), "export const value = 2;\n");
-	execFileSync("git", ["add", "app.ts"], { cwd, stdio: "ignore" });
-	execFileSync("git", ["-c", "user.name=Review Test", "-c", "user.email=review@example.invalid", "commit", "-m", "candidate"], { cwd, stdio: "ignore" });
-	return {
-		cwd,
-		baseCommit,
-		baseTree: execFileSync("git", ["rev-parse", `${baseCommit}^{tree}`], { cwd, encoding: "utf8" }).trim(),
-		headTree: execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd, encoding: "utf8" }).trim(),
-	};
-}
-
-test("missing package-local binaries give a direct recovery without attributing the cause to lifecycle scripts", async () => {
-	const result = await __testing.executeReviewControllerOperation(
-		{ operation: "inspect" },
-		process.cwd(),
-		{
-			targetStatus: async () => {
-				throw new NativeReviewCliError(
-					NATIVE_REVIEW_ERROR_CODE.PACKAGE_BINARY_MISSING,
-					"review/status",
-					false,
-					false,
-					"package binary missing",
-				);
-			},
-		} as unknown as NativeReviewCli,
-	);
-
-	assert.equal(result.outcome, "native-status-package-binary-missing");
-	assert.equal(result.recovery_command, "node scripts/install-gentle-ai.mjs");
-	assert.match(String(result.next_action), /installed gentle-pi package directory/);
-	assert.match(String(result.next_action), /GENTLE_PI_SKIP_GENTLE_AI_INSTALL/);
-	assert.match(String(result.next_action), /remove or unset it before/);
-	assert.match(String(result.reason), /does not prove install lifecycle scripts were disabled/);
-});
-
-test("registered Gentle Review tools render reusable rose lifecycle call rows", () => {
-	const tools = registeredGentleTools();
-	const cases = [
-		["gentle_review", { operation: "status" }, "status"],
-		["gentle_review", { operation: "future-operation", secret: "/private" }, ""],
-		["gentle_review_scope", {}, "scope"],
-		["gentle_review_capture_group", {}, "capture group"],
-		[
-			"gentle_review_capture",
-			{
-				lineageId: "lineage-id",
-				collectBinding: "binding-id",
-				sha256: "sha256:hash-value",
-				secret: "secret-value",
-				arbitrary: "arbitrary-value",
-			},
-			"capture",
-		],
-	] as const;
-
-	// This exhaustiveness check is scoped to the gentle_review* lifecycle
-	// family this test names, not every gentle_-prefixed tool: gentle_odd_phase
-	// is a plain status-report tool with no pending/running/failed rose
-	// lifecycle card of its own (see extensions/gentle-ai.ts).
-	assert.deepEqual(
-		[...new Set(cases.map(([name]) => name))].sort(),
-		[...tools.keys()].filter((name) => name.startsWith("gentle_review")).sort(),
-	);
-
-	for (const [name, args, operation] of cases) {
-		const tool = tools.get(name);
-		const title = (status: string) => ["🌹 rdd", [status, operation].filter(Boolean).join(" · ")].filter(Boolean).join(" ");
-		assert.ok(tool, `missing ${name}`);
-		const initial = tool.renderCall(args, lifecycleTheme, lifecycleContext());
-		const initialText = renderComponent(initial);
-		const running = tool.renderCall(
-			args,
-			lifecycleTheme,
-			lifecycleContext({ executionStarted: true, lastComponent: initial }),
-		);
-		const runningText = renderComponent(running);
-		const completed = tool.renderCall(
-			args,
-			lifecycleTheme,
-			lifecycleContext({ executionStarted: true, isPartial: false, lastComponent: running }),
-		);
-		const completedText = renderComponent(completed);
-		const failed = tool.renderCall(
-			args,
-			lifecycleTheme,
-			lifecycleContext({ executionStarted: true, isPartial: false, isError: true, lastComponent: completed }),
-		);
-		const failedText = renderComponent(failed);
-
-		assert.strictEqual(initial, running);
-		assert.strictEqual(running, completed);
-		assert.strictEqual(completed, failed);
-		assert.equal(cardTitle(initialText), title("running")); assert.equal(cardTone(initialText), "warning");
-		assert.equal(cardTitle(runningText), title("running")); assert.equal(cardTone(runningText), "warning");
-		assert.equal(cardTitle(completedText), title("")); assert.equal(cardTone(completedText), "success");
-		assert.doesNotMatch(cardTitle(completedText), /completed/);
-		assert.match(completedText, /to expand/);
-		assert.equal((initialText.match(/╰/g) ?? []).length, 1, "running call owns the closing frame");
-		assert.equal((completedText.match(/╰/g) ?? []).length, 0, "final result owns the closing frame");
-		assert.equal(cardTitle(failedText), title("failed")); assert.equal(cardTone(failedText), "error");
-		assert.doesNotMatch(renderComponent(failed), /future-operation|secret|private/);
-		for (const forbiddenValue of ["lineage-id", "binding-id", "sha256:hash-value", "secret-value", "arbitrary-value"]) {
-			assert.doesNotMatch(failedText, new RegExp(forbiddenValue));
-		}
-	}
-});
-
-test("registered Gentle Review tools preserve result envelopes and preview useful collapsed results", async () => {
-	const tools = registeredGentleTools();
-	const scope = tools.get("gentle_review_scope");
-	const manifest = { version: 1, scopeByMode: { "100644": ["src/file.ts"] }, gitlinks: {} };
-	const bytes = Buffer.from(JSON.stringify(manifest), "utf8");
-	const encoded = gzipSync(bytes).toString("base64url");
-	const sha256 = createHash("sha256").update(bytes).digest("hex");
-
-	const result = await scope.execute(
-		"scope-call",
-		{ manifest: encoded, sha256, cursor: 0 },
-		undefined,
-		undefined,
-		{ cwd: process.cwd() } as unknown as ExtensionContext,
-	);
-	const visibleEnvelope = JSON.parse(result.content[0].text);
-	assert.deepEqual(visibleEnvelope, {
-		version: 1,
-		sha256,
-		cursor: 0,
-		totalPaths: 1,
-		entries: [{ path: "src/file.ts", mode: "100644" }],
-	});
-	assert.deepEqual(result.details, visibleEnvelope);
-
-	const resultText = "safe result\x1b[31m\nlineage=secret body=private\nthird useful detail\nfourth expanded detail";
-	for (const name of ["gentle_review", "gentle_review_scope", "gentle_review_capture"]) {
-		const tool = tools.get(name);
-		assert.equal(typeof tool?.renderResult, "function", `${name} must define result rendering`);
-		for (const options of [
-			{ expanded: false, isPartial: true, isError: false },
-			{ expanded: false, isPartial: false, isError: false },
-			{ expanded: false, isPartial: false, isError: true },
-		]) {
-			const collapsed = renderComponent(tool.renderResult({ content: [{ type: "text", text: resultText }] }, options, lifecycleTheme, {}));
-			const collapsedBody = cardBody(collapsed);
-			assert.match(collapsedBody, /safe result[\s\S]*lineage=secret body=private[\s\S]*third useful detail/, `${name} previews actual result content, not redaction`);
-			assert.doesNotMatch(collapsedBody, /\d+ lines?\b|fourth expanded detail|to expand|\x1b\[/);
-			assert.equal(collapsedBody.split("\n").length, 3, `${name} has three useful collapsed rows`);
-			assert.match(collapsed, new RegExp(`<${options.isError ? "error" : options.isPartial ? "warning" : "success"}>│`), "host outcome preserves the semantic frame tone");
-			assert.equal((collapsed.match(/╰/g) ?? []).length, options.isPartial ? 0 : 1, "only final results close the frame");
-		}
-		const expanded = renderComponent(tool.renderResult({ content: [{ type: "text", text: resultText }] }, { expanded: true, isPartial: false, isError: true }, lifecycleTheme, {}));
-		assert.equal(cardBody(expanded).split("\n")[0], "<error>safe result</error>");
-		assert.match(expanded, /safe result/);
-		assert.match(expanded, /lineage=secret body=private[\s\S]*third useful detail[\s\S]*fourth expanded detail/);
-		assert.equal((expanded.match(/╰/g) ?? []).length, 1, "expanded final result closes exactly one frame");
-		assert.doesNotMatch(expanded, /to expand/);
-		assert.doesNotMatch(cardBody(expanded), /\x1b\[/);
-		const nonText = renderComponent(tool.renderResult({ content: [{ type: "image", data: "opaque", mimeType: "image/png" }] }, { expanded: true, isPartial: false }, lifecycleTheme, {}));
-		assert.equal(cardBody(nonText), "");
-		const empty = renderComponent(tool.renderResult({ content: [{ type: "text", text: "" }] }, { expanded: false, isPartial: false }, lifecycleTheme, {}));
-		assert.equal(cardBody(empty), "");
-	}
-});
-
 interface RoutingConsumerPanel {
 	render(width: number): string[];
 	handleInput(data: string): void;
@@ -400,8 +129,8 @@ function routingConsumerFixture(t: test.TestContext, agents = ["worker"]) {
 	for (const name of agents) {
 		writeMarkdown(join(root, ".pi", "agents", `${name}.md`), `---\nname: ${name}\ndescription: Worker\n---\nbody\n`);
 	}
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	const isolatedHome = join(root, "home");
@@ -410,17 +139,17 @@ function routingConsumerFixture(t: test.TestContext, agents = ["worker"]) {
 	// Package-sibling legacy agents remain subject to discovery assertions.
 	process.env.HOME = isolatedHome;
 	process.env.USERPROFILE = isolatedHome;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
-	process.env.GENTLE_PI_AGENT_HOME = agentHome;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
+	process.env.TOMIDEV_AGENT_HOME = agentHome;
 	// Every fixture models the same session id, so a profile frozen by one test
 	// must not become the next test's session profile.
 	resetFrozenInheritedProfilesForTesting();
 	t.after(() => {
 		resetFrozenInheritedProfilesForTesting();
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		if (previousHome === undefined) delete process.env.HOME;
 		else process.env.HOME = previousHome;
 		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
@@ -581,7 +310,7 @@ test("models screen saves and clears provider review roles into the profile stor
 		}
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(visits, 2);
 	assert.deepEqual(JSON.parse(readFileSync(storePath, "utf8")).profiles.current, {
 		"review-refuter": { model: "openai/alpha", thinking: "off" },
@@ -609,7 +338,7 @@ test("models screen saves and clears provider review roles into the profile stor
 			panel.handleInput("\x13");
 		} else panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.deepEqual(JSON.parse(readFileSync(storePath, "utf8")).profiles.current, {
 		"review-refuter": {},
 		"review-validator": {},
@@ -661,7 +390,7 @@ test("provider review roles skip migration and both projection paths even when d
 		}
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(visits, 1);
 	assertReservedUnchanged();
 	for (const apply of [applyModelConfig, applyModelConfigAsync]) {
@@ -679,14 +408,14 @@ test("an invalid saved routing file does not block the models screen", async (t)
 	const fixture = routingConsumerFixture(t);
 	writeFileSync(fixture.projectPath, "[]");
 	fixture.onInput((panel) => panel.handleInput("\x1b"));
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(fixture.panelVisits(), 1, "Make default discloses the unreadable routing instead");
 });
 
 test("models export re-reads saved routing and rejects invalid project before creating its destination parent", async (t) => {
 	const fixture = routingConsumerFixture(t);
 	writeFileSync(fixture.projectPath, "[]");
-	await fixture.run("gentle:profiles", "export-routing");
+	await fixture.run("td:profiles", "export-routing");
 	assert.equal(fixture.panelVisits(), 0, "export is a subcommand: no screen opens");
 	const exportWarning = fixture.notifications.find((entry) => entry.severity === "warning");
 	assert.equal(exportWarning?.severity, "warning");
@@ -697,7 +426,7 @@ test("models export re-reads saved routing and rejects invalid project before cr
 test("status reports invalid saved routing path instead of default agent routing", async (t) => {
 	const fixture = routingConsumerFixture(t);
 	writeFileSync(fixture.projectPath, "[]");
-	await fixture.run("gentle:status");
+	await fixture.run("td:status");
 	const report = fixture.notifications.at(-1)!;
 	assert.match(report.message, /Saved model routing: invalid/);
 	assert.ok(report.message.includes(fixture.projectPath));
@@ -711,7 +440,7 @@ test("models exports missing, normalized project, and global-precedence saved ro
 			const fixture = routingConsumerFixture(t);
 			if (source !== "missing") writeFileSync(fixture.projectPath, '{"worker":" openai/gpt-5 ","ignored":null}');
 			if (source === "global") writeMarkdown(fixture.globalPath, '{"worker":{"model":" anthropic/opus ","thinking":"high"}}');
-			await fixture.run("gentle:profiles", "export-routing");
+			await fixture.run("td:profiles", "export-routing");
 			const agents = source === "missing" ? {} : source === "project"
 				? { worker: { model: "openai/gpt-5" } }
 				: { worker: { model: "anthropic/opus", thinking: "high" } };
@@ -719,7 +448,7 @@ test("models exports missing, normalized project, and global-precedence saved ro
 			const exported = fixture.notifications.find((entry) => /exported/.test(entry.message));
 			assert.equal(exported?.severity, "info");
 			assert.equal(fixture.panelVisits(), 0);
-			await fixture.run("gentle:status");
+			await fixture.run("td:status");
 			const report = fixture.notifications.at(-1)!.message;
 			assert.ok(report.includes(`Saved model routing: ${source === "missing" ? "missing" : "valid"}`));
 			assert.ok(report.includes(`Global model config: ${source === "global" ? "present" : "missing"}`));
@@ -737,7 +466,7 @@ test("invalid global routing overrides valid project in models, status, and expo
 			writeFileSync(fixture.projectPath, '{"worker":"openai/gpt-5"}');
 			writeMarkdown(fixture.globalPath, "[]");
 			fixture.onInput((panel) => panel.handleInput("\x1b"));
-			await fixture.run("gentle:profiles", atExport ? "export-routing" : "");
+			await fixture.run("td:profiles", atExport ? "export-routing" : "");
 			if (atExport) {
 				const routingWarning = fixture.notifications.find((entry) => entry.severity === "warning");
 				assert.equal(routingWarning?.severity, "warning");
@@ -746,7 +475,7 @@ test("invalid global routing overrides valid project in models, status, and expo
 			}
 			assert.equal(fixture.panelVisits(), atExport ? 0 : 1, "export opens no screen; the screen opens and Make default discloses the unreadable routing");
 			assert.equal(existsSync(fixture.exportPath), false);
-			await fixture.run("gentle:status");
+			await fixture.run("td:status");
 			const report = fixture.notifications.at(-1)!;
 			assert.match(report.message, /Global model config: present\nSaved model routing: invalid/);
 			assert.ok(report.message.includes(fixture.globalPath));
@@ -775,15 +504,15 @@ test("session startup reports invalid project routing without mutating the profi
 	mkdirSync(agentHomeSubagentsDir, { recursive: true });
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
-	process.env.GENTLE_PI_AGENT_HOME = agentHome;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
+	process.env.TOMIDEV_AGENT_HOME = agentHome;
 	t.after(() => {
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 	});
 
 	writeFileSync(join(projectConfigDir, "models.json"), "[]");
@@ -801,7 +530,7 @@ test("session startup reports invalid project routing without mutating the profi
 		registerCommand() {},
 		registerTool() {},
 	} as unknown as ExtensionAPI;
-	createGentleAiExtension({ nativeReviewCli: null, processEnv: { GENTLE_PI_AGENTS_CHILD: "0" } })(pi);
+	createGentleAiExtension({ nativeReviewCli: null, processEnv: { TOMIDEV_AGENTS_CHILD: "0" } })(pi);
 	const sessionStart = handlers.get("session_start");
 	assert.equal(typeof sessionStart, "function");
 	const notifications: Array<{ message: string; severity: string }> = [];
@@ -865,14 +594,14 @@ test("agent discovery skips skills directories", async (t) => {
 test("managed routing timeout leaves its profile, agent, and manifest unchanged", (t) => {
 	const root = mkdtempSync(join(tmpdir(), "gentle-pi-managed-routing-timeout-"));
 	const agentHome = join(root, "agent-home");
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	t.after(() => {
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	process.env.GENTLE_PI_AGENT_HOME = agentHome;
+	process.env.TOMIDEV_AGENT_HOME = agentHome;
 	installPackageAssets(root, false, ["delegation"]);
 	const agentPath = join(agentHome, "agents", "gentle-ai-worker.md");
 	const manifestPath = join(agentHome, "gentle-ai", "managed-assets.json");
@@ -903,12 +632,12 @@ test("a later alias keeps managed-root precedence and manifest ownership", (t) =
 	const managed = join(agentHome, "agents");
 	const intervening = join(agentHome, "subagents");
 	const alias = join(home, ".agents");
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	t.after(() => {
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		if (previousHome === undefined) delete process.env.HOME;
 		else process.env.HOME = previousHome;
 		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
@@ -916,7 +645,7 @@ test("a later alias keeps managed-root precedence and manifest ownership", (t) =
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	process.env.GENTLE_PI_AGENT_HOME = agentHome;
+	process.env.TOMIDEV_AGENT_HOME = agentHome;
 	process.env.HOME = home;
 	process.env.USERPROFILE = home;
 	installPackageAssets(cwd, false, ["delegation"]);
@@ -939,7 +668,7 @@ test("a later alias keeps managed-root precedence and manifest ownership", (t) =
 });
 
 test("runtime guidance keeps review policy out of the static orchestrator and technical reference", () => {
-	const staticReferences = ["docs/readme-reference.md", "skills/gentle-ai/SKILL.md"];
+	const staticReferences = ["docs/readme-reference.md", "skills/tomidev/SKILL.md"];
 	assert.match(readFileSync("README.md", "utf8"), /\]\(docs\/readme-reference\.md(?:#[^)]+)?\)/);
 	const forbiddenGenericRoutes = [
 		/fresh-context `reviewer`/,
@@ -962,239 +691,11 @@ test("runtime guidance keeps review policy out of the static orchestrator and te
 
 	const orchestrator = readFileSync("assets/orchestrator.md", "utf8")
 		+ readDelegationDetail();
-	assert.match(orchestrator, /injects the mirrored provider-bundle review execution contract/);
-	assert.match(orchestrator, /this package invents no lifecycle instructions/);
+	assert.match(orchestrator, /# Tomidev Shell Orchestrator/);
+	assert.doesNotMatch(orchestrator, /injects the mirrored provider-bundle review execution contract/);
 	for (const lifecycleMarker of ["review-risk", "review-reliability", "review-resilience", "review-readability", "Authority-First Terminal Procedure", "reconcile-terminal-mirrors"]) {
 		assert.doesNotMatch(orchestrator, new RegExp(lifecycleMarker), `static orchestrator must not mirror ${lifecycleMarker}`);
 	}
-});
-
-test("ordinary native capture exposes a registered schema and STATUS binding copied unchanged to one slot", async (t) => {
-	const tools = new Map<string, { name: string; parameters: { required?: readonly string[] } }>();
-	const pi = {
-		on() {},
-		registerCommand() {},
-		registerTool(tool: { name: string; parameters: { required?: readonly string[] } }) {
-			tools.set(tool.name, tool);
-		},
-	} as unknown as ExtensionAPI;
-	createGentleAiExtension({ nativeReviewCli: null })(pi);
-
-	assert.ok(tools.has("gentle_review_capture"));
-	assert.deepEqual(tools.get("gentle_review_capture")?.parameters.required, ["lineageId", "collectBinding"]);
-	assert.deepEqual(tools.get("gentle_review")?.parameters.required, ["operation"]);
-
-	const sha = `sha256:${"a".repeat(64)}`;
-	const lineageId = "ordinary-capture";
-	const collectInput: ReviewCollectInputV3 = {
-		name: "reviewer_result",
-		schema: "https://gentle-ai.dev/schema/review/reviewer/v1",
-		captureOperation: "review.capture-result",
-		arguments: [
-			{ name: "lineage", value: lineageId, token: `--lineage=${lineageId}` },
-			{ name: "target", value: sha, token: `--target=${sha}` },
-			{ name: "agent", value: "pi", token: "--agent=pi" },
-			{ name: "materialize", value: "true", token: "--materialize=true" },
-		],
-		submission: {
-			operationToken: "capture-result",
-			argumentTokens: ["--lineage=ordinary-capture", `--target=${sha}`, "--agent=pi", "--materialize=true", "--input={{value}}"],
-			values: [{ slot: "reviewer_result", domain: "artifact_path_or_stdin", substitutionLocation: 4 }],
-		},
-	};
-	const currentStatus = {
-		contract: "gentle-ai.review-integration/v2",
-		applicability: "current_target",
-		authority: { version: "compact-v2", lineageId, state: "reviewing", generation: 1, revision: sha },
-		action: "stop",
-		replayability: "not_replayable",
-		targetIdentity: sha,
-		projection: {
-			schema: "gentle-ai.review-candidate-projection/v1",
-			kind: "current-changes",
-			projection: "workspace",
-			baseTree: "b".repeat(40),
-			initialReviewTree: "b".repeat(40),
-			currentCandidateTree: "b".repeat(40),
-			pathsDigest: sha,
-			paths: ["app.ts"],
-			intendedUntracked: [],
-			intendedUntrackedProof: sha,
-			initialSnapshotIdentity: sha,
-			currentSnapshotIdentity: sha,
-		},
-		candidates: [],
-		nextTransition: { kind: "collect", reasonCode: "capture_required", collect: { inputs: [collectInput] } },
-		raw: { schema: "gentle-ai.review-integration.status/v5" },
-	} as unknown as ReviewStatusV3;
-	const native = { targetStatus: async () => currentStatus } as unknown as NativeReviewCli;
-
-	const publicStatus = await __testing.executeReviewControllerOperation({ operation: "status" }, process.cwd(), native);
-	const bindings = publicStatus.collectBindings as readonly { collectBinding: unknown }[];
-	assert.equal(bindings.length, 1);
-	assert.equal(typeof bindings[0]?.collectBinding, "string");
-
-	let launches = 0;
-	t.after(() => __testing.setReviewHostRelayRunnerForTesting());
-	__testing.setReviewHostRelayRunnerForTesting(async () => {
-		launches += 1;
-		return { promptByteLength: 1, resultByteLength: 1, submission: "{}" };
-	});
-	const captured = await __testing.executeReviewCaptureOperation({
-		lineageId,
-		collectBinding: bindings[0]!.collectBinding,
-		reviewerRunAcknowledged: true,
-	}, process.cwd(), native);
-	assert.equal(captured.status, "captured");
-	assert.equal(launches, 1);
-});
-
-test("ordinary START adopts the committed-range selectors the provider just offered", async (t) => {
-	const { cwd, baseCommit, baseTree, headTree: candidateTree } = reviewRepository(t);
-	const starts: Array<Record<string, unknown>> = [];
-	const native = {
-		targetStatus: async () => offeredCommittedRangeStatus(baseCommit, baseTree, candidateTree),
-		start: async (request: Record<string, unknown>) => { starts.push(request); return startedReviewResult(); },
-	} as unknown as NativeReviewCli;
-	const parameters = validateToolArguments(registeredGentleTools().get("gentle_review"), {
-		type: "toolCall", id: "object-start", name: "gentle_review", arguments: { operation: "start", input: { mode: "ordinary" } },
-	});
-	const result = await __testing.executeReviewControllerOperation(parameters, cwd, native);
-	assert.equal(result.operation, "start");
-	assert.equal(starts.length, 1);
-	assert.equal(starts[0]?.baseRef, baseCommit);
-	assert.equal(starts[0]?.committedOnly, true);
-});
-
-test("ordinary START keeps an explicit caller baseRef and ignores the offered selector", async (t) => {
-	const { cwd, baseCommit, baseTree, headTree: candidateTree } = reviewRepository(t);
-	const starts: Array<Record<string, unknown>> = [];
-	const native = {
-		// A shape-valid but never-invoked offer: the explicit caller value must win
-		// before this is ever considered.
-		targetStatus: async () => offeredCommittedRangeStatus("f".repeat(40), baseTree, candidateTree),
-		start: async (request: Record<string, unknown>) => { starts.push(request); return startedReviewResult(); },
-	} as unknown as NativeReviewCli;
-	const result = await __testing.executeReviewControllerOperation({ operation: "start", input: JSON.stringify({ mode: "ordinary", baseRef: baseCommit, committedOnly: true }) }, cwd, native);
-	assert.equal(result.operation, "start");
-	assert.equal(starts.length, 1);
-	assert.equal(starts[0]?.baseRef, baseCommit);
-	assert.equal(starts[0]?.committedOnly, true);
-});
-
-test("ordinary START keeps today's invocation when STATUS offers no committed-range selector", async (t) => {
-	const { cwd, headTree } = reviewRepository(t);
-	const offeredWithoutBaseRef = cleanWorkspaceStatus(headTree, {
-		kind: "execute",
-		reasonCode: "fresh_target_ready",
-		execute: { operation: "review.start", arguments: [{ name: "projection", value: "workspace", token: "--projection=workspace" }], preconditions: [], binding: { targetIdentity: `sha256:${"a".repeat(64)}` } },
-	});
-	for (const [label, target] of [["no execute transition", cleanWorkspaceStatus(headTree)], ["no base-ref", offeredWithoutBaseRef]] as const) {
-		const starts: Array<Record<string, unknown>> = [];
-		const native = {
-			targetStatus: async () => target,
-			start: async (request: Record<string, unknown>) => { starts.push(request); return startedReviewResult(); },
-		} as unknown as NativeReviewCli;
-		const result = await __testing.executeReviewControllerOperation({ operation: "start", input: JSON.stringify({ mode: "ordinary" }) }, cwd, native);
-		assert.equal(result.operation, "start", label);
-		assert.equal(starts.length, 1, label);
-		assert.equal(starts[0]?.baseRef, undefined, label);
-		assert.equal("committedOnly" in starts[0]!, false, label);
-	}
-});
-
-test("ordinary START reports candidate-owner preparation failure as pre-native no mutation", async () => {
-	let nativeStarts = 0;
-	const target = {
-		contract: "gentle-ai.review-integration/v2",
-		applicability: "unrelated",
-		action: "start",
-		replayability: "not_replayable",
-		targetIdentity: "a".repeat(64),
-		projection: {
-			schema: "gentle-ai.review-candidate-projection/v1",
-			kind: "current-changes",
-			projection: "workspace",
-			baseTree: "b".repeat(40),
-			initialReviewTree: "b".repeat(40),
-			currentCandidateTree: "b".repeat(40),
-			pathsDigest: "a".repeat(64),
-			paths: [],
-			intendedUntracked: [],
-			intendedUntrackedProof: "a".repeat(64),
-			initialSnapshotIdentity: "a".repeat(64),
-			currentSnapshotIdentity: "a".repeat(64),
-		},
-		candidates: [],
-		raw: { schema: "gentle-ai.review-integration.status/v5" },
-	} as unknown as ReviewStatusV3;
-	const native = {
-		targetStatus: async () => target,
-		start: async () => { nativeStarts += 1; throw new Error("native START must not run"); },
-	} as unknown as NativeReviewCli;
-	const candidateViews = {
-		createOrReuse: () => { throw new CandidateViewError("candidate view owner preparation failed (EACCES)", "candidate-owner-preparation-failed"); },
-	} as unknown as CandidateViewRegistry;
-	const result = await __testing.executeReviewControllerOperation(
-		{ operation: "start", input: JSON.stringify({ mode: "ordinary" }) },
-		process.cwd(),
-		native,
-		undefined,
-		candidateViews,
-	);
-	assert.equal(nativeStarts, 0);
-	assert.equal(result.outcome, "native-operation-failed");
-	assert.equal(result.mutation_outcome, "none");
-	assert.deepEqual(result.diagnostics, {
-		code: "candidate-owner-preparation-failed",
-		message: "candidate view owner preparation failed (EACCES)",
-	});
-
-	let materializationStatusCalls = 0;
-	const rawMaterializationFailure = await __testing.executeReviewControllerOperation(
-		{ operation: "start", input: JSON.stringify({ mode: "ordinary" }) },
-		process.cwd(),
-		{
-			targetStatus: async () => { materializationStatusCalls += 1; return target; },
-			start: async () => { nativeStarts += 1; throw new Error("native START must not run"); },
-		} as unknown as NativeReviewCli,
-		undefined,
-		{ createOrReuse: () => { throw new Error("candidate materialization failed"); } } as unknown as CandidateViewRegistry,
-	);
-	assert.equal(nativeStarts, 0);
-	assert.equal(materializationStatusCalls, 1, "a pre-START materialization failure never triggers reconciliation STATUS");
-	assert.equal(rawMaterializationFailure.outcome, "native-operation-failed");
-	assert.equal(rawMaterializationFailure.mutation_outcome, "none");
-	assert.equal(rawMaterializationFailure.next_action, "resolve-native-operation-failure");
-
-	let statusCalls = 0;
-	const afterNative = await __testing.executeReviewControllerOperation(
-		{ operation: "start", input: JSON.stringify({ mode: "ordinary" }) },
-		process.cwd(),
-		{
-			targetStatus: async () => { statusCalls += 1; return target; },
-			start: async () => {
-				nativeStarts += 1;
-				throw new CandidateViewError("post-native candidate verification failed", "candidate-view-timeout", {
-					phase: "candidate-view",
-					category: "timeout",
-					git_subcommand: "worktree",
-					timeout_ms: 10_000,
-					max_buffer_bytes: 64 * 1024 * 1024,
-					message: "candidate-view Git command worktree timed out after 10000ms; inspect the candidate state before any new START",
-				});
-			},
-		} as unknown as NativeReviewCli,
-		undefined,
-		null,
-	);
-	assert.equal(nativeStarts, 1);
-	assert.equal(statusCalls, 2, "a post-native diagnostic must reconcile STATUS");
-	assert.equal(afterNative.mutation_outcome, "unknown");
-	assert.deepEqual(afterNative.diagnostics, {
-		code: "candidate-view-timeout",
-		message: "post-native candidate verification failed",
-	});
 });
 
 test("retired SDD startup flag is not registered or imported", () => {
@@ -1230,8 +731,8 @@ test("agent model discovery prioritizes Judgment Day agents", (t) => {
 		[
 			"jd-judge-a",
 			"jd-judge-b",
-			"jd-fix-agent",
 			"alpha",
+			"jd-fix-agent",
 			"sdd-apply",
 			"sdd-init",
 			"zeta",
@@ -1241,11 +742,11 @@ test("agent model discovery prioritizes Judgment Day agents", (t) => {
 
 test("discoverable model agents include installed Judgment Day agents", (t) => {
 	const root = mkdtempSync(join(tmpdir(), "gentle-pi-installed-agents-"));
-	const previousHome = process.env.GENTLE_PI_AGENT_HOME;
-	process.env.GENTLE_PI_AGENT_HOME = root;
+	const previousHome = process.env.TOMIDEV_AGENT_HOME;
+	process.env.TOMIDEV_AGENT_HOME = root;
 	t.after(() => {
-		if (previousHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousHome;
+		if (previousHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousHome;
 		rmSync(root, { recursive: true, force: true });
 	});
 	writeMarkdown(join(root, "agents", "jd-judge-a.md"), "name: jd-judge-a\n");
@@ -1262,11 +763,11 @@ test("discoverable model agents include installed Judgment Day agents", (t) => {
 
 test("per-JD-agent model assignment keeps judge-a and judge-b profiles divergent", (t) => {
 	const root = mkdtempSync(join(tmpdir(), "gentle-pi-jd-diversity-"));
-	const previousHome = process.env.GENTLE_PI_AGENT_HOME;
-	process.env.GENTLE_PI_AGENT_HOME = root;
+	const previousHome = process.env.TOMIDEV_AGENT_HOME;
+	process.env.TOMIDEV_AGENT_HOME = root;
 	t.after(() => {
-		if (previousHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousHome;
+		if (previousHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousHome;
 		rmSync(root, { recursive: true, force: true });
 	});
 	writeMarkdown(
@@ -1313,7 +814,7 @@ test("per-JD-agent model assignment keeps judge-a and judge-b profiles divergent
 });
 
 // ---------------------------------------------------------------------------
-// Models screen (/gentle:profiles): one table, profiles as tabs.
+// Models screen (/td:profiles): one table, profiles as tabs.
 // ---------------------------------------------------------------------------
 
 const SCREEN_AGENTS = ["gentle-ai-explore", "gentle-ai-verify", "gentle-ai-worker"];
@@ -1561,7 +1062,7 @@ test("models screen offers only the effort levels each model supports and shows 
 test("models screen lists configuration problems under the profile name without cutting them", () => {
 	const notices = [
 		"The local pin file /home/user/project/.git/gentle-ai/profile-pin.json is not a valid pin and is ignored. Fix or remove it.",
-		'Profile key "sdd-design" matches no agent configured in gentle-shell, so it is ignored at launch.',
+		'Profile key "sdd-design" matches no agent configured in tomidev, so it is ignored at launch.',
 	];
 	const plain = renderScreen([], [], [], { width: 80, notices }).map(stripAnsi);
 	assert.ok(plain.some((line) => line.includes('⚠ Profile key "sdd-design"')));
@@ -1658,7 +1159,7 @@ test("guarded command confirmation emits a generic correlated permission lifecyc
 		registerCommand() {},
 		registerTool() {},
 	} as unknown as ExtensionAPI;
-	createGentleAiExtension({ processEnv: { GENTLE_PI_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
+	createGentleAiExtension({ processEnv: { TOMIDEV_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
 	const toolCall = handlers.get("tool_call");
 	assert.equal(typeof toolCall, "function");
 	const cwd = mkdtempSync(join(tmpdir(), "gentle-pi-permission-request-"));
@@ -1795,7 +1296,7 @@ test("concurrent guarded confirmations coalesce the Herdr lifecycle per extensio
 			registerCommand() {},
 			registerTool() {},
 		} as unknown as ExtensionAPI;
-		createGentleAiExtension({ processEnv: { GENTLE_PI_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
+		createGentleAiExtension({ processEnv: { TOMIDEV_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
 		return { handlers, emitted, confirmations, confirmation };
 	};
 	const first = createHarness();
@@ -1859,7 +1360,7 @@ test("concurrent guarded confirmations coalesce the Herdr lifecycle per extensio
 });
 
 
-for (const channel of ["rpiv:ask-user:blocked", "gentle-pi:ask-user-question:blocked"]) {
+for (const channel of ["rpiv:ask-user:blocked", "td:ask-user-question:blocked"]) {
 test(`${channel} emits only a private, balanced Herdr projection`, () => {
 	type HerdrBlockedEvent = { active: boolean; label?: string };
 	const eventHandlers = new Map<string, (data: unknown) => void>();
@@ -1883,15 +1384,15 @@ test(`${channel} emits only a private, balanced Herdr projection`, () => {
 		registerTool() {},
 	} as unknown as ExtensionAPI;
 	createGentleAiExtension({ nativeReviewCli: null })(pi);
-	const privateHostDiscovery = new Set(["gentle:yolo:host-ui", "gentle:rdd:host-ui"]);
+	const privateHostDiscovery = new Set(["td:yolo:host-ui"]);
 	for (const channel of privateHostDiscovery) assert.equal(eventHandlers.has(channel), true);
 	assert.deepEqual([...eventHandlers.keys()].filter(name => !privateHostDiscovery.has(name)).sort(), [
-		"gentle-pi:ask-user-choice:blocked", "gentle-pi:ask-user-question:blocked", "rpiv:ask-user:blocked",
+		"rpiv:ask-user:blocked", "td:ask-user-choice:blocked", "td:ask-user-question:blocked",
 	], "only the original three blocked channels remain besides the known private host adapters");
 	assert.deepEqual(published, [], "registering host discovery emits no public event or private payload");
-	assert.equal(eventHandlers.has("gentle-pi:ask-user-choice:blocked"), true);
+	assert.equal(eventHandlers.has("td:ask-user-choice:blocked"), true);
 	assert.equal(eventHandlers.has("rpiv:ask-user:blocked"), true);
-	assert.equal(eventHandlers.has("gentle-pi:ask-user-question:blocked"), true);
+	assert.equal(eventHandlers.has("td:ask-user-question:blocked"), true);
 
 	const source = {
 		active: true,
@@ -1966,7 +1467,7 @@ test("Herdr preserves the initial label and balanced edges across overlapping so
 			registerCommand() {},
 			registerTool() {},
 		} as unknown as ExtensionAPI;
-		createGentleAiExtension({ processEnv: { GENTLE_PI_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
+		createGentleAiExtension({ processEnv: { TOMIDEV_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
 		const context = {
 			cwd: process.cwd(),
 			hasUI: true,
@@ -1996,7 +1497,7 @@ test("Herdr preserves the initial label and balanced edges across overlapping so
 	]);
 
 	// Each event channel is independent, even when native and legacy producers overlap.
-	const channels = ["gentle-pi:ask-user-question:blocked", "rpiv:ask-user:blocked", "gentle-pi:ask-user-choice:blocked"];
+	const channels = ["td:ask-user-question:blocked", "rpiv:ask-user:blocked", "td:ask-user-choice:blocked"];
 	for (const lastChannel of channels) {
 		const overlap = createHarness();
 		for (const channel of channels) overlap.pi.events.emit(channel, { active: true });
@@ -2052,7 +1553,7 @@ test("closed choice blockers retain the visible choice label through guarded-con
 		events: {
 			emit(channel: string, data: unknown) {
 				if (channel === "herdr:blocked") herdrEvents.push(data as HerdrBlockedEvent);
-				if (channel === "gentle-pi:ask-user-choice:blocked") choiceEvents.push(data as { active: boolean });
+				if (channel === "td:ask-user-choice:blocked") choiceEvents.push(data as { active: boolean });
 				eventHandlers.get(channel)?.(data);
 			},
 			on(channel: string, handler: (data: unknown) => void) {
@@ -2063,15 +1564,15 @@ test("closed choice blockers retain the visible choice label through guarded-con
 		registerCommand() {},
 		registerTool() {},
 	} as unknown as ExtensionAPI;
-	createGentleAiExtension({ processEnv: { GENTLE_PI_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
-	assert.equal(eventHandlers.has("gentle-pi:ask-user-choice:blocked"), true);
+	createGentleAiExtension({ processEnv: { TOMIDEV_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
+	assert.equal(eventHandlers.has("td:ask-user-choice:blocked"), true);
 
 	for (const malformed of [null, [], {}, { active: "true" }]) {
-		pi.events.emit("gentle-pi:ask-user-choice:blocked", malformed);
+		pi.events.emit("td:ask-user-choice:blocked", malformed);
 	}
 	assert.deepEqual(herdrEvents, []);
 	choiceEvents.length = 0;
-	pi.events.emit("gentle-pi:ask-user-choice:blocked", { active: true });
+	pi.events.emit("td:ask-user-choice:blocked", { active: true });
 	assert.deepEqual(choiceEvents, [{ active: true }]);
 	assert.deepEqual(herdrEvents, [{ active: true, label: "Choice awaiting input" }]);
 
@@ -2089,7 +1590,7 @@ test("closed choice blockers retain the visible choice label through guarded-con
 	assert.equal(confirmations.length, 1);
 	assert.deepEqual(herdrEvents, [{ active: true, label: "Choice awaiting input" }]);
 
-	pi.events.emit("gentle-pi:ask-user-choice:blocked", { active: false });
+	pi.events.emit("td:ask-user-choice:blocked", { active: false });
 	assert.deepEqual(choiceEvents, [{ active: true }, { active: false }]);
 	assert.deepEqual(herdrEvents, [
 		{ active: true, label: "Choice awaiting input" },
@@ -2120,7 +1621,7 @@ test("permission lifecycle is inactive for unguarded and headless commands", asy
 		registerCommand() {},
 		registerTool() {},
 	} as unknown as ExtensionAPI;
-	createGentleAiExtension({ processEnv: { GENTLE_PI_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
+	createGentleAiExtension({ processEnv: { TOMIDEV_AGENTS_CHILD: "0" }, nativeReviewCli: null })(pi);
 	const toolCall = handlers.get("tool_call");
 	assert.equal(typeof toolCall, "function");
 	const cwd = mkdtempSync(join(tmpdir(), "gentle-pi-permission-headless-"));
@@ -2148,19 +1649,10 @@ test("permission lifecycle is inactive for unguarded and headless commands", asy
 		rmSync(cwd, { recursive: true, force: true });
 	}
 });
-test("registered Gentle Review capture tools name the lens they run", () => {
+test("registered Gentle Review capture tools are removed after RDD removal", () => {
 	const tools = registeredGentleTools();
-	const binding = (lens: string) => JSON.stringify({ name: "reviewer_result", captureOperation: "review.capture-result", arguments: [], artifactSubject: { lens } });
-	const single = tools.get("gentle_review_capture")!.renderCall({ lineageId: "l", collectBinding: binding("review-risk") }, lifecycleTheme, lifecycleContext({ executionStarted: true }));
-	assert.equal(cardTitle(renderComponent(single)), "🌹 rdd running · capture · risk");
-	const bare = tools.get("gentle_review_capture")!.renderCall({ lineageId: "l", collectBinding: "{not json" }, lifecycleTheme, lifecycleContext({ executionStarted: true }));
-	assert.equal(cardTitle(renderComponent(bare)), "🌹 rdd running · capture");
-	const group = tools.get("gentle_review_capture_group")!.renderCall(
-		{ lineageId: "l", collectBindings: [binding("review-risk"), binding("review-resilience"), binding("review-readability"), binding("review-reliability")] },
-		lifecycleTheme,
-		lifecycleContext({ executionStarted: true }),
-	);
-	assert.equal(cardTitle(renderComponent(group)), "🌹 rdd running · capture group · risk · resilience · readability · reliability");
+	assert.equal(tools.get("gentle_review_capture"), undefined);
+	assert.equal(tools.get("gentle_review_capture_group"), undefined);
 });
 
 test("bash tool_call confirms a late guarded npm publish and denies on non-approval", async () => {
@@ -2197,8 +1689,8 @@ test("bash tool_call confirms a late guarded npm publish and denies on non-appro
 
 	const prefix = "noise ".repeat(80);
 	const command = `${prefix}npm publish --tag beta`;
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
 	try {
 		const result = await toolCall!({ toolName: "bash", input: { command } }, ctx);
 		assert.deepEqual(result, {
@@ -2207,8 +1699,8 @@ test("bash tool_call confirms a late guarded npm publish and denies on non-appro
 				"Gentle AI safety policy blocked the command because it was not confirmed.",
 		});
 	} finally {
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
 		rmSync(configHome, { recursive: true, force: true });
 	}
 
@@ -2237,32 +1729,34 @@ test("bash tool_call confirms every compound action and centers a long git -C pu
 	assert.equal(typeof toolCall, "function");
 
 	const configHome = mkdtempSync(join(tmpdir(), "gentle-pi-guard-compound-"));
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
 	try {
 		const command = `git -C /${"very-long-path/".repeat(30)} push origin main && npm publish --tag beta`;
 		const result = await toolCall!({ toolName: "bash", input: { command } }, {
 			cwd: process.cwd(),
 			hasUI: true,
-			ui: { confirm: async (title: string, message: string) => (confirmArgs.push([title, message]), false) },
+			// The commit/push dialog approves the push; the guard still asks about npm publish, and its refusal blocks the command.
+			ui: { confirm: async (title: string, message: string) => (confirmArgs.push([title, message]), title === "Allow git push?") },
 		} as unknown as ExtensionContext);
 		assert.deepEqual(result, {
 			block: true,
 			reason: "Gentle AI safety policy blocked the command because it was not confirmed.",
 		});
 	} finally {
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
 		rmSync(configHome, { recursive: true, force: true });
 	}
 
-	assert.equal(confirmArgs.length, 1);
-	const [title, preview] = confirmArgs[0];
+	assert.equal(confirmArgs.length, 2, "the commit/push dialog, then the guard dialog for npm publish");
+	assert.equal(confirmArgs[0][0], "Allow git push?");
+	const [title, preview] = confirmArgs[1];
 	assert.equal(title, "Allow guarded actions: git push; npm publish?");
 	assert.match(preview, /push origin main && npm publish --tag beta/);
 	assert.ok(preview.startsWith("…"));
 });
-// /gentle:profiles reopens its panel after actions that finish the interaction,
+// /td:profiles reopens its panel after actions that finish the interaction,
 // so a test that applies once must confirm on the first visit and close on the
 // next, or the panel and the action loop feed each other forever.
 type ScreenPanel = { handleInput(data: string): void; render(width: number): string[] };
@@ -2382,7 +1876,7 @@ test("applying a profile persists its orchestrator and never leaks the key into 
 	// dialog explicitly before running.
 	fixture.onConfirm(async () => true);
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	const after = JSON.parse(readFileSync(settingsPath, "utf8"));
 	assert.equal(after.defaultProvider, "nan");
@@ -2415,7 +1909,7 @@ test("applying a profile whose orchestrator model is unknown to the registry per
 	writeSettings();
 	writeStore({ team: { orchestrator: { model: "nan/not-in-catalog", thinking: "high" }, worker: { model: "openai/alpha" } } });
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const after = JSON.parse(readFileSync(settingsPath, "utf8"));
 	assert.equal(after.defaultModel, "not-in-catalog", "the default for new sessions is still recorded");
 	assert.deepEqual(fixture.liveSwitches, [], "nothing is switched live without a registry model");
@@ -2429,7 +1923,7 @@ test("a thinking level the switched model rejects keeps the model switch and rep
 	writeStore({ team: { orchestrator: { model: "nan/glm5.3", thinking: "max" }, worker: { model: "openai/alpha" } } });
 	fixture.rejectThinkingLevel();
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(JSON.parse(readFileSync(settingsPath, "utf8")).defaultThinkingLevel, "max", "the persisted default is untouched by the live refusal");
 	assert.deepEqual(fixture.liveSwitches, [{ kind: "model", provider: "nan", id: "glm5.3" }], "the model switch stands");
 	const applied = fixture.notifications.at(-1)?.message ?? "";
@@ -2442,7 +1936,7 @@ test("applying a profile whose orchestrator provider has no auth persists the de
 	writeStore({ team: { orchestrator: { model: "nan/glm5.3" }, worker: { model: "openai/alpha" } } });
 	fixture.refuseSetModel();
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.deepEqual(fixture.liveSwitches, [{ kind: "model", provider: "nan", id: "glm5.3" }], "the switch was attempted, no thinking level without one in the profile");
 	const applied = fixture.notifications.at(-1)?.message ?? "";
 	assert.match(applied, /no authentication is configured for nan; this session keeps its current model/);
@@ -2453,7 +1947,7 @@ test("applying a profile without an orchestrator entry leaves settings.json unto
 	writeSettings();
 	writeStore({ team: { worker: { model: "openai/alpha" } } });
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	const after = JSON.parse(readFileSync(settingsPath, "utf8"));
 	assert.equal(after.defaultProvider, "nan");
@@ -2467,7 +1961,7 @@ test("a profile store entry with only the orchestrator key counts zero roles", a
 	const { fixture, writeStore } = profilesStoreFixture(t);
 	writeStore({ team: { orchestrator: { model: "nan/glm5.3", thinking: "high" } } }, "team");
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const applied = fixture.notifications.at(-1)?.message ?? "";
 	assert.match(applied, /0 agents updated/);
 	assert.match(applied, /Orchestrator set to nan\/glm5\.3 · high/);
@@ -2494,7 +1988,7 @@ test("applying an empty profile asks for confirmation and aborts when declined",
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "confirm dialog must be displayed when applying an empty profile");
 	const [title, message] = fixture.confirmCalls[0];
@@ -2530,7 +2024,7 @@ test("applying an empty profile with explicit confirmation replaces global routi
 	fixture.onConfirm(async () => true);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "confirm dialog must be displayed when applying an empty profile");
 	const models = JSON.parse(readFileSync(fixture.globalPath, "utf8"));
@@ -2564,7 +2058,7 @@ test("applying an orchestrator-only profile asks for confirmation and aborts whe
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "confirm dialog must be displayed when applying an orchestrator-only profile");
 	const [title, message] = fixture.confirmCalls[0];
@@ -2602,7 +2096,7 @@ test("applying an orchestrator-only profile with explicit confirmation updates o
 	fixture.onConfirm(async () => true);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "confirm dialog must be displayed when applying an orchestrator-only profile");
 	const models = JSON.parse(readFileSync(fixture.globalPath, "utf8"));
@@ -2653,7 +2147,7 @@ test("applying a populated profile asks for confirmation naming the diff and abo
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a populated global apply must ask for confirmation");
 	const [title, message] = fixture.confirmCalls[0];
@@ -2683,7 +2177,7 @@ test("applying a populated profile whose routes already match skips the confirma
 	const settingsBefore = readFileSync(settingsPath, "utf8");
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 0, "a no-op populated apply must not ask for confirmation");
 	assert.ok(
@@ -2710,7 +2204,7 @@ test("applying an already-matching active profile ignores legacy project routes 
 	const before = paths.map((path) => readFileSync(path, "utf8"));
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 0, "legacy routes outside the active profile must not produce a false clearing diff");
 	assert.ok(fixture.notifications.some((entry) => entry.severity === "info" && /already matches the current global routing/.test(entry.message)));
@@ -2731,7 +2225,7 @@ test("applying a populated profile whose routes match and whose orchestrator is 
 	writeStore({ team: { orchestrator: { model: "nan/deepseek-v4-flash", thinking: "high" }, worker: { model: "openai/alpha" } } });
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 0, "an already-active profile must not ask for confirmation");
 	assert.deepEqual(fixture.liveSwitches, [], "the no-op apply performs no live switch: the orchestrator is already there");
@@ -2752,7 +2246,7 @@ test("applying a populated profile keeps the confirmation when the live session 
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a live-session orchestrator move is a real change and must confirm");
 	assert.deepEqual(fixture.liveSwitches, [], "declining must not switch the live session");
@@ -2773,7 +2267,7 @@ test("applying a populated profile keeps the confirmation when settings.json hol
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "an invalid stored thinking level cannot prove a no-op");
 	assert.equal(readFileSync(settingsPath, "utf8"), settingsBefore, "declining preserves the invalid key byte-identically");
@@ -2790,7 +2284,7 @@ test("applying a populated profile keeps the confirmation when settings.json is 
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "an unreadable settings.json cannot prove an orchestrator no-op");
 	assert.notEqual(JSON.parse(readFileSync(storePath, "utf8")).active, "team");
@@ -2808,7 +2302,7 @@ test("applying a populated profile with a thinking-only orchestrator entry skips
 	const settingsBefore = readFileSync(settingsPath, "utf8");
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 0, "a thinking-only orchestrator entry changes nothing and must not confirm");
 	assert.ok(
@@ -2830,7 +2324,7 @@ test("applying a populated profile with matching routes but a different orchestr
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "an orchestrator change is a real change and must confirm");
 	assert.match(fixture.confirmCalls[0]?.[0] ?? "", /Apply profile/);
@@ -2854,7 +2348,7 @@ test("profile replacement with 23 routes changes files only after confirmation",
 			const before = files.map((path) => readFileSync(path, "utf8"));
 			fixture.onConfirm(async () => approved);
 			applyOnce(fixture);
-			await fixture.run("gentle:profiles");
+			await fixture.run("td:profiles");
 			assert.equal(fixture.confirmCalls.length, 1);
 			assert.equal(fixture.confirmCalls[0][0], 'Apply profile "team"?');
 			for (const name of names.slice(2)) assert.ok(fixture.confirmCalls[0][1].includes(`${name}: openai/beta · high → inherit`), `confirmation names ${name}`);
@@ -2904,7 +2398,7 @@ test("applying a populated profile names materialized-only routes it would clear
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a populated global apply must ask for confirmation");
 	const [title, message] = fixture.confirmCalls[0];
@@ -2935,7 +2429,7 @@ test("applying a populated profile clears the materialized-only route it named w
 	fixture.onConfirm(async () => true);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a populated global apply must ask for confirmation");
 	const [, message] = fixture.confirmCalls[0];
@@ -2960,7 +2454,7 @@ test("applying a populated profile with an orchestrator entry discloses the sett
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a populated global apply must ask for confirmation");
 	const [, message] = fixture.confirmCalls[0];
@@ -2988,7 +2482,7 @@ test("applying a populated profile with an orchestrator entry discloses the effe
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a populated global apply must ask for confirmation");
 	const [, message] = fixture.confirmCalls[0];
@@ -3024,7 +2518,7 @@ test("applying a populated profile with an unreadable routing authority disclose
 	fixture.onConfirm(async () => false);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a populated global apply must ask for confirmation");
 	const [title, message] = fixture.confirmCalls[0];
@@ -3056,7 +2550,7 @@ test("applying a populated profile with an unreadable routing authority still ap
 	fixture.onConfirm(async () => true);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a populated global apply must ask for confirmation");
 	const [, message] = fixture.confirmCalls[0];
@@ -3092,7 +2586,7 @@ test("applying a populated profile with explicit confirmation applies the routin
 	fixture.onConfirm(async () => true);
 
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(fixture.confirmCalls.length, 1, "a populated global apply must ask for confirmation");
 	const models = JSON.parse(readFileSync(fixture.globalPath, "utf8"));
@@ -3125,7 +2619,7 @@ test("applying a profile replaces materialized routing for agents the profile om
 	writeFileSync(subagentsPath, `${JSON.stringify({ model_profiles: { helper: { model: "openai/beta", effort: "high" } } }, null, 2)}\n`);
 	writeStore({ team: { worker: { model: "openai/alpha" } } });
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	const profiles = JSON.parse(readFileSync(subagentsPath, "utf8"));
 	assert.deepEqual(profiles.model_profiles, { worker: { model: "openai/alpha" } }, "omitted agents lose their materialized route");
@@ -3156,7 +2650,7 @@ test("a failed apply restores the previous profile's routing with the same repla
 		old: { helper: { model: "openai/beta" } },
 	}, "old");
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	const warning = fixture.notifications.find((entry) => /could not apply profile "team"/.test(entry.message));
 	assert.ok(warning, "the failed apply is reported");
@@ -3270,7 +2764,7 @@ test("models screen saves the explicit orchestrator choice into the profile", as
 		}
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const snapshot = JSON.parse(readFileSync(storePath, "utf8")).profiles.team;
 	assert.deepEqual(snapshot.orchestrator, { model: "openai/beta", thinking: "low" });
 	assert.deepEqual(snapshot.worker, { model: "openai/alpha", thinking: "high" });
@@ -3283,7 +2777,7 @@ test("models screen saves the explicit orchestrator choice into the profile", as
 	// Use in this session still drives the live session.
 	fixture.useSessionManager(profileActionManager(fixture.root));
 	actOnProfile(fixture, "u");
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.deepEqual(fixture.liveSwitches, [
 		{ kind: "model", provider: "openai", id: "beta" },
 		{ kind: "thinking", level: "low" },
@@ -3311,13 +2805,13 @@ test("models screen leave untouched removes a stale profile orchestrator and kee
 		}
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(Object.hasOwn(JSON.parse(readFileSync(storePath, "utf8")).profiles.team, "orchestrator"), false);
 	assert.equal(readFileSync(fixture.globalPath, "utf8"), globalBefore, "Save never writes global routing");
 	assert.equal(readFileSync(settingsPath, "utf8"), settingsBefore);
 	assert.deepEqual(fixture.liveSwitches, []);
 	actOnProfile(fixture, "u");
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.deepEqual(fixture.liveSwitches, [], "a profile without an orchestrator keeps the live model and effort");
 	assert.equal(readFileSync(settingsPath, "utf8"), settingsBefore);
 });
@@ -3342,7 +2836,7 @@ for (const [name, keys] of [["ctrl+s", ["\x13"]], ["esc twice", ["\x1b", "\x1b"]
 			}
 			panel.handleInput("\x1b");
 		});
-		await fixture.run("gentle:profiles");
+		await fixture.run("td:profiles");
 		assert.deepEqual(fixture.liveSwitches, []);
 		assert.equal(readFileSync(settingsPath, "utf8"), settingsBefore);
 		if (name === "ctrl+s") {
@@ -3374,7 +2868,7 @@ test("models screen Model ▾ and Effort ▾ set every agent to inherit and leav
 		}
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const profile = JSON.parse(readFileSync(storePath, "utf8")).profiles.team;
 	assert.deepEqual(profile.worker, {});
 	assert.deepEqual(profile.orchestrator, { model: "openai/alpha", thinking: "high" });
@@ -3405,7 +2899,7 @@ test("models screen custom model id: a valid id lands in the draft, an invalid o
 				}
 				panel.handleInput("\x1b");
 			});
-			await fixture.run("gentle:profiles");
+			await fixture.run("td:profiles");
 			assert.match(fixture.inputPrompts[0]?.title ?? "", /Custom model id for worker/);
 			assert.equal(JSON.parse(readFileSync(storePath, "utf8")).profiles.team.worker.model, expected);
 			if (expected === "openai/beta") assert.match(fixture.panels[1] ?? "", /Custom model id must be one provider\/model line/);
@@ -3434,7 +2928,7 @@ test("models screen Save preserves an absent orchestrator and sibling profiles",
 		}
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(existsSync(fixture.globalPath), false, "Save never writes global routing");
 	const store = JSON.parse(readFileSync(storePath, "utf8"));
 	assert.deepEqual(store.profiles.team, { worker: { model: "openai/alpha" } });
@@ -3445,7 +2939,7 @@ test("models screen Save preserves an absent orchestrator and sibling profiles",
 	assert.equal(visits, 2);
 });
 
-test("gentle:profiles opens on the pinned profile and Save preserves its stored orchestrator", async (t) => {
+test("td:profiles opens on the pinned profile and Save preserves its stored orchestrator", async (t) => {
 	const { fixture, storePath, settingsPath, writeStore, writeSettings, writePin, localPinPath } = profilesStoreFixture(t);
 	writeSettings();
 	const settingsBefore = readFileSync(settingsPath, "utf8");
@@ -3468,7 +2962,7 @@ test("gentle:profiles opens on the pinned profile and Save preserves its stored 
 		}
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const store = JSON.parse(readFileSync(storePath, "utf8"));
 	assert.deepEqual(store.profiles.other, {
 		worker: { model: "openai/alpha", thinking: "high" },
@@ -3481,7 +2975,7 @@ test("gentle:profiles opens on the pinned profile and Save preserves its stored 
 	assert.equal(visits, 2);
 });
 
-test("gentle:profiles seeds the profiles store when it is missing", async (t) => {
+test("td:profiles seeds the profiles store when it is missing", async (t) => {
 	const { fixture, storePath, writeSettings } = profilesStoreFixture(t);
 	writeSettings();
 	assert.equal(existsSync(storePath), false);
@@ -3494,7 +2988,7 @@ test("gentle:profiles seeds the profiles store when it is missing", async (t) =>
 		}
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const store = JSON.parse(readFileSync(storePath, "utf8"));
 	assert.equal(store.kind, PROFILES_KIND);
 	assert.deepEqual(store.profiles.current, {});
@@ -3517,7 +3011,7 @@ test("the profiles command seeds and shows the routing the runtime uses when mod
 		rendered = stripAnsi(renderComponent(panel));
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	const store = JSON.parse(readFileSync(join(fixture.configHome, "profiles.json"), "utf8"));
 	assert.equal(store.active, "current", "materialized routing counts as existing routing");
@@ -3579,10 +3073,10 @@ test("the models screen flags profile keys no agent matches and never flags prov
 		rendered = stripAnsi(renderComponent(visited));
 		visited.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const flat = (rendered: string) => rendered.replace(/\s*│\s*/g, " ").replace(/\s+/g, " ");
 	assert.equal(rendered.split("\n").length, 24, "the frame spans the terminal height");
-	assert.match(flat(rendered), /⚠ Profile key "sdd-design" matches no agent configured in gentle-shell, so it is ignored at launch\./);
+	assert.match(flat(rendered), /⚠ Profile key "sdd-design" matches no agent configured in tomidev, so it is ignored at launch\./);
 	assert.doesNotMatch(flat(rendered), /review-refuter"/, "provider review roles are never flagged");
 	assert.match(rendered, /Orchestrator\s+nan\/glm5\.3\s+high/);
 	assert.match(rendered, /worker\s+openai\/alpha\s+high/);
@@ -3602,11 +3096,11 @@ test("at 60 columns the unmatched-key notice wraps instead of being cut", async 
 		panel = visited;
 		visited.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.ok(panel);
 	const narrow = stripAnsi(panel.render(60).join("\n"));
 	const flat = (rendered: string) => rendered.replace(/\s*│\s*/g, " ").replace(/\s+/g, " ");
-	assert.match(flat(narrow), /⚠ Profile key "sdd-design" matches no agent configured in gentle-shell, so it is ignored at launch\./);
+	assert.match(flat(narrow), /⚠ Profile key "sdd-design" matches no agent configured in tomidev, so it is ignored at launch\./);
 	assert.ok(!narrow.split("\n").some((line) => line.includes("…")), "nothing is cut");
 });
 
@@ -3631,7 +3125,7 @@ test("the models screen names subagents.json keys that match no agent and sugges
 		visited.handleInput("\x1b");
 	});
 	fixture.tui.terminal.rows = 40;
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.ok(panel);
 	const flat = (rendered: string) => rendered.replace(/\s*│\s*/g, " ").replace(/\s+/g, " ");
 	for (const width of [120, 60]) {
@@ -3654,7 +3148,7 @@ test("the subagents.json notice stays off the screen while a pin wins", async (t
 		text = stripAnsi(renderComponent(visited));
 		visited.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.match(text, /Used in this repo\./);
 	assert.doesNotMatch(text, /subagents\.json routes/);
 });
@@ -3703,7 +3197,7 @@ async function runProfilesNameActionOn(
 		acted = true;
 		for (const key of keys) panel.handleInput(key);
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	return fixture.panels.at(-1) ?? "";
 }
 
@@ -3802,7 +3296,7 @@ test("escape on the name prompt cancels without writing and says so in the reope
 
 // The pin is the per-repository layer of the profiles command: Use in this repo
 // (profile menu) writes the clone-scoped pin inside the Git common directory,
-// `/gentle:profiles publish <name>` writes the committable per-worktree
+// `/td:profiles publish <name>` writes the committable per-worktree
 // declaration. Neither writes routing.
 test("Use in this repo pins the shown profile for the clone without touching the global routing", async (t) => {
 	const { fixture, storePath, localPinPath, repoPinPath, writeStore } = profilesStoreFixture(t);
@@ -3819,7 +3313,7 @@ test("Use in this repo pins the shown profile for the clone without touching the
 			panel.handleInput("\x1b");
 		}
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(
 		readFileSync(localPinPath, "utf8"),
@@ -3894,7 +3388,7 @@ test("the profile pin scope note sanitizes its worktree-derived path", (t) => {
 test("publish declares the profile in the worktree so the routing can be committed", async (t) => {
 	const { fixture, localPinPath, repoPinPath, writeStore } = profilesStoreFixture(t);
 	writeStore({ team: { worker: { model: "openai/alpha" } } }, "team");
-	await fixture.run("gentle:profiles", "publish team");
+	await fixture.run("td:profiles", "publish team");
 	assert.equal(fixture.panelVisits(), 0, "publish is a subcommand: no screen opens");
 
 	assert.equal(
@@ -3914,7 +3408,7 @@ test("a stale pin is named as missing instead of silently changing nothing", asy
 		if (rendered === undefined) rendered = stripAnsi(renderComponent(panel));
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.match(rendered ?? "", /⚠ The local pin names "deleted-profile", which no profile defines, so it is\s+(│\s+)?ignored/);
 });
 
@@ -3930,7 +3424,7 @@ test("pinning outside a Git worktree warns and writes nothing", async (t) => {
 		if (visits === 1) for (const key of SCREEN_KEYS.useInRepo) panel.handleInput(key);
 		else panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(existsSync(localPinPath), false);
 	assert.equal(existsSync(repoPinPath), false);
 	assert.match(fixture.notifications.at(-1)?.message ?? "", /not inside a Git worktree/);
@@ -3952,7 +3446,7 @@ test("Stop using in this repo removes the clone pin", async (t) => {
 			panel.handleInput("\x1b");
 		}
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(existsSync(localPinPath), false, "using it again removes the layer instead of rewriting it");
 	assert.match(fixture.notifications.at(-1)?.message ?? "", /removed the local pin for this clone/);
 });
@@ -3969,7 +3463,7 @@ test("the tab of the pinned profile carries ⌂ and the screen opens on it", asy
 		if (rendered === undefined) rendered = stripAnsi(renderComponent(panel));
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const tabLine = (rendered ?? "").split("\n")[1] ?? "";
 	assert.match(tabLine, /other ◉⌂/, "the pin present at startup is also the session's profile");
 	assert.doesNotMatch(tabLine, /team ★⌂/);
@@ -3986,7 +3480,7 @@ test("an invalid pin file is surfaced by the panel instead of reading as no pin"
 		if (rendered === undefined) rendered = stripAnsi(renderComponent(panel));
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	// The notice wraps between words; the frame's border columns sit between the lines.
 	assert.match((rendered ?? "").replace(/\s*│\s*/g, " ").replace(/\s+/g, " "), /⚠ The local pin file .* is not a valid pin and is ignored\./);
 	assert.doesNotMatch(rendered ?? "", /which no profile defines/);
@@ -4008,7 +3502,7 @@ test("applying a profile in a pinned repository re-pins the clone and writes no 
 	}, "pinned");
 	writePin(localPinPath, "pinned");
 	applyOnce(fixture);
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 
 	assert.equal(
 		readFileSync(localPinPath, "utf8"),
@@ -4035,7 +3529,7 @@ test("deleting a profile is refused when a non-winning pin layer names it", asyn
 	writePin(repoPinPath, "team");
 	// The screen opens on "other" (the winning pin); go to "team" and delete it.
 	actOnProfile(fixture, SCREEN_KEYS.delete, "team");
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(existsSync(repoPinPath), true, "the declaration survives the refused delete");
 	assert.match(fixture.notifications.at(-1)?.message ?? "", /is pinned for this repository/);
 	const store = JSON.parse(readFileSync(join(fixture.configHome, "profiles.json"), "utf8"));
@@ -4258,7 +3752,7 @@ test("Enter switches the live orchestrator, binds the profile, and writes nothin
 	assert.equal(readFileSync(settingsPath, "utf8"), before.settings, "Pi settings are untouched");
 	assert.equal(existsSync(fixture.globalPath), false, "no global models.json is written");
 	assert.equal(existsSync(join(fixture.root, ".pi", "subagents.json")), false, "no materialized store is written");
-	assert.equal(manager.getBranch().filter((entry) => entry.type === "custom" && entry.customType === "gentle-pi.session-profile/v1").length, 1, "only the session profile record is written");
+	assert.equal(manager.getBranch().filter((entry) => entry.type === "custom" && entry.customType === "tomidev.session-profile/v1").length, 1, "only the session profile record is written");
 	const applied = notifications.at(-1)?.message ?? "";
 	assert.match(applied, /bound profile "team" to this session/);
 	assert.match(applied, /its tab shows ◉/);
@@ -4330,11 +3824,11 @@ test("reviewer routing follows the profile the session froze at startup, not lat
 });
 
 test("provider review roles fall back to the session profile orchestrator before the persisted default", (t) => {
-	const { writeStore, writeSettings } = profilesStoreFixture(t);
+	const { fixture, writeStore, writeSettings } = profilesStoreFixture(t);
 	writeStore({ sol: {} }, "sol");
 	writeSettings({ defaultProvider: "nan", defaultModel: "flash" });
 	bindSessionProfile("bound-session", "sol", { orchestrator: { model: "openai/sol", thinking: "high" }, "review-validator": { model: "openai/validator" } });
-	const routing = __testing.readReviewerModelConfig(process.cwd(), "bound-session");
+	const routing = __testing.readReviewerModelConfig(fixture.root, "bound-session");
 	assert.deepEqual(__testing.reviewHostRelaySelection("review-refuter", routing), { selection: "openai/sol", thinking: "high", routingKey: "review-refuter" });
 	assert.equal(__testing.reviewHostRelaySelection("review-validator", routing).selection, "openai/validator");
 	assert.deepEqual(__testing.reviewHostRelaySelection("risk", routing), { routingKey: "review-risk" }, "lens roles stay fail-closed");
@@ -4415,11 +3909,11 @@ test("reviewer routing of a session frozen without a profile ignores a pin added
 test("reviewer routing in follow mode reads the profile the target resolves now", (t) => {
 	const { fixture, writeStore, localPinPath, writePin } = profilesStoreFixture(t);
 	resetFrozenInheritedProfilesForTesting();
-	const previous = process.env.GENTLE_PI_PROFILE_FOLLOW;
-	process.env.GENTLE_PI_PROFILE_FOLLOW = "1";
+	const previous = process.env.TOMIDEV_PROFILE_FOLLOW;
+	process.env.TOMIDEV_PROFILE_FOLLOW = "1";
 	t.after(() => {
-		if (previous === undefined) delete process.env.GENTLE_PI_PROFILE_FOLLOW;
-		else process.env.GENTLE_PI_PROFILE_FOLLOW = previous;
+		if (previous === undefined) delete process.env.TOMIDEV_PROFILE_FOLLOW;
+		else process.env.TOMIDEV_PROFILE_FOLLOW = previous;
 		resetFrozenInheritedProfilesForTesting();
 	});
 	writeStore({ sol: { "review-risk": { model: "openai/sol" } } }, "sol");
@@ -4619,7 +4113,7 @@ test("Enter skipped by a session replacement while queued never touches the stal
 	assert.equal(readSessionProfileBinding(manager.getSessionId()), undefined);
 });
 
-/** Runs `/gentle:profiles <args>` through the registered command on a real persisted session. */
+/** Runs `/td:profiles <args>` through the registered command on a real persisted session. */
 function profilesCommandHarness(t: test.TestContext, profiles: Record<string, unknown> = { team: { orchestrator: { model: "openai/beta", thinking: "high" }, worker: { model: "openai/alpha" } } }) {
 	const { fixture, storePath, settingsPath, writeStore, writeSettings } = profilesStoreFixture(t);
 	writeSettings();
@@ -4649,7 +4143,7 @@ function profilesCommandHarness(t: test.TestContext, profiles: Record<string, un
 		sessionManager: manager,
 		modelRegistry: { find: (provider: string, id: string) => ({ provider, id }) },
 	} as unknown as ExtensionCommandContext;
-	const family = () => manager.getBranch().filter((entry) => entry.type === "custom" && typeof entry.customType === "string" && entry.customType.startsWith("gentle-pi.session-profile/"));
+	const family = () => manager.getBranch().filter((entry) => entry.type === "custom" && typeof entry.customType === "string" && entry.customType.startsWith("tomidev.session-profile/"));
 	const before = { store: readFileSync(storePath, "utf8"), settings: readFileSync(settingsPath, "utf8") };
 	const assertSharedUntouched = () => {
 		assert.equal(readFileSync(storePath, "utf8"), before.store, "the profiles store is untouched");
@@ -4659,7 +4153,7 @@ function profilesCommandHarness(t: test.TestContext, profiles: Record<string, un
 	};
 	return {
 		manager, ctx, notifications, liveCalls, family, assertSharedUntouched, storePath,
-		run: (args: string, runCtx: ExtensionCommandContext = ctx) => commands.get("gentle:profiles")!.handler(args, runCtx),
+		run: (args: string, runCtx: ExtensionCommandContext = ctx) => commands.get("td:profiles")!.handler(args, runCtx),
 		start: (event: unknown, startCtx: ExtensionContext = ctx) => {
 			started = startCtx.sessionManager as SessionManager;
 			return handlers.get("session_start")!(event, startCtx);
@@ -4668,7 +4162,7 @@ function profilesCommandHarness(t: test.TestContext, profiles: Record<string, un
 	};
 }
 
-test("/gentle:profiles clear removes the session binding and records an explicit clear", async (t) => {
+test("/td:profiles clear removes the session binding and records an explicit clear", async (t) => {
 	const h = profilesCommandHarness(t);
 	const live = { setModel: async () => true, setThinkingLevel() {}, getThinkingLevel: (): ThinkingLevel => "medium" };
 	await __testing.runProfilesPanelAction(h.ctx, live, h.storePath, readValidProfilesStore(h.storePath), { type: "use-session", name: "team" }, {});
@@ -4687,7 +4181,7 @@ test("/gentle:profiles clear removes the session binding and records an explicit
 	h.assertSharedUntouched();
 });
 
-test("/gentle:profiles clear skipped by a session replacement while queued never touches the stale ctx", async (t) => {
+test("/td:profiles clear skipped by a session replacement while queued never touches the stale ctx", async (t) => {
 	const h = profilesCommandHarness(t);
 	let stale = false;
 	const staleNotifications: string[] = [];
@@ -4711,21 +4205,21 @@ test("/gentle:profiles clear skipped by a session replacement while queued never
 	assert.equal(h.family().length, 0, "nothing is written");
 });
 
-test("/gentle:profiles clear with extra arguments shows the usage warning and writes nothing", async (t) => {
+test("/td:profiles clear with extra arguments shows the usage warning and writes nothing", async (t) => {
 	const h = profilesCommandHarness(t);
 	const live = { setModel: async () => true, setThinkingLevel() {}, getThinkingLevel: (): ThinkingLevel => "medium" };
 	await __testing.runProfilesPanelAction(h.ctx, live, h.storePath, readValidProfilesStore(h.storePath), { type: "use-session", name: "team" }, {});
 	const recordsBefore = h.family().length;
 	await h.run("clear extra");
 	assert.equal(h.last().severity, "warning");
-	assert.match(h.last().message, /^Usage: \/gentle:profiles \[.*clear\]/);
+	assert.match(h.last().message, /^Usage: \/td:profiles \[.*clear\]/);
 	assert.equal(h.family().length, recordsBefore, "no clear record is appended");
 	assert.equal(readSessionProfileBinding(h.manager.getSessionId())?.name, "team");
 	await h.run("  clear  ");
 	assert.equal(readSessionProfileBinding(h.manager.getSessionId()), undefined, "surrounding whitespace still clears");
 });
 
-test("/gentle:profiles clear on a never-bound session writes nothing and says so", async (t) => {
+test("/td:profiles clear on a never-bound session writes nothing and says so", async (t) => {
 	const h = profilesCommandHarness(t);
 	await h.run("clear");
 	assert.equal(h.family().length, 0);
@@ -4736,7 +4230,7 @@ test("/gentle:profiles clear on a never-bound session writes nothing and says so
 });
 
 for (const kind of ["in-memory", "unsaved"] as const)
-	test(`/gentle:profiles clear on a never-bound ${kind} session writes nothing and keeps launches available`, async (t) => {
+	test(`/td:profiles clear on a never-bound ${kind} session writes nothing and keeps launches available`, async (t) => {
 		const h = profilesCommandHarness(t);
 		const manager = kind === "in-memory" ? SessionManager.inMemory(h.ctx.cwd) : SessionManager.create(h.ctx.cwd, join(h.ctx.cwd, "unsaved-sessions"));
 		if (kind === "in-memory") manager.appendMessage({ role: "user", content: "unsaved conversation", timestamp: 1 });
@@ -4751,7 +4245,7 @@ for (const kind of ["in-memory", "unsaved"] as const)
 		assert.equal(authority.available && authority.binding, undefined);
 	});
 
-test("/gentle:profiles clear on an already-cleared session writes nothing and says so", async (t) => {
+test("/td:profiles clear on an already-cleared session writes nothing and says so", async (t) => {
 	const h = profilesCommandHarness(t);
 	const live = { setModel: async () => true, setThinkingLevel() {}, getThinkingLevel: (): ThinkingLevel => "medium" };
 	await __testing.runProfilesPanelAction(h.ctx, live, h.storePath, readValidProfilesStore(h.storePath), { type: "use-session", name: "team" }, {});
@@ -4780,10 +4274,10 @@ test("Use in this session carries a recorded startup profile and clear goes back
 	assert.deepEqual(newest(h), startup, "the startup bind is written again, orchestrator included");
 	assert.equal(readSessionProfileBinding(h.manager.getSessionId())?.origin, "local");
 	assert.equal(h.last().severity, "info");
-	assert.equal(h.last().message, 'el Gentleman cleared session profile "fast" (persisted in this session). New launches go back to the profile this session started with, "team (local)", and use it. The live orchestrator is unchanged.');
+	assert.equal(h.last().message, 'Tomidev cleared session profile "fast" (persisted in this session). New launches go back to the profile this session started with, "team (local)", and use it. The live orchestrator is unchanged.');
 	await h.run("clear");
 	assert.equal(h.family().length, 3, "a startup record is already there: nothing is written");
-	assert.equal(h.last().message, 'el Gentleman: this session is already on the profile it started with, "team (local)"; nothing to clear.');
+	assert.equal(h.last().message, 'Tomidev: this session is already on the profile it started with, "team (local)"; nothing to clear.');
 	h.assertSharedUntouched();
 });
 
@@ -4792,20 +4286,20 @@ test("clear goes back to no profile when the newest record says the session star
 	h.manager.appendCustomEntry(SESSION_PROFILE_CUSTOM_TYPE, createSessionProfileClear("none"));
 	await h.run("clear");
 	assert.equal(h.family().length, 1, "a startup-none record is already there: nothing is written");
-	assert.equal(h.last().message, "el Gentleman: this session is already on no profile, as it started; nothing to clear.");
+	assert.equal(h.last().message, "Tomidev: this session is already on no profile, as it started; nothing to clear.");
 	await useInSession(h, "fast");
 	assert.deepEqual(newest(h), createSessionProfileBind("fast", withFast.fast, "none"));
 	await h.run("clear");
 	assert.deepEqual(newest(h), { kind: "clear", startup: "none" });
 	assert.equal(readSessionProfileBinding(h.manager.getSessionId()), undefined);
-	assert.equal(h.last().message, 'el Gentleman cleared session profile "fast" (persisted in this session). New launches go back to no profile, as this session started. The live orchestrator is unchanged.');
+	assert.equal(h.last().message, 'Tomidev cleared session profile "fast" (persisted in this session). New launches go back to no profile, as this session started. The live orchestrator is unchanged.');
 });
 
 test("clear in follow mode writes a legacy clear even when the newest record carries the startup state", async (t) => {
 	const h = profilesCommandHarness(t, withFast);
 	h.manager.appendCustomEntry(SESSION_PROFILE_CUSTOM_TYPE, createSessionProfileBind("fast", withFast.fast, "none"));
-	process.env.GENTLE_PI_PROFILE_FOLLOW = "1";
-	t.after(() => { delete process.env.GENTLE_PI_PROFILE_FOLLOW; });
+	process.env.TOMIDEV_PROFILE_FOLLOW = "1";
+	t.after(() => { delete process.env.TOMIDEV_PROFILE_FOLLOW; });
 	await h.run("clear");
 	assert.deepEqual(newest(h), { kind: "clear" });
 	assert.match(h.last().message, /New launches use the routing without a session profile/);
@@ -4821,13 +4315,13 @@ for (const [record, subject] of [
 	test(`clear in follow mode appends a legacy clear when the newest record is a ${record}`, async (t) => {
 		const h = profilesCommandHarness(t, withFast);
 		h.manager.appendCustomEntry(SESSION_PROFILE_CUSTOM_TYPE, record === "startup bind" ? createSessionProfileStartupBind("local", "team", TEAM_DEFINITION) : createSessionProfileClear("none"));
-		process.env.GENTLE_PI_PROFILE_FOLLOW = "1";
-		t.after(() => { delete process.env.GENTLE_PI_PROFILE_FOLLOW; });
+		process.env.TOMIDEV_PROFILE_FOLLOW = "1";
+		t.after(() => { delete process.env.TOMIDEV_PROFILE_FOLLOW; });
 		await h.run("clear");
 		assert.equal(h.family().length, 2, "one legacy clear follows the startup record");
 		assert.deepEqual(newest(h), { kind: "clear" });
 		assert.equal(h.last().severity, "info");
-		assert.match(h.last().message, new RegExp(`^el Gentleman cleared ${subject} . persisted in this session\\. New launches use the routing without a session profile \\(pins, repository declaration, global\\)\\. The live orchestrator is unchanged\\.$`));
+		assert.match(h.last().message, new RegExp(`^Tomidev cleared ${subject} . persisted in this session\\. New launches use the routing without a session profile \\(pins, repository declaration, global\\)\\. The live orchestrator is unchanged\\.$`));
 		h.assertSharedUntouched();
 	});
 
@@ -4856,7 +4350,7 @@ test("clear after a resume with no conversation writes a legacy clear, not the r
 	assert.deepEqual((family().at(-1) as { data?: unknown }).data, { kind: "clear" }, "an unknown startup state writes a legacy clear");
 	assert.equal(readSessionProfileBinding(manager.getSessionId()), undefined);
 	assert.equal(h.last().severity, "info");
-	assert.match(h.last().message, /^el Gentleman cleared session profile "fast" . persisted in this session\. New launches use the routing without a session profile \(pins, repository declaration, global\)\. The live orchestrator is unchanged\.$/);
+	assert.match(h.last().message, /^Tomidev cleared session profile "fast" . persisted in this session\. New launches use the routing without a session profile \(pins, repository declaration, global\)\. The live orchestrator is unchanged\.$/);
 });
 
 // gentle-shell#2742, section 8: the startup record carries the orchestrator for
@@ -5002,8 +4496,8 @@ for (const reason of ["startup", "new"] as const) {
 // gentle-shell#2742, section 3: a session still on the startup state its own
 // start froze is already where a clear would go, even with no profile record.
 for (const [subject, active, notice] of [
-	["a startup profile", "team", 'el Gentleman: this session is already on the profile it started with, "team"; nothing to clear.'],
-	["no startup profile", undefined, "el Gentleman: this session is already on no profile, as it started; nothing to clear."],
+	["a startup profile", "team", 'Tomidev: this session is already on the profile it started with, "team"; nothing to clear.'],
+	["no startup profile", undefined, "Tomidev: this session is already on no profile, as it started; nothing to clear."],
 ] as const) {
 	test(`clear right after a session's own start with ${subject} says it is already there and writes nothing`, async (t) => {
 		const h = profilesCommandHarness(t, withFast);
@@ -5033,10 +4527,10 @@ test("clear on a never-bound session whose startup state is unknown keeps the ne
 	await h.run("clear", ctx);
 	assert.equal(manager.getEntries().length, entries, "the transcript gains no entry");
 	assert.equal(h.last().severity, "info");
-	assert.equal(h.last().message, "el Gentleman: no session profile was ever selected in this session; nothing to clear.");
+	assert.equal(h.last().message, "Tomidev: no session profile was ever selected in this session; nothing to clear.");
 });
 
-test("/gentle:profiles clear without a parent session id fails loud and writes nothing", async (t) => {
+test("/td:profiles clear without a parent session id fails loud and writes nothing", async (t) => {
 	const h = profilesCommandHarness(t);
 	(h.ctx as unknown as { sessionManager: unknown }).sessionManager = { getSessionId: () => "" };
 	await h.run("clear");
@@ -5046,7 +4540,7 @@ test("/gentle:profiles clear without a parent session id fails loud and writes n
 	h.assertSharedUntouched();
 });
 
-for (const [customType, kind] of [["gentle-pi.session-profile/v1", "invalid"], ["gentle-pi.session-profile/v99", "from a newer version"]] as const)
+for (const [customType, kind] of [["tomidev.session-profile/v1", "invalid"], ["tomidev.session-profile/v99", "from a newer version"]] as const)
 	test(`an unreadable session profile record (${customType}) warns with its location and clear recovers`, async (t) => {
 		const h = profilesCommandHarness(t);
 		h.manager.appendCustomEntry(customType, { invalid: true });
@@ -5057,7 +4551,7 @@ for (const [customType, kind] of [["gentle-pi.session-profile/v1", "invalid"], [
 		assert.match(h.last().message, new RegExp(`entry ${entryIndex}\\b`));
 		assert.match(h.last().message, new RegExp(`is ${kind}`));
 		assert.match(h.last().message, /Subagent launches are blocked/);
-		assert.match(h.last().message, /Select a profile with Enter or run \/gentle:profiles clear/);
+		assert.match(h.last().message, /Select a profile with Enter or run \/td:profiles clear/);
 		await h.run("clear");
 		assert.equal(h.last().severity, "info");
 		assert.match(h.last().message, /cleared the unreadable session profile record/);
@@ -5120,7 +4614,7 @@ test("a session-bound profile carries ◉ and says it is used in this session", 
 		rendered = stripAnsi(renderComponent(panel));
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const tabLine = rendered.split("\n")[1] ?? "";
 	assert.match(tabLine, /team ◉★/);
 	assert.doesNotMatch(tabLine, /other ◉/);
@@ -5152,14 +4646,14 @@ function freezeScreenSession(fixture: ReturnType<typeof routingConsumerFixture>)
 	freezeSessionProfileAtStartup({ sessionId: "session-panel", cwd: fixture.root, configHome: fixture.configHome });
 }
 
-/** The first screen bare `/gentle:profiles` opens, as text, closed right after. */
+/** The first screen bare `/td:profiles` opens, as text, closed right after. */
 async function openedScreen(fixture: ReturnType<typeof routingConsumerFixture>, width = 120): Promise<string> {
 	let rendered: string | undefined;
 	fixture.onInput((panel) => {
 		rendered ??= stripAnsi(panel.render(width).join("\n"));
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	return rendered ?? "";
 }
 
@@ -5174,7 +4668,7 @@ const authorityNotice = "Session profile authority is unavailable; affected laun
 function frozenRealSession(fixture: ReturnType<typeof routingConsumerFixture>, unreadable: boolean): void {
 	const manager = profileActionManager(fixture.root);
 	freezeSessionProfileAtStartup({ sessionId: manager.getSessionId(), cwd: fixture.root, configHome: fixture.configHome });
-	if (unreadable) manager.appendCustomEntry("gentle-pi.session-profile/v99", { invalid: true });
+	if (unreadable) manager.appendCustomEntry("tomidev.session-profile/v99", { invalid: true });
 	fixture.useSessionManager(manager);
 }
 
@@ -5192,7 +4686,7 @@ test("a frozen profile is not marked as used while session profile authority is 
 	assert.ok(flatScreen(rendered).includes(authorityNotice), "the whole notice fits at 40 columns");
 
 	actOnProfile(fixture, "u", "team");
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	const recovered = fixture.panels.at(-1) ?? "";
 	assert.match(screenTabLine(recovered), /team ◉/, "Use in this session recovers");
 	assert.doesNotMatch(flatScreen(recovered), /authority is unavailable/);
@@ -5330,67 +4824,67 @@ test("file operations are subcommands: profiles restore-routing, export and impo
 	const { fixture, storePath, writeStore } = profilesStoreFixture(t);
 	writeStore({ team: { worker: { model: "openai/alpha", thinking: "high" } } }, "team");
 
-	// /gentle:profiles restore-routing: confirm, then write models.json and materialize it.
-	writeMarkdown(fixture.exportPath, `${JSON.stringify({ kind: "gentle-pi.agent_model_routing", version: 1, agents: { worker: { model: "openai/beta", thinking: "low" } } }, null, 2)}\n`);
+	// /td:profiles restore-routing: confirm, then write models.json and materialize it.
+	writeMarkdown(fixture.exportPath, `${JSON.stringify({ kind: "tomidev.agent_model_routing", version: 1, agents: { worker: { model: "openai/beta", thinking: "low" } } }, null, 2)}\n`);
 	fixture.onConfirm(async () => false);
-	await fixture.run("gentle:profiles", "restore-routing");
+	await fixture.run("td:profiles", "restore-routing");
 	assert.equal(existsSync(fixture.globalPath), false, "a declined restore writes nothing");
 	fixture.onConfirm(async () => true);
-	await fixture.run("gentle:profiles", "restore-routing");
+	await fixture.run("td:profiles", "restore-routing");
 	assert.deepEqual(JSON.parse(readFileSync(fixture.globalPath, "utf8")).worker, { model: "openai/beta", thinking: "low" });
 	assert.match(fixture.notifications.at(-1)?.message ?? "", /restored global model config/);
 	assert.match(readFileSync(join(fixture.root, ".pi", "agents", "worker.md"), "utf8"), /model: openai\/beta/);
 
-	// /gentle:profiles export-routing writes the saved routing, not a profile.
-	await fixture.run("gentle:profiles", "export-routing");
+	// /td:profiles export-routing writes the saved routing, not a profile.
+	await fixture.run("td:profiles", "export-routing");
 	assert.deepEqual(JSON.parse(readFileSync(fixture.exportPath, "utf8")).agents, { worker: { model: "openai/beta", thinking: "low" } });
 	assert.match(fixture.notifications.at(-1)?.message ?? "", /exported 1 saved model routing entry/);
 
-	// /gentle:profiles export <name> then import it back over a changed store.
-	await fixture.run("gentle:profiles", "export team");
+	// /td:profiles export <name> then import it back over a changed store.
+	await fixture.run("td:profiles", "export team");
 	const exportFile = join(fixture.configHome, "profiles.export.json");
 	assert.ok(existsSync(exportFile));
 	assert.match(fixture.notifications.at(-1)?.message ?? "", /exported profile "team"/);
 	writeStore({ team: { worker: { model: "openai/gamma" } } }, "team");
-	await fixture.run("gentle:profiles", "import");
+	await fixture.run("td:profiles", "import");
 	assert.deepEqual(JSON.parse(readFileSync(storePath, "utf8")).profiles.team, { worker: { model: "openai/alpha", thinking: "high" } }, "import replaces after confirmation");
 
 	for (const args of ["export", "export ghost", "publish", "frobnicate", "restore", "export-routing extra"]) {
-		await fixture.run("gentle:profiles", args);
-		assert.match(fixture.notifications.at(-1)?.message ?? "", /Usage: \/gentle:profiles \[export <name> \| import \| publish <name> \| export-routing \| restore-routing \| clear\]/, args);
+		await fixture.run("td:profiles", args);
+		assert.match(fixture.notifications.at(-1)?.message ?? "", /Usage: \/td:profiles \[export <name> \| import \| publish <name> \| export-routing \| restore-routing \| clear\]/, args);
 	}
 	assert.equal(fixture.panelVisits(), 0, "no subcommand opens the screen");
 });
 
-test("gentle:models is gone: gentle:profiles is the only models and profiles command", () => {
+test("td:models is gone: td:profiles is the only models and profiles command", () => {
 	const commands = new Map<string, { description?: string }>();
 	createGentleAiExtension({ nativeReviewCli: null })({
 		on() {},
 		registerTool() {},
 		registerCommand(name: string, command: { description?: string }) { commands.set(name, command); },
 	} as unknown as ExtensionAPI);
-	assert.equal(commands.has("gentle:models"), false);
-	assert.match(commands.get("gentle:profiles")?.description ?? "", /export-routing, restore-routing/);
+	assert.equal(commands.has("td:models"), false);
+	assert.match(commands.get("td:profiles")?.description ?? "", /export-routing, restore-routing/);
 	for (const [name, command] of commands) {
-		assert.doesNotMatch(command.description ?? "", /gentle:models/, name);
+		assert.doesNotMatch(command.description ?? "", /td:models/, name);
 	}
 });
 
-test("gentle:profiles still opens the screen and keeps export <name>, import, and publish <name>", async (t) => {
+test("td:profiles still opens the screen and keeps export <name>, import, and publish <name>", async (t) => {
 	const { fixture, storePath, repoPinPath, writeStore } = profilesStoreFixture(t);
 	writeStore({ team: { worker: { model: "openai/alpha" } } }, "team");
 	fixture.onInput((panel) => {
 		assert.equal(shownProfile(panel), "team");
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(fixture.panelVisits(), 1);
-	await fixture.run("gentle:profiles", "export team");
+	await fixture.run("td:profiles", "export team");
 	assert.match(fixture.notifications.at(-1)?.message ?? "", /exported profile "team"/);
 	writeStore({ team: { worker: { model: "openai/gamma" } } }, "team");
-	await fixture.run("gentle:profiles", "import");
+	await fixture.run("td:profiles", "import");
 	assert.deepEqual(JSON.parse(readFileSync(storePath, "utf8")).profiles.team, { worker: { model: "openai/alpha" } });
-	await fixture.run("gentle:profiles", "publish team");
+	await fixture.run("td:profiles", "publish team");
 	assert.equal(JSON.parse(readFileSync(repoPinPath, "utf8")).profile, "team");
 	assert.equal(fixture.panelVisits(), 1, "subcommands open no screen");
 });
@@ -5420,7 +4914,7 @@ test("switching profile tabs redraws in place: the overlay never closes and reop
 		frames.push(stripAnsi(renderComponent(panel)));
 		panel.handleInput("\x1b");
 	});
-	await fixture.run("gentle:profiles");
+	await fixture.run("td:profiles");
 	assert.equal(fixture.panelVisits(), 1, "a tab switch keeps the one overlay on screen");
 	const [first, switched, asking, saved] = frames;
 	assert.match(first ?? "", /worker\s+openai\/alpha/);
@@ -5482,7 +4976,7 @@ test("models screen keeps ↑↓ agent at 72 columns; the fallbacks key yields f
 test("fallback chains are saved only for profiles that exist on disk", () => {
 	const home = mkdtempSync(join(tmpdir(), "fallbacks-saved-only-"));
 	try {
-		writeFileSync(join(home, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "home", profiles: { home: {} } }));
+		writeFileSync(join(home, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "home", profiles: { home: {} } }));
 		const fallbacks = __testing.fileRoutingFallbacks(home);
 		assert.match(fallbacks.save("draft", "*", [{ model: "openai/gpt-5.5" }]) ?? "", /Save the profile first/);
 		assert.equal(existsSync(join(home, "profile-fallbacks.json")), false, "nothing is written for an unsaved profile");

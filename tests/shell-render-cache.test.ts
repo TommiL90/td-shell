@@ -4,7 +4,6 @@ import { initTheme, type ExtensionAPI, type ExtensionContext } from "@earendil-w
 import { buildShellBarModel, createFooterStatusMemo, type ShellFooterData } from "../extensions/gentle-shell.ts";
 import { CHANGE_STATUS } from "../lib/shell-changes.ts";
 import type { RunningJobDisplay } from "../lib/jobs-sidebar-state.ts";
-import type { ReviewSidebarSnapshot } from "../lib/review-sidebar-state.ts";
 import type { ProviderUsage } from "../lib/shell-usage.ts";
 import { createQuietToolRenderer } from "../extensions/quiet-tools.ts";
 import { CARD_STYLE, cardStyle, setCardStyle } from "../lib/shell-card.ts";
@@ -159,7 +158,6 @@ function footerMemoFixture() {
 	let added = 0;
 	let deleted = 0;
 	let unbornRoots = 0;
-	let review: ReviewSidebarSnapshot | undefined;
 	let jobs: RunningJobDisplay[] | undefined;
 	let settings: unknown = { statusPlacement: "auto" };
 	let style: unknown = "comfortable";
@@ -172,7 +170,6 @@ function footerMemoFixture() {
 		profile: () => profile,
 		profileTier: () => profileTier,
 		jobs: () => jobs,
-		review: () => review,
 		tracker: () => ({ model: { files: [{ path: "a.ts", status: CHANGE_STATUS.MODIFIED, added, deleted }], added, deleted }, unbornRoots: Array.from({ length: unbornRoots }, () => "root") }),
 		visualSettings: () => settings,
 		cardStyle: () => style,
@@ -191,7 +188,6 @@ function footerMemoFixture() {
 		setUsage: (value: ProviderUsage | undefined) => { usage = value; },
 		setChangeCounts: (nextAdded: number, nextDeleted: number) => { added = nextAdded; deleted = nextDeleted; },
 		setUnbornRoots: (value: number) => { unbornRoots = value; },
-		setReview: (value: ReviewSidebarSnapshot | undefined) => { review = value; },
 		setJobs: (value: RunningJobDisplay[] | undefined) => { jobs = value; },
 		setSettings: (value: unknown) => { settings = value; },
 		setStyle: (value: unknown) => { style = value; },
@@ -219,7 +215,6 @@ test("the footer status digest key notices every live input the model reads", ()
 		["usage", () => f.setUsage({ provider: "p", plan: undefined, limits: [], fetchedAt: 1 })],
 		["change counts", () => f.setChangeCounts(2, 1)],
 		["unborn roots", () => f.setUnbornRoots(1)],
-		["review", () => f.setReview({ state: "open", scope: undefined } as unknown as ReviewSidebarSnapshot)],
 		["jobs", () => f.setJobs([{ id: "j", label: "l", startedAt: 0 }])],
 		["visual settings", () => f.setSettings({ statusPlacement: "bottom" })],
 		["card style", () => f.setStyle("compact")],

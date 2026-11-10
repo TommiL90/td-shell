@@ -132,43 +132,12 @@ function toolCallThroughHook(toolName: string, input: Record<string, unknown>, c
 	} as unknown as ExtensionContext);
 }
 
-test("S3/S5: the orchestrator tool_call hook gates only primary verifier launches", async (t) => {
-	const bare = workspace(false);
-	const documented = workspace(true);
-	t.after(() => { rmSync(bare, { recursive: true, force: true }); rmSync(documented, { recursive: true, force: true }); });
-	const blocked = await toolCallThroughHook("subagent_run", { agent: "gentle-ai-verify", mode: "task", task: "Verify the budget change." }, bare, 20_000);
-	assert.equal(blocked?.block, true);
-	assert.match(blocked?.reason ?? "", /focused test and suite inline/);
-	const risked = await toolCallThroughHook("subagent_run", { agent: "gentle-ai-verify", mode: "task", task: "Verify the budget change.\nRisk: item 3 (shared parser)" }, bare, 20_000);
-	assert.equal(risked?.block, undefined, "a named high-risk item admits");
-	const documentedLaunch = await toolCallThroughHook("subagent_run", { agent: "gentle-ai-verify", mode: "task", workspace_root: documented, task: "Spec: odd/tasks/ledger.md, T1. Verify it." }, bare, 20_000);
-	assert.equal(documentedLaunch?.block, undefined, "the feature document resolves under the selected workspace root");
-	const backstop = await toolCallThroughHook("subagent_run", { agent: "gentle-ai-verify", mode: "task", task: "Verify the budget change." }, bare, 136_000);
-	assert.equal(backstop?.block, undefined, "half of the measured window admits");
-	const child = await toolCallThroughHook("subagent_run", { agent: "gentle-ai-verify", mode: "task", task: "Verify it." }, bare, 0, { GENTLE_PI_AGENTS_CHILD: "1" });
-	assert.equal(child?.block, undefined, "a child session is not gated");
-	const continuation = await toolCallThroughHook("subagent_continue", { agent: "gentle-ai-verify", task_id: "t-1", task: "Recheck it." }, bare, 0);
-	assert.notEqual(continuation?.reason, blocked?.reason, "a continuation is not gated by the verifier admission");
-	for (const agent of ["gentle-ai-explore", "jd-judge-a", "jd-judge-b"]) {
-		const other = await toolCallThroughHook("subagent_run", { agent, mode: "task", task: "Map src/budget.ts" }, bare, 0);
-		assert.equal(other?.block, undefined, `${agent} is unaffected`);
-	}
-	// A native review relay keeps its own candidate-view gate, which already rejects a dispatch without a frozen view.
-	const relay = await toolCallThroughHook("subagent_run", { agent: "review-risk", mode: "task", task: "Review the candidate." }, bare, 0);
-	assert.match(relay?.reason ?? "", /^review subagent dispatch /, "review relays keep their previous gate");
-	const writer = await toolCallThroughHook("subagent_run", { agent: "gentle-ai-worker", mode: "background", task: "Implement it.\nRisk: item 3\n\n## Allowed edit surfaces\nsrc/budget.ts\n" }, bare, 0);
-	assert.match(writer?.reason ?? "", /write this unit inline yourself/, "writer admission is unchanged and ignores Risk lines");
-});
 
-test("S6: the Verification rule and the reference docs point at the runtime admission", () => {
-	const read = (path: string) => readFileSync(join(import.meta.dirname, "..", path), "utf8");
-	assert.ok(read("assets/orchestrator.md").includes("independent `gentle-ai-verify`; else inline; runtime admission, gates/overengineering"), "the core rule names the runtime check");
-	assert.ok(read("assets/orchestrator-verification.md").includes("(runtime admits its launch on a `Risk: item N` line or sentence, a feature-document task line, or past the context backstop)"), "the normative rule names the admitted line");
-	const docs = read("docs/readme-reference.md");
-	const writer = docs.indexOf("A second admission check stops small-task delegation");
-	const verifier = docs.indexOf("A third admission check keeps the independent verifier for high-risk changes");
-	assert.ok(writer >= 0 && verifier > writer, "the verifier admission is documented right after the writer admission");
-	assert.match(docs.slice(verifier, docs.indexOf("\n\n", verifier)), /`gentle-ai-verify` launch is admitted only when[^]*`Risk: item N`[^]*context backstop/);
+test("S6: reference docs distinguish workflow verification from retired admission gates", () => {
+	const docs = readFileSync(new URL("../docs/readme-reference.md", import.meta.url), "utf8");
+	assert.match(docs, /Verifier handoffs identify the actual named risk and C# obligations/);
+	assert.match(docs, /not legacy document-path or risk-declaration admission gates/);
+	assert.match(docs, /Full Lean closure requires a fresh independent `gentle-ai-verify` PASS/);
 });
 
 // gentle-shell#2478: the strict placement grammar is unchanged by the diagnostics wording — a declaration after
@@ -188,16 +157,11 @@ test("S2/S5: placement grammar admits line/sentence starts and blocks other sepa
 
 // gentle-shell#2478 S2-S4: the docs section states the strict grammar, the assessment≠admission split, and that the
 // post-denial disposition is launch-scoped with no gate-level retry. Covers S2, S3, S4.
-test("S2/S3/S4: delegated-verification documents placement, assessment≠admission and post-denial disposition", () => {
+test("S2/S3/S4: delegated verification keeps actual risk, independent proof and human-controlled recovery", () => {
 	const docs = readFileSync(new URL("../docs/delegated-verification.md", import.meta.url), "utf8");
-	const section = docs.split("## Verifier launch admission and post-denial disposition")[1]?.split("\n## ")[0] ?? "";
-	assert.match(section, /The declaration grammar is strict: `Risk: item N \(reason\)` must start a line/);
-	assert.match(section, /after another separator such as `; ` or `,` inside a sentence is not recognized/);
-	assert.match(section, /Keep the risk evidence tied to the actual change; never add a Risk line only to gain admission\./);
-	assert.match(section, /Assessment and admission are separate gates/);
-	assert.match(section, /does not receive the assessment result/);
-	assert.match(section, /no gate-level disposition exists for the same launch: do not retry it/);
-	assert.match(section, /The rejection is launch-scoped, not feature-scoped/);
-	assert.match(section, /requires the user's explicit decision in a new prompt/);
-	assert.match(section, /Inline tests, the writer's self-verification, and a user's visual approval never replace the missing independent verification/);
+	assert.match(docs, /Never invent a risk declaration just to obtain a verifier/);
+	assert.match(docs, /writer's summary and the user's visual approval/);
+	assert.match(docs, /Report missing proof, do not substitute another role or silently waive it/);
+	assert.match(docs, /human can explicitly request one new bounded attempt/);
+	assert.match(docs, /does not permit automatic retries, override a denial, bypass consent/);
 });

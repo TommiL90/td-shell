@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { assertNotRealHome } from "./support/isolated-home.ts";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,14 +10,14 @@ import { test } from "node:test";
 const helperUrl = new URL("../scripts/install-tui-mode-setting.mjs", import.meta.url);
 const { installTuiModeSetting, installIsolatedTuiModeSetting, DEFAULT_THEME_NAME, withIsolatedHomeDefaults } = await import(helperUrl.href);
 
-function fixture(t: { after(fn: () => void): void }, packagePath: readonly string[] = ["npm", "node_modules", "gentle-pi"]) {
+function fixture(t: { after(fn: () => void): void }, packagePath: readonly string[] = ["npm", "node_modules", "tomidev"]) {
 	const root = mkdtempSync(join(tmpdir(), "gentle-tui-test-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const home = join(root, "agent");
 	const packageRoot = join(home, ...packagePath);
 	mkdirSync(packageRoot, { recursive: true });
 	const settings = join(home, "settings.json");
-	const env = { GENTLE_PI_AGENT_HOME: home, PI_CODING_AGENT_DIR: join(root, "other-agent") };
+	const env = { TOMIDEV_AGENT_HOME: home, PI_CODING_AGENT_DIR: join(root, "other-agent") };
 	return { root, home, packageRoot, settings, env, options: { packageRoot, env, home: root } };
 }
 
@@ -25,8 +26,9 @@ function link(target: string, path: string, directory = false) {
 }
 
 for (const [name, packagePath] of [
-	["npm", ["npm", "node_modules", "gentle-pi"]],
-	["Pi Git", ["git", "github.com", "Gentleman-Programming", "gentle-pi"]],
+	["npm", ["npm", "node_modules", "tomidev"]],
+	["Pi Git", ["git", "github.com", "Gentleman-Programming", "tomidev"]],
+	["Pi Git (Tomidev Shell fork)", ["git", "github.com", "TommiL90", "tomidev-shell"]],
 ] as const) {
 	test(`recognized global ${name} installation persists fullscreen and preserves other settings`, async (t) => {
 		const f = fixture(t, packagePath);
@@ -60,11 +62,11 @@ test("already fullscreen preserves bytes and inode", async (t) => {
 	assert.deepEqual(readdirSync(f.home).sort(), ["npm", "settings.json"]);
 });
 
-for (const name of ["GENTLE_PI_AGENT_HOME", "PI_CODING_AGENT_DIR", "default"]) {
+for (const name of ["TOMIDEV_AGENT_HOME", "PI_CODING_AGENT_DIR", "default"]) {
 	test(`agent-home precedence: ${name}`, async (t) => {
 		const f = fixture(t);
 		const home = name === "default" ? join(f.root, ".pi", "agent") : f.home;
-		const packageRoot = join(home, "npm", "node_modules", "gentle-pi");
+		const packageRoot = join(home, "npm", "node_modules", "tomidev");
 		mkdirSync(packageRoot, { recursive: true });
 		const env = name === "default" ? {} : name === "PI_CODING_AGENT_DIR" ? { PI_CODING_AGENT_DIR: home } : f.env;
 		await installTuiModeSetting({ packageRoot, env, home: f.root });
@@ -74,13 +76,13 @@ for (const name of ["GENTLE_PI_AGENT_HOME", "PI_CODING_AGENT_DIR", "default"]) {
 }
 
 for (const relative of [
-	"project/.pi/npm/node_modules/gentle-pi",
-	"project/.pi/git/github.com/Gentleman-Programming/gentle-pi",
-	"consumer/node_modules/gentle-pi",
+	"project/.pi/npm/node_modules/tomidev",
+	"project/.pi/git/github.com/Gentleman-Programming/tomidev",
+	"consumer/node_modules/tomidev",
 	"checkout",
-	"agent/git/github.com/gentle-pi",
-	"temporary/npm/node_modules/gentle-pi",
-	"store/.pnpm/gentle-pi/node_modules/gentle-pi",
+	"agent/git/github.com/tomidev",
+	"temporary/npm/node_modules/tomidev",
+	"store/.pnpm/tomidev/node_modules/tomidev",
 ]) {
 	test(`unowned install is untouched: ${relative}`, async (t) => {
 		const f = fixture(t);
@@ -94,8 +96,8 @@ for (const relative of [
 }
 
 for (const packagePath of [
-	["git", "gitlab.com", "Gentleman-Programming", "gentle-pi"],
-	["git", "github.com", "Other-Organization", "gentle-pi"],
+	["git", "gitlab.com", "Gentleman-Programming", "tomidev"],
+	["git", "github.com", "Other-Organization", "tomidev"],
 	["git", "github.com", "Gentleman-Programming", "other-pi"],
 ]) {
 	test(`unowned global Pi Git install is untouched: ${packagePath.join("/")}`, async (t) => {
@@ -110,12 +112,12 @@ for (const packagePath of [
 
 test("missing configured agent home is a no-op", async (t) => {
 	const f = fixture(t);
-	assert.equal((await installTuiModeSetting({ ...f.options, env: { GENTLE_PI_AGENT_HOME: join(f.root, "absent") } })).recognized, false);
+	assert.equal((await installTuiModeSetting({ ...f.options, env: { TOMIDEV_AGENT_HOME: join(f.root, "absent") } })).recognized, false);
 });
 
 for (const [name, packagePath] of [
-	["npm", ["npm", "node_modules", "gentle-pi"]],
-	["Pi Git", ["git", "github.com", "Gentleman-Programming", "gentle-pi"]],
+	["npm", ["npm", "node_modules", "tomidev"]],
+	["Pi Git", ["git", "github.com", "Gentleman-Programming", "tomidev"]],
 ] as const) {
 	test(`global ${name} package symlink into a store is not ownership`, async (t) => {
 		const f = fixture(t);
@@ -123,7 +125,7 @@ for (const [name, packagePath] of [
 		const packageRoot = join(home, ...packagePath);
 		mkdirSync(join(packageRoot, ".."), { recursive: true });
 		link(f.packageRoot, packageRoot, true);
-		assert.equal((await installTuiModeSetting({ packageRoot, env: { GENTLE_PI_AGENT_HOME: home }, home: f.root })).recognized, false);
+		assert.equal((await installTuiModeSetting({ packageRoot, env: { TOMIDEV_AGENT_HOME: home }, home: f.root })).recognized, false);
 		assert.equal(existsSync(join(home, "settings.json")), false);
 	});
 }
@@ -132,7 +134,7 @@ test("canonical agent-home alias is supported", async (t) => {
 	const f = fixture(t);
 	const alias = join(f.root, "alias");
 	link(f.home, alias, true);
-	await installTuiModeSetting({ ...f.options, env: { GENTLE_PI_AGENT_HOME: alias } });
+	await installTuiModeSetting({ ...f.options, env: { TOMIDEV_AGENT_HOME: alias } });
 	assert.equal(JSON.parse(readFileSync(f.settings, "utf8")).tuiMode, "fullscreen");
 });
 
@@ -200,18 +202,18 @@ test("Pi's later packages-only save retains persisted fullscreen", async (t) => 
 	const { SettingsManager } = await import("@earendil-works/pi-coding-agent");
 	const manager = SettingsManager.create(f.root, f.home);
 	await installTuiModeSetting(f.options);
-	manager.setPackages(["npm:gentle-pi"]);
+	manager.setPackages(["npm:tomidev"]);
 	await manager.flush();
 	assert.deepEqual(manager.drainErrors(), []);
-	assert.deepEqual(JSON.parse(readFileSync(f.settings, "utf8")), { tuiMode: "fullscreen", packages: ["npm:gentle-pi"] });
+	assert.deepEqual(JSON.parse(readFileSync(f.settings, "utf8")), { tuiMode: "fullscreen", packages: ["npm:tomidev"] });
 	manager.setTuiMode("regular");
 	await manager.flush();
 	assert.equal(JSON.parse(readFileSync(f.settings, "utf8")).tuiMode, "regular");
 });
 
 for (const [name, packagePath] of [
-	["npm", ["npm", "node_modules", "gentle-pi"]],
-	["Pi Git", ["git", "github.com", "Gentleman-Programming", "gentle-pi"]],
+	["npm", ["npm", "node_modules", "tomidev"]],
+	["Pi Git", ["git", "github.com", "Gentleman-Programming", "tomidev"]],
 ] as const) {
 	test(`symlinked ${name} ancestor cannot grant settings ownership`, async (t) => {
 		const f = fixture(t);
@@ -219,7 +221,7 @@ for (const [name, packagePath] of [
 		mkdirSync(home);
 		mkdirSync(join(f.home, ...packagePath), { recursive: true });
 		link(join(f.home, packagePath[0]), join(home, packagePath[0]), true);
-		const result = await installTuiModeSetting({ packageRoot: join(home, ...packagePath), env: { GENTLE_PI_AGENT_HOME: home }, home: f.root });
+		const result = await installTuiModeSetting({ packageRoot: join(home, ...packagePath), env: { TOMIDEV_AGENT_HOME: home }, home: f.root });
 		assert.equal(result.recognized, false);
 		assert.equal(existsSync(join(home, "settings.json")), false);
 		assert.equal(existsSync(f.settings), false);
@@ -261,7 +263,7 @@ for (const fault of ["write", "rename", "concurrent-change"]) {
 			try { await installTuiModeSetting(${JSON.stringify(f.options)}); process.exitCode = 2; }
 			catch (error) { console.error(error.message); process.exitCode = 1; }
 		`;
-		const result = spawnSync(process.execPath, ["--input-type=module", "--eval", code], { encoding: "utf8", env: { ...process.env, ...f.env } });
+		const result = spawnSync(process.execPath, ["--input-type=module", "--eval", code], { encoding: "utf8", env: assertNotRealHome({ ...process.env, HOME: f.root, USERPROFILE: f.root, ...f.env }) });
 		assert.equal(result.status, 1, result.stderr);
 		assert.match(result.stderr, fault === "concurrent-change" ? /changed concurrently/ : /injected/);
 		assert.equal(readFileSync(f.settings, "utf8"), fault === "concurrent-change" ? '{"theme":"concurrent"}' : original);
@@ -275,13 +277,13 @@ for (const fault of ["write", "rename", "concurrent-change"]) {
 // ownership check to satisfy, because gentle-shell just created `dir` itself
 // moments ago; a plain agent-home-shaped temp directory is enough.
 
-test("installIsolatedTuiModeSetting writes fullscreen and the default Gentleman-Cute theme into a freshly created directory", async (t) => {
+test("installIsolatedTuiModeSetting writes fullscreen and the default tomidev theme into a freshly created directory", async (t) => {
 	const root = mkdtempSync(join(tmpdir(), "gentle-shell-isolated-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const dir = join(root, "gentle-shell", "agent");
 	mkdirSync(dir, { recursive: true });
 	assert.deepEqual(await installIsolatedTuiModeSetting(dir), { changed: true, recognized: true });
-	assert.deepEqual(JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")), { tuiMode: "fullscreen", theme: "Gentleman-Cute" });
+	assert.deepEqual(JSON.parse(readFileSync(join(dir, "settings.json"), "utf8")), { tuiMode: "fullscreen", theme: "tomidev" });
 });
 
 test("installIsolatedTuiModeSetting preserves other settings fields already present, including an existing theme", async (t) => {
@@ -294,12 +296,12 @@ test("installIsolatedTuiModeSetting preserves other settings fields already pres
 
 // --- DEFAULT_THEME_NAME / withIsolatedHomeDefaults (pure, no filesystem) -----
 
-test("DEFAULT_THEME_NAME is Gentleman-Cute", () => {
-	assert.equal(DEFAULT_THEME_NAME, "Gentleman-Cute");
+test("DEFAULT_THEME_NAME is tomidev", () => {
+	assert.equal(DEFAULT_THEME_NAME, "tomidev");
 });
 
 test("withIsolatedHomeDefaults sets fullscreen and the default theme on an empty settings object", () => {
-	assert.deepEqual(withIsolatedHomeDefaults({}), { tuiMode: "fullscreen", theme: "Gentleman-Cute" });
+	assert.deepEqual(withIsolatedHomeDefaults({}), { tuiMode: "fullscreen", theme: "tomidev" });
 });
 
 test("withIsolatedHomeDefaults never overwrites an already-declared theme", () => {
@@ -307,7 +309,7 @@ test("withIsolatedHomeDefaults never overwrites an already-declared theme", () =
 });
 
 test("withIsolatedHomeDefaults preserves unrelated fields", () => {
-	assert.deepEqual(withIsolatedHomeDefaults({ packages: ["npm:example"] }), { tuiMode: "fullscreen", theme: "Gentleman-Cute", packages: ["npm:example"] });
+	assert.deepEqual(withIsolatedHomeDefaults({ packages: ["npm:example"] }), { tuiMode: "fullscreen", theme: "tomidev", packages: ["npm:example"] });
 });
 
 test("installIsolatedTuiModeSetting is a no-op when already fullscreen", async (t) => {
@@ -325,58 +327,42 @@ test("installIsolatedTuiModeSetting rejects a missing directory", async (t) => {
 	await assert.rejects(installIsolatedTuiModeSetting(join(root, "absent")));
 });
 
-type PostinstallRoute = "skip" | "success" | "failure";
-
-function writePostinstallFixture(f: ReturnType<typeof fixture>, route: PostinstallRoute) {
+function writePostinstallFixture(f: ReturnType<typeof fixture>) {
 	const scripts = join(f.packageRoot, "scripts");
 	mkdirSync(scripts);
 	copyFileSync(helperUrl, join(scripts, "install-tui-mode-setting.mjs"));
 	copyFileSync(new URL("../scripts/install-gentle-ai.mjs", import.meta.url), join(scripts, "install-gentle-ai.mjs"));
-	const installer = route === "failure"
-		? 'throw new Error("native failed")'
-		: route === "skip"
-			? 'throw new Error("skip fixture native installer was invoked")'
-			: 'return { installed: true, binaryPath: "fixture" }';
-	writeFileSync(join(scripts, "gentle-ai-installer.mjs"), `export const INSTALLER_VERSION = "test"; export async function installGentleAi() { ${installer}; }`);
+	writeFileSync(join(scripts, "gentle-ai-installer.mjs"), 'throw new Error("native installer must not be loaded");');
 	return scripts;
 }
 
-function runPostinstall(f: ReturnType<typeof fixture>, route: PostinstallRoute) {
-	const scripts = writePostinstallFixture(f, route);
+function runPostinstall(f: ReturnType<typeof fixture>) {
+	const scripts = writePostinstallFixture(f);
 	return spawnSync(process.execPath, [join(scripts, "install-gentle-ai.mjs")], {
-		encoding: "utf8", env: { ...process.env, ...f.env, GENTLE_PI_SKIP_GENTLE_AI_INSTALL: route === "skip" ? "1" : "0" },
+		encoding: "utf8", env: { ...process.env, ...f.env },
 	});
 }
 
-function assertPostinstallLifecycle(f: ReturnType<typeof fixture>, route: PostinstallRoute, result: ReturnType<typeof runPostinstall>, settingsExists = route !== "failure") {
-	assert.equal(result.status, route === "failure" ? 1 : 0, result.stderr);
-	assert.equal(existsSync(f.settings), settingsExists);
-	if (route === "failure") assert.match(result.stderr, /gentle-pi could not install its package-local Gentle AI vtest binary: native failed/);
-	else {
-		assert.doesNotMatch(result.stderr, /skip fixture native installer was invoked/);
-		assert.equal(JSON.parse(readFileSync(f.settings, "utf8")).tuiMode, "fullscreen");
-	}
+function assertPostinstallLifecycle(f: ReturnType<typeof fixture>, result: ReturnType<typeof runPostinstall>) {
+	assert.equal(result.status, 0, result.stderr);
+	assert.equal(result.stderr, "");
+	assert.doesNotMatch(result.stdout, /Gentle AI|integrity-verified|vtest/);
+	assert.equal(existsSync(f.settings), true);
+	assert.equal(JSON.parse(readFileSync(f.settings, "utf8")).tuiMode, "fullscreen");
 }
 
 for (const [name, packagePath] of [
-	["npm", ["npm", "node_modules", "gentle-pi"]],
-	["Pi Git", ["git", "github.com", "Gentleman-Programming", "gentle-pi"]],
+	["npm", ["npm", "node_modules", "tomidev"]],
+	["Pi Git", ["git", "github.com", "Gentleman-Programming", "tomidev"]],
 ] as const) {
-	for (const route of ["skip", "success", "failure"] as const) {
-		test(`${name} postinstall lifecycle: ${route}`, (t) => {
-			const f = fixture(t, packagePath);
-			const result = runPostinstall(f, route);
-			assertPostinstallLifecycle(f, route, result);
-			if (route === "failure") {
-				const existing = fixture(t, packagePath);
-				const original = '{"tuiMode":"regular","theme":"kept"}';
-				writeFileSync(existing.settings, original);
-				const existingResult = runPostinstall(existing, route);
-				assertPostinstallLifecycle(existing, route, existingResult, true);
-				assert.equal(readFileSync(existing.settings, "utf8"), original);
-			}
-		});
-	}
+	test(`${name} postinstall lifecycle: settings only`, (t) => {
+		const f = fixture(t, packagePath);
+		assertPostinstallLifecycle(f, runPostinstall(f));
+		const existing = fixture(t, packagePath);
+		writeFileSync(existing.settings, '{"tuiMode":"regular","theme":"kept"}');
+		assertPostinstallLifecycle(existing, runPostinstall(existing));
+		assert.deepEqual(JSON.parse(readFileSync(existing.settings, "utf8")), { tuiMode: "fullscreen", theme: "kept" });
+	});
 }
 
 // #1258 / #2109: on recent Windows, lstat by path reports dev 0 while fstat on

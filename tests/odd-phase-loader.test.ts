@@ -63,7 +63,7 @@ test("separate extension loaders share only the active session's ODD phase and r
 	let editor: ReturnType<NonNullable<typeof editorFactory>> | undefined;
 	try {
 		await fire("session_start");
-		assert.ok(editorFactory, "Gentle Shell should install its prompt");
+		assert.ok(editorFactory, "Tomidev Shell should install its prompt");
 		editor = editorFactory({ terminal: { rows: 40, columns: 120 }, requestRender() { redraws++; } }, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
 		editor.setAnimationPolicy("potato");
 		await fire("agent_start");
@@ -183,7 +183,7 @@ test("tool activity in the primary session drives the working label across exten
 	let editor: ReturnType<NonNullable<typeof editorFactory>> | undefined;
 	try {
 		await fire("session_start");
-		assert.ok(editorFactory, "Gentle Shell should install its prompt");
+		assert.ok(editorFactory, "Tomidev Shell should install its prompt");
 		editor = editorFactory({ terminal: { rows: 40, columns: 120 }, requestRender() { redraws++; } }, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
 		editor.setAnimationPolicy("potato");
 		await fire("agent_start");

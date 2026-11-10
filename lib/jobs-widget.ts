@@ -8,7 +8,7 @@ import { renderPanelHeader, renderPanelRow } from "./shell-panel.ts";
 // jobs. Reads the running-job display snapshot only (id, label, startedAt), so
 // drawing it costs nothing per event. One row per job: glyph, id, label,
 // elapsed right-aligned. Jobs are transient — the section paints nothing while
-// no job runs, and the overlay (/gentle:jobs) stays the full view with stop
+// no job runs, and the overlay (/td:jobs) stays the full view with stop
 // controls and output tails.
 
 export const JOBS_GLYPH = JOB_GLYPH;
@@ -29,7 +29,7 @@ const NAME_ROLE = "text";
 const META_ROLE = "dim";
 const ELLIPSIS = "…";
 
-// Running jobs newest first, matching the /gentle:jobs running group and the
+// Running jobs newest first, matching the /td:jobs running group and the
 // old Status group this card replaces; finished tails follow, newest first.
 export function widgetJobs(jobs: readonly RunningJobDisplay[], now: number): RunningJobDisplay[] {
 	const running = jobs.filter((job) => job.status === undefined).sort((a, b) => b.startedAt - a.startedAt);
@@ -42,7 +42,7 @@ function clean(text: string): string {
 	return sanitizeTerminalText(text).replace(/\s+/g, " ");
 }
 
-// The /gentle:jobs glyph roles: running keeps the spinner, exits mirror the
+// The /td:jobs glyph roles: running keeps the spinner, exits mirror the
 // overlay's outcome marks.
 function glyph(job: RunningJobDisplay): [string, string] {
 	if (job.status === "stopped") return ["–", "dim"];

@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { gentlePiConfigHome } from "./agent-home.ts";
 // card as the command alone. A missing file means minimal, the default; a
 // malformed or unreadable one also reads as minimal, and the writer refuses
 // to replace it so a hand edit is never lost. There is no environment override.
-export const CARD_CONTENT_SCHEMA = "gentle-pi.card-content/v1";
+export const CARD_CONTENT_SCHEMA = brandSchema("card-content", 1);
 const CARD_CONTENT_FILE = "card-content.json";
 
 export const CARD_CONTENT = {
@@ -37,7 +38,7 @@ export function parseCardContentFile(raw: string): CardContent | undefined {
 	try {
 		const value: unknown = JSON.parse(raw);
 		if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-		if (Object.keys(value).length !== 2 || !("schema" in value) || value.schema !== CARD_CONTENT_SCHEMA || !("content" in value)) return undefined;
+		if (Object.keys(value).length !== 2 || !("schema" in value) || !isBrandSchema(value.schema, "card-content", 1) || !("content" in value)) return undefined;
 		return isCardContent(value.content) ? value.content : undefined;
 	} catch { return undefined; }
 }
@@ -75,7 +76,7 @@ export function writeCardContent(content: CardContent, options: CardContentOptio
 // instance. The process-wide slot keeps one live content level per process,
 // exactly like the card style slot; an unset slot (no Gentle Shell resolution
 // yet, e.g. a host without it) reads as the `default` preview level.
-const CARD_CONTENT_SLOT = Symbol.for("gentle-pi.card-content");
+const CARD_CONTENT_SLOT = Symbol.for("tomidev.card-content");
 const contentState = globalThis as typeof globalThis & { [CARD_CONTENT_SLOT]?: unknown };
 
 export function cardContent(): CardContent {

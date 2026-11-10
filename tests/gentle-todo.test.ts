@@ -19,7 +19,7 @@ const initialCardStyle = cardStyle();
 before(() => setCardStyle(CARD_STYLE.NEON));
 after(() => setCardStyle(initialCardStyle));
 
-// The Gentle Todo extension: the `todo` tool, the card above the editor,
+// The Tomidev Todo extension: the `todo` tool, the card above the editor,
 // the per-turn prompt block, and the staleness signal, driven by fakes.
 
 type Handler = (event: unknown, ctx: ExtensionContext) => unknown;
@@ -130,10 +130,10 @@ test("long Todo widgets stay bounded, scroll, resize and keep their collapse con
 
 test("a saved keymap replaces the todo collapse key", () => {
 	const { pi, shortcuts } = fakePi();
-	gentleTodo(pi, { GENTLE_PI_CONFIG_HOME: keymapsConfigHome({ "todo.collapse": "alt+t" }) });
+	gentleTodo(pi, { TOMIDEV_CONFIG_HOME: keymapsConfigHome({ "todo.collapse": "alt+t" }) });
 	assert.deepEqual([...shortcuts.keys()].sort(), ["alt+shift+down", "alt+shift+up", "alt+t"]);
 	const envWins = fakePi();
-	gentleTodo(envWins.pi, { GENTLE_PI_CONFIG_HOME: keymapsConfigHome({ "todo.collapse": "alt+t" }), GENTLE_PI_TODO_KEY: "off" });
+	gentleTodo(envWins.pi, { TOMIDEV_CONFIG_HOME: keymapsConfigHome({ "todo.collapse": "alt+t" }), TOMIDEV_TODO_KEY: "off" });
 	assert.deepEqual([...envWins.shortcuts.keys()].sort(), ["alt+shift+down", "alt+shift+up"]);
 });
 
@@ -194,13 +194,13 @@ test("Todo keyboard scrolling targets the visible card after a cached sidebar br
 
 test("todoEnabled and todoCollapseKey read their environment flags", () => {
 	assert.equal(todoEnabled({}), true);
-	assert.equal(todoEnabled({ GENTLE_PI_TODO: "0" }), false);
-	assert.equal(todoEnabled({ GENTLE_PI_AGENTS_CHILD: "1" }), false);
+	assert.equal(todoEnabled({ TOMIDEV_TODO: "0" }), false);
+	assert.equal(todoEnabled({ TOMIDEV_AGENTS_CHILD: "1" }), false);
 	assert.equal(todoCollapseKey({}), "ctrl+shift+t");
-	assert.equal(todoCollapseKey({ GENTLE_PI_TODO_KEY: "alt+t" }), "alt+t");
-	assert.equal(todoCollapseKey({ GENTLE_PI_TODO_KEY: "off" }), undefined);
+	assert.equal(todoCollapseKey({ TOMIDEV_TODO_KEY: "alt+t" }), "alt+t");
+	assert.equal(todoCollapseKey({ TOMIDEV_TODO_KEY: "off" }), undefined);
 	const off = fakePi();
-	gentleTodo(off.pi, { GENTLE_PI_TODO: "off" });
+	gentleTodo(off.pi, { TOMIDEV_TODO: "off" });
 	assert.equal(off.tools.size, 0);
 });
 
@@ -853,14 +853,14 @@ test("a todo write emits the session's progress; list and errors emit nothing", 
 // delegation session is told to delegate a small task instead of doing it. Organic stays byte-identical above.
 test("S5: a full delegation session gets the delegate wording; the organic wording is unchanged", async () => {
 	const full = fakePi();
-	gentleTodo(full.pi, { GENTLE_PI_ORCHESTRATOR_MODE: "full-delegation" });
+	gentleTodo(full.pi, { TOMIDEV_ORCHESTRATOR_MODE: "full-delegation" });
 	const fullEvent = promptEvent();
 	await full.fire("before_agent_start", { ...fakeContext().ctx, cwd: process.cwd() } as ExtensionContext, fullEvent);
 	assert.match(fullEvent.systemPromptOptions.appendSystemPrompt, /uses no todo list: delegate it and report\./);
 	assert.doesNotMatch(fullEvent.systemPromptOptions.appendSystemPrompt, /do it and report/);
 
 	const organic = fakePi();
-	gentleTodo(organic.pi, { GENTLE_PI_ORCHESTRATOR_MODE: "organic" });
+	gentleTodo(organic.pi, { TOMIDEV_ORCHESTRATOR_MODE: "organic" });
 	const organicEvent = promptEvent();
 	await organic.fire("before_agent_start", { ...fakeContext().ctx, cwd: process.cwd() } as ExtensionContext, organicEvent);
 	assert.match(organicEvent.systemPromptOptions.appendSystemPrompt, /uses no todo list: do it and report\./);

@@ -13,7 +13,7 @@ import { resetSessionProfileBindingsForTesting } from "../lib/session-profile-bi
 import { stripAnsi } from "../lib/terminal-theme.ts";
 
 // ---------------------------------------------------------------------------
-// /gentle:profiles exposes the per-profile orchestrator mode (full delegation
+// /td:profiles exposes the per-profile orchestrator mode (full delegation
 // mode S5) through a panel draft: `w` toggles the shown profile, every commit
 // path (save, use-session) carries it, and the loop persists it with the
 // routing in one atomic write.
@@ -248,13 +248,13 @@ function panelHomeFixture(t: test.TestContext): PanelHomeFixture {
 	const root = mkdtempSync(join(tmpdir(), "profiles-panel-delegation-"));
 	const configHome = join(root, "global");
 	mkdirSync(configHome, { recursive: true });
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
 	resetSessionProfileBindingsForTesting();
 	t.after(() => {
 		resetSessionProfileBindingsForTesting();
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
 		rmSync(root, { recursive: true, force: true });
 	});
 	const storePath = join(configHome, "profiles.json");

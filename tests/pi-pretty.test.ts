@@ -29,7 +29,7 @@ test("bundled pretty cannot replace or restore an editor owned by the host", asy
 		});
 		api.on("session_shutdown", (_event: unknown, context: any) => context.ui.setEditorComponent(undefined));
 	}, {});
-	assert.equal(thinkingIndicatorDuringActivation, "off", "Gentle Shell disables pi-pretty's global Thinking shimmer");
+	assert.equal(thinkingIndicatorDuringActivation, "off", "Tomidev Shell disables pi-pretty's global Thinking shimmer");
 	assert.equal(process.env.PRETTY_THINKING_INDICATOR, previousThinkingIndicator, "activation must restore the caller's environment");
 	for (const handler of handlers.get("session_start") ?? []) await handler({}, ctx);
 	assert.equal(editor, owner);
@@ -56,7 +56,7 @@ test("bundled pretty keeps Pi's native Working row inside Herdr", async () => {
 test("disabled shell leaves bundled editor behavior untouched", async () => {
 	let received: unknown;
 	const pi = {};
-	await pretty(pi, undefined, async (api: unknown) => { received = api; }, { GENTLE_PI_SHELL: "0" });
+	await pretty(pi, undefined, async (api: unknown) => { received = api; }, { TOMIDEV_SHELL: "0" });
 	assert.equal(received, pi);
 });
 
@@ -65,7 +65,7 @@ test("disabled shell leaves bundled editor behavior untouched", async () => {
 test("delegated children never load upstream pi-pretty", async () => {
 	let loaded = false;
 	const pi = {};
-	const result = await pretty(pi, undefined, async () => { loaded = true; }, { GENTLE_PI_AGENTS_CHILD: "1" });
+	const result = await pretty(pi, undefined, async () => { loaded = true; }, { TOMIDEV_AGENTS_CHILD: "1" });
 	assert.equal(loaded, false);
 	assert.equal(result, undefined);
 });
@@ -74,7 +74,7 @@ test("delegated children never load upstream pi-pretty", async () => {
 // FFF store stays where it always was ($HOME/.pi/agent, or none without HOME).
 test("outside a bundled install pi-pretty gets Pi's deps unchanged", async () => {
 	const given = { TextComponent: "text" };
-	for (const env of [{}, { PI_CODING_AGENT_DIR: "/agent-home" }, { PI_CODING_AGENT_DIR: "/agent-home", GENTLE_PI_SHELL: "0" }, { GENTLE_SHELL_PREFIX: "/not-ours" }]) {
+	for (const env of [{}, { PI_CODING_AGENT_DIR: "/agent-home" }, { PI_CODING_AGENT_DIR: "/agent-home", TOMIDEV_SHELL: "0" }, { TOMIDEV_PREFIX: "/not-ours" }]) {
 		for (const deps of [undefined, given]) {
 			let received: unknown = "unset";
 			await pretty({ on() {} }, deps, async (_api: unknown, forwarded: unknown) => { received = forwarded; }, env);
@@ -90,8 +90,8 @@ test("in a bundled install pi-pretty gets the agent home and Pi's tool factories
 	setBundledInstallForTesting({ root: process.cwd() });
 	t.after(() => setBundledInstallForTesting(undefined));
 	const factories = ["createReadToolDefinition", "createBashToolDefinition", "createLsToolDefinition", "createFindToolDefinition", "createGrepToolDefinition"];
-	const bundledEnv = { GENTLE_SHELL_PREFIX: process.cwd(), PI_CODING_AGENT_DIR: "/agent-home" };
-	for (const env of [bundledEnv, { ...bundledEnv, GENTLE_PI_SHELL: "0" }]) {
+	const bundledEnv = { TOMIDEV_PREFIX: process.cwd(), PI_CODING_AGENT_DIR: "/agent-home" };
+	for (const env of [bundledEnv, { ...bundledEnv, TOMIDEV_SHELL: "0" }]) {
 		let received: any;
 		await pretty({ on() {} }, { TextComponent: "text" }, async (_api: unknown, deps: unknown) => { received = deps; }, env);
 		assert.equal(received.TextComponent, "text", "the host's other deps are kept");

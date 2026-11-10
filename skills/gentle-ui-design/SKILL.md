@@ -9,7 +9,7 @@ metadata:
 
 ## Activation Contract
 
-Use for web and product interfaces when shaping, implementing, or assessing a user experience. Pair with `gentle-design` when producing artboards: gentle-design owns delivery, this skill owns UX quality. Use `gentle-ai-tui-design` for terminal interfaces.
+Use for web and product interfaces when shaping, implementing, or assessing a user experience. Relevant project design/UX skills take precedence; this builtin fills only uncovered gaps. At a new design workflow entry, ask once for canvas, direct application work, or the repository-defined workflow unless the human already selected it for this task. Honor the selected route without asking again on continuations; independent tasks ask anew, with no global preference. Only after the canvas route is selected, use `gentle-design` for missing HTML artboard delivery guidance; do not require it for direct or repository work. If the repository defines no design workflow, report that rather than inventing one. Reuse existing project artifacts and tracking, respecting explicit prohibitions and runtime safety. Use `gentle-ai-tui-design` for terminal interfaces.
 
 ## Hard Rules
 

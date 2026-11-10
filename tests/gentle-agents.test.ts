@@ -5,7 +5,6 @@ import { homedir, tmpdir } from "node:os";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pendingReviewMutation, pendingReviewMutationProfiles, REVIEW_REMINDER_RECEIPT } from "../lib/review-reminder-receipt.ts";
 import { SESSION_WORKTREE_ENTRY, SESSION_WORKTREE_CHANGED, resolveSessionWorktree } from "../lib/session-worktree-registry.ts";
 import { installSessionChangeCapture } from "../lib/session-change-capture.ts";
 import { SessionChanges, type SessionChangeEvidence } from "../lib/session-changes.ts";
@@ -45,7 +44,7 @@ const initialCardStyle = cardStyle();
 before(() => setCardStyle(CARD_STYLE.NEON));
 after(() => setCardStyle(initialCardStyle));
 
-// Gentle Agents extension: the subagent_* tools drive isolated pi children,
+// Tomidev Agents extension: the subagent_* tools drive isolated pi children,
 // the card above the editor follows the store, and dialogs reach the host UI.
 
 type Handler = (event: unknown, ctx: ExtensionContext) => unknown;
@@ -105,17 +104,17 @@ afterEach(() => resetFrozenInheritedProfilesForTesting());
 // subagent_run's default mode now reads the background-subagents policy
 // in-process (gentle-pi#background-subagents-default-mode), which falls
 // back to the real ~/.pi/gentle-ai/background-subagents.json when
-// GENTLE_PI_CONFIG_HOME is unset. Point it at an empty scratch directory so
+// TOMIDEV_CONFIG_HOME is unset. Point it at an empty scratch directory so
 // this file's expectations never depend on the developer's own global
 // policy file (a real "on" file on the runner's machine would otherwise
 // flip every unrelated fixture's default mode to background).
-const previousGentlePiConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-process.env.GENTLE_PI_CONFIG_HOME = join(root, "gentle-ai-config-home");
+const previousGentlePiConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+process.env.TOMIDEV_CONFIG_HOME = join(root, "gentle-ai-config-home");
 after(async () => {
 	try { await stopActiveSessions(); }
 	finally {
-		if (previousGentlePiConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousGentlePiConfigHome;
+		if (previousGentlePiConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousGentlePiConfigHome;
 		rmSync(root, TEST_DIR_REMOVAL);
 	}
 });
@@ -366,13 +365,13 @@ function deps(): { deps: Partial<AgentsDeps>; children: FakeChild[]; spawned: st
 			resolveWorktree: (path, base) => ({ root: resolve(base, path), commonDir: "/fixture/common" }),
 			// The launch reads the global active profile from the config home; keep it
 			// on the scratch directory instead of the developer's own profiles.json.
-			env: { PATH: "/bin", GENTLE_PI_CONFIG_HOME: process.env.GENTLE_PI_CONFIG_HOME },
+			env: { PATH: "/bin", TOMIDEV_CONFIG_HOME: process.env.TOMIDEV_CONFIG_HOME },
 			sessionTransport: inertSessionTransport,
 		},
 	};
 }
 
-test("cache warming follows actual Gentle Agents ownership and completion lifecycle", async (t) => {
+test("cache warming follows actual Tomidev Agents ownership and completion lifecycle", async (t) => {
 	const h = fakePi();
 	const runtime = deps();
 	let store: TaskStore | undefined;
@@ -538,7 +537,7 @@ function fakeScheduler() {
 }
 
 for (const scenario of [
-	{ label: "an interactive RPC host", mode: "rpc", env: { PATH: "/bin", GENTLE_SHELL_INTERACTIVE_HOST: "1" }, expectPublish: true },
+	{ label: "an interactive RPC host", mode: "rpc", env: { PATH: "/bin", TOMIDEV_INTERACTIVE_HOST: "1" }, expectPublish: true },
 	{ label: "plain RPC without the interactive-host variable", mode: "rpc", env: { PATH: "/bin" }, expectPublish: false },
 	{ label: "TUI", mode: "tui", env: { PATH: "/bin" }, expectPublish: false },
 ] as const) {
@@ -587,7 +586,7 @@ test("gentle-agents notifies once, deduplicated, when the RPC activity publisher
 	runtime.deps.schedule = scheduler.schedule;
 	// The launch reads the session profile through this env, so it must keep the
 	// scratch config home instead of reaching the runner's real one.
-	runtime.deps.env = { PATH: "/bin", GENTLE_SHELL_INTERACTIVE_HOST: "1", GENTLE_PI_CONFIG_HOME: process.env.GENTLE_PI_CONFIG_HOME };
+	runtime.deps.env = { PATH: "/bin", TOMIDEV_INTERACTIVE_HOST: "1", TOMIDEV_CONFIG_HOME: process.env.TOMIDEV_CONFIG_HOME };
 	gentleAgents(h.pi, {}, runtime.deps);
 	const { ctx } = fakeContext();
 	Object.assign(ctx, { mode: "rpc", hasUI: true });
@@ -621,7 +620,7 @@ test("gentle-agents' RPC activity payload excludes a restored task from another 
 	const runtime = deps();
 	const scheduler = fakeScheduler();
 	runtime.deps.schedule = scheduler.schedule;
-	runtime.deps.env = { PATH: "/bin", GENTLE_SHELL_INTERACTIVE_HOST: "1" };
+	runtime.deps.env = { PATH: "/bin", TOMIDEV_INTERACTIVE_HOST: "1" };
 	const historyHome = join(root, "rpc-restore-history-home");
 	const own: TaskRecord = { id: "own-1", agent: "explore-a", mode: "background", prompt: "p", label: "p", cwd, parentSessionId: "resumed-session", status: TASK_STATUS.COMPLETED, createdAt: 1, startedAt: 1, endedAt: 100, model: "m", thinking: undefined, sessionPath: null, error: null, result: "done", lastStep: "responded", lastActivityAt: 100, turns: 1, toolCalls: 0, tokens: 0, cost: 0 };
 	const other: TaskRecord = { ...own, id: "not-mine", agent: "explore-other", parentSessionId: "other-session" };
@@ -1169,7 +1168,7 @@ test("child parent-message tooling admits notifications and the active parent pr
 	const child = fakePi();
 	const listeners = new Map<string, Array<(value: Record<string, unknown>) => void>>();
 	const frames: Array<Record<string, unknown>> = [];
-	gentleAgents(child.pi, { GENTLE_PI_AGENTS_CHILD: "1", GENTLE_PI_AGENTS_OWNED_IPC: "fixture" }, {
+	gentleAgents(child.pi, { TOMIDEV_AGENTS_CHILD: "1", TOMIDEV_AGENTS_OWNED_IPC: "fixture" }, {
 		childIpc: {
 			send: (frame: Record<string, unknown>) => { frames.push(frame); return true; },
 			on: (event: string, listener: (value: Record<string, unknown>) => void) => listeners.set(event, [...(listeners.get(event) ?? []), listener]),
@@ -1211,7 +1210,7 @@ function childJobsChild(env: NodeJS.ProcessEnv, overrides: Partial<AgentsDeps> =
 	const child = fakePi();
 	const listeners = new Map<string, Array<(value: Record<string, unknown>) => void>>();
 	const frames: Array<Record<string, unknown>> = [];
-	gentleAgents(child.pi, { GENTLE_PI_AGENTS_CHILD: "1", GENTLE_PI_AGENTS_OWNED_IPC: "fixture", ...env }, {
+	gentleAgents(child.pi, { TOMIDEV_AGENTS_CHILD: "1", TOMIDEV_AGENTS_OWNED_IPC: "fixture", ...env }, {
 		childIpc: {
 			send: (frame: Record<string, unknown>) => { frames.push(frame); return true; },
 			on: (event: string, listener: (value: Record<string, unknown>) => void) => listeners.set(event, [...(listeners.get(event) ?? []), listener]),
@@ -1223,7 +1222,7 @@ function childJobsChild(env: NodeJS.ProcessEnv, overrides: Partial<AgentsDeps> =
 
 test("a child with the forwarded job capability registers bash_background/job_list/job_stop privately, never the monitor", () => {
 	const jobs = fakeJobShell();
-	const { child } = childJobsChild({ GENTLE_PI_AGENTS_CHILD_JOBS: "1" }, { jobShell: jobs.shell, jobOutputDir: () => jobs.dir, now: () => 1_000 });
+	const { child } = childJobsChild({ TOMIDEV_AGENTS_CHILD_JOBS: "1" }, { jobShell: jobs.shell, jobOutputDir: () => jobs.dir, now: () => 1_000 });
 	try {
 		assert.deepEqual([...child.tools.keys()].sort(), ["bash_background", "job_list", "job_stop", "subagent_parent_message"]);
 		assert.equal(child.tools.has("monitor"), false, "the monitor stays parent-only");
@@ -1232,7 +1231,7 @@ test("a child with the forwarded job capability registers bash_background/job_li
 
 test("a child without the forwarded job capability keeps only parent messaging", () => {
 	const child = fakePi();
-	gentleAgents(child.pi, { GENTLE_PI_AGENTS_CHILD: "1", GENTLE_PI_AGENTS_OWNED_IPC: "fixture" }, {
+	gentleAgents(child.pi, { TOMIDEV_AGENTS_CHILD: "1", TOMIDEV_AGENTS_OWNED_IPC: "fixture" }, {
 		childIpc: { send: () => true, on: () => undefined },
 	});
 	assert.deepEqual([...child.tools.keys()], ["subagent_parent_message"]);
@@ -1240,13 +1239,13 @@ test("a child without the forwarded job capability keeps only parent messaging",
 
 test("a child without owned IPC never registers background job tools even with the forwarded capability", () => {
 	const child = fakePi();
-	gentleAgents(child.pi, { GENTLE_PI_AGENTS_CHILD: "1", GENTLE_PI_AGENTS_CHILD_JOBS: "1" });
+	gentleAgents(child.pi, { TOMIDEV_AGENTS_CHILD: "1", TOMIDEV_AGENTS_CHILD_JOBS: "1" });
 	assert.deepEqual([...child.tools.keys()], []);
 });
 
 test("a child reports its background job state to the parent and delivers the exit notice to its own session", async () => {
 	const jobs = fakeJobShell();
-	const { child, frames } = childJobsChild({ GENTLE_PI_AGENTS_CHILD_JOBS: "1" }, { jobShell: jobs.shell, jobOutputDir: () => jobs.dir, now: () => 1_000 });
+	const { child, frames } = childJobsChild({ TOMIDEV_AGENTS_CHILD_JOBS: "1" }, { jobShell: jobs.shell, jobOutputDir: () => jobs.dir, now: () => 1_000 });
 	const { ctx } = fakeContext();
 	try {
 		await child.tools.get("bash_background")!.execute("b1", { command: "gh run watch 1 --exit-status", label: "CI" }, undefined, undefined, ctx);
@@ -1297,7 +1296,7 @@ for (const boundary of ["allowed", "env", "session", "replacement", "bus-throws"
 			return { stdout: JSON.stringify({ schema: "gentle-ai.telemetry-policy/v1", operation: "policy", enabled: true,
 				source: "state", reason: "enabled" }), stderr: "", exitCode: 0, signal: null, timedOut: false, outputLimitExceeded: false };
 		} };
-		const env: NodeJS.ProcessEnv = { GENTLE_PI_CONFIG_HOME: process.env.GENTLE_PI_CONFIG_HOME };
+		const env: NodeJS.ProcessEnv = { TOMIDEV_CONFIG_HOME: process.env.TOMIDEV_CONFIG_HOME };
 		const profile = join(root, `metrics-${boundary}`);
 		mkdirSync(join(profile, "agents"), { recursive: true });
 		writeFileSync(join(profile, "agents", "gentle-ai-worker.md"), readFileSync(new URL("../assets/agents/gentle-ai-worker.md", import.meta.url)));
@@ -1422,7 +1421,7 @@ function liveInstance(t: test.TestContext, profile: string, sessionId: string, m
 }
 
 async function liveOverlay(instance: ReturnType<typeof liveInstance>) {
-	const opened = instance.commands.get("gentle:agents")!.handler("", instance.ctx);
+	const opened = instance.commands.get("td:agents")!.handler("", instance.ctx);
 	await eventually(() => instance.overlays.length > 0, "overlay must mount without waiting for an unbounded directory scan");
 	const overlay = instance.overlays.at(-1)!;
 	const frame = () => overlay.render(160).map(stripAnsi).join("\n");
@@ -1631,12 +1630,12 @@ test("manual agents command warns once in RPC mode and stays quiet without UI", 
 	const local = liveInstance(t, liveProfile("live-non-tui"), "non-tui");
 	Object.assign(local.ctx, { mode: "rpc" });
 	const notify = t.mock.method(local.ctx.ui, "notify");
-	await local.commands.get("gentle:agents")!.handler("", local.ctx);
+	await local.commands.get("td:agents")!.handler("", local.ctx);
 	assert.equal(notify.mock.callCount(), 1);
 	assert.equal(notify.mock.calls[0].arguments[1], "warning");
 	assert.deepEqual(local.overlays, []);
 	Object.assign(local.ctx, { hasUI: false });
-	await local.commands.get("gentle:agents")!.handler("", local.ctx);
+	await local.commands.get("td:agents")!.handler("", local.ctx);
 	assert.equal(notify.mock.callCount(), 1, "headless invocation adds no notification");
 	assert.deepEqual(local.overlays, []);
 });
@@ -1807,7 +1806,7 @@ test("live-only directory traverses presence overflow, excludes expired and othe
 function missingToolsChild(env: NodeJS.ProcessEnv, toolNames: string[] | (() => string[])) {
 	const child = fakePi();
 	Object.assign(child.pi, { getAllTools: () => (typeof toolNames === "function" ? toolNames() : toolNames).map((name) => ({ name })) });
-	gentleAgents(child.pi, { GENTLE_PI_AGENTS_CHILD: "1", ...env });
+	gentleAgents(child.pi, { TOMIDEV_AGENTS_CHILD: "1", ...env });
 	const notes: Array<{ message: string; type: unknown }> = [];
 	const ctx = { hasUI: true, ui: { notify: (message: string, type?: unknown) => notes.push({ message, type }) } } as unknown as ExtensionContext;
 	return {
@@ -1864,10 +1863,10 @@ test("the missing-tools check never throws into before_agent_start", async () =>
 });
 
 test("retired managed SDD child envelopes deny all tools without registering a delegation host", () => {
-	for (const env of [{ GENTLE_PI_RESEARCH_TOOLS: '["read"]' }, { GENTLE_PI_RESEARCH_SELECTION: '{}' }, { GENTLE_PI_RESEARCH_ARTIFACT: '{}' }, { GENTLE_PI_SDD_REMEDIATION_PLAN: '{}' }]) {
+	for (const env of [{ TOMIDEV_RESEARCH_TOOLS: '["read"]' }, { TOMIDEV_RESEARCH_SELECTION: '{}' }, { TOMIDEV_RESEARCH_ARTIFACT: '{}' }, { TOMIDEV_SDD_REMEDIATION_PLAN: '{}' }]) {
 		const hooks = new Map<string, (event: { toolName: string }) => { block: boolean }>();
 		const pi = { on: (name: string, handler: (event: { toolName: string }) => { block: boolean }) => hooks.set(name, handler) } as never;
-		gentleAgents(pi, { GENTLE_PI_AGENTS_CHILD: "1", ...env });
+		gentleAgents(pi, { TOMIDEV_AGENTS_CHILD: "1", ...env });
 		assert.equal(hooks.get("tool_call")!({ toolName: "read" }).block, true);
 		assert.equal(hooks.get("tool_call")!({ toolName: "bash" }).block, true);
 	}
@@ -1912,17 +1911,16 @@ for (const matching of [true, false]) {
   const evidence={id:"write",root:target,path:matching?"session-diff-test.ts":"different.ts",before:{kind:"text",text:"original\n"},after:{kind:"text",text:"agent\n"}};
   d.children[0].emit({type:"tool_execution_start",toolCallId:"write",toolName:"write",args:{path:"session-diff-test.ts"}});
   d.children[0].emit({type:"tool_execution_end",toolCallId:"write",isError:false,result:{content:[],details:{gentleSessionChange:evidence}}});
-  const relays=h.events.filter(event=>event.name==="gentle-pi:child-session-change");
+  const relays=h.events.filter(event=>event.name==="td:child-session-change");
   assert.equal(relays.length,matching?1:0);
   if(matching) assert.match((relays[0].data as any).evidence.id,/:write$/);
-  assert.equal(h.entries.filter(entry=>entry.customType===REVIEW_REMINDER_RECEIPT).length,1);
   await h.fire("session_shutdown",ctx); await tick();
  });
 }
 
 // Runs the CHILD half of installSessionChangeCapture against a real repo, the
 // same way an actual subagent process would: a tool_call/tool_result pair
-// with GENTLE_PI_AGENTS_CHILD set, using the real git-backed resolver rather
+// with TOMIDEV_AGENTS_CHILD set, using the real git-backed resolver rather
 // than a stub. Returns exactly the evidence object the child would put in
 // its tool result's details.gentleSessionChange.
 async function childSessionChangeEvidence(root: string, relPath: string, toolCallId: string, content: string): Promise<SessionChangeEvidence> {
@@ -1933,7 +1931,7 @@ async function childSessionChangeEvidence(root: string, relPath: string, toolCal
 		events: { on: () => () => {}, emit: () => {} },
 	} as unknown as ExtensionAPI;
 	const childCtx = { cwd: root, sessionManager: { getSessionId: () => "child-session", getEntries: () => [] } } as unknown as ExtensionContext;
-	installSessionChangeCapture(childPi, { GENTLE_PI_AGENTS_CHILD: "1" }, resolveSessionWorktree);
+	installSessionChangeCapture(childPi, { TOMIDEV_AGENTS_CHILD: "1" }, resolveSessionWorktree);
 	await handlers.get("session_start")?.({}, childCtx);
 	const event = { toolCallId, toolName: "write", input: { path: relPath, content } };
 	await handlers.get("tool_call")?.(event, childCtx);
@@ -1951,7 +1949,7 @@ async function childSessionEditEvidence(root: string, relPath: string, toolCallI
 		events: { on: () => () => {}, emit: () => {} },
 	} as unknown as ExtensionAPI;
 	const childCtx = { cwd: root, sessionManager: { getSessionId: () => "child-session", getEntries: () => [] } } as unknown as ExtensionContext;
-	installSessionChangeCapture(childPi, { GENTLE_PI_AGENTS_CHILD: "1" }, resolveSessionWorktree);
+	installSessionChangeCapture(childPi, { TOMIDEV_AGENTS_CHILD: "1" }, resolveSessionWorktree);
 	await handlers.get("session_start")?.({}, childCtx);
 	writeFileSync(join(root, relPath), before);
 	const event = { toolCallId, toolName: "edit", input: { path: relPath, oldText: before, newText: after } };
@@ -2052,7 +2050,7 @@ test("C1 investigation: the relay mechanism is correct when every guard input is
 		d.children[0].emit({ type: "tool_execution_end", toolCallId: "write", isError: false, result: { content: [], details: { gentleSessionChange: evidence } } });
 		await tick();
 
-		const relays = h.events.filter((event) => event.name === "gentle-pi:child-session-change");
+		const relays = h.events.filter((event) => event.name === "td:child-session-change");
 		assert.equal(relays.length, 1, `expected the child mutation to relay; evidence=${JSON.stringify(evidence)} childCwd=${childCwd}`);
 		assert.equal((relays[0].data as { evidence: { id: string } }).evidence.id, `${taskId}:write`);
 
@@ -2065,111 +2063,12 @@ test("C1 investigation: the relay mechanism is correct when every guard input is
 	}
 });
 
-for (const scenario of ["own", "other-root", "escaped", "sibling", "session-switch", "shutdown", "unregistered"] as const) {
-	test(`child mutation attribution through registered subagent_run: ${scenario}`, async () => {
-		const h = fakePi();
-		const d = deps();
-		const { ctx } = fakeContext();
-		let sessionId = "s1";
-		const sibling = join(root, "sibling");
-		const childRoot = scenario === "other-root" ? sibling : cwd;
-		ctx.sessionManager.getSessionId = () => sessionId;
-		ctx.sessionManager.getEntries = (() => h.entries) as typeof ctx.sessionManager.getEntries;
-		ctx.sessionManager.getBranch = (() => h.entries) as typeof ctx.sessionManager.getBranch;
-		// The cheap session/ownership guards run before any worktree resolution:
-		// a mutation from a switched-away session must never reach git.
-		let resolutions = 0;
-		d.deps.resolveWorktree = (path, base) => {
-			resolutions++;
-			const absolute = resolve(base, path);
-			const worktree = [cwd, sibling].find((candidate) => containsResolvedPath(candidate, absolute));
-			return worktree ? { root: worktree, commonDir: "/fixture/common" } : undefined;
-		};
-		const spawn = d.deps.spawn!;
-		d.deps.spawn = (...args) => {
-			const child = spawn(...args);
-			const on = child.on.bind(child);
-			child.on = ((event: string, listener: () => void) => {
-				if (event === "spawn" && scenario !== "unregistered") queueMicrotask(listener);
-				return on(event as "spawn", listener);
-			}) as typeof child.on;
-			return child;
-		};
-		gentleAgents(h.pi, {}, d.deps);
-		await h.fire("session_start", ctx);
-		await h.tools.get("subagent_run")!.execute("mutation", { agent: "explore", task: "Write", mode: "background", workspace_root: childRoot }, undefined, undefined, ctx);
-		await tick();
-		assert.equal(h.entries.filter((entry) => entry.customType === REVIEW_REMINDER_RECEIPT).length, 0, "spawn alone is not ownership");
-		if (scenario === "session-switch") sessionId = "s2";
-		if (scenario === "shutdown") await h.fire("session_shutdown", ctx);
-		const path = scenario === "escaped" ? "../../outside.ts" : scenario === "sibling" ? join(sibling, "file.ts") : "file.ts";
-		d.children[0].emit({ type: "tool_execution_start", toolCallId: "write", toolName: "write", args: { path } });
-		d.children[0].emit({ type: "tool_execution_end", toolCallId: "write", isError: false, result: { content: [] } });
-		const accepted = scenario === "own" || scenario === "other-root";
-		assert.equal(h.entries.filter((entry) => entry.customType === REVIEW_REMINDER_RECEIPT).length, accepted ? 1 : 0);
-		assert.equal(Boolean(pendingReviewMutation(ctx.sessionManager, cwd)), scenario === "own", "another registered root never authorizes current-root STATUS");
-		if (scenario === "other-root") assert.ok(pendingReviewMutation(ctx.sessionManager, sibling));
-		await h.fire("session_shutdown", ctx);
-		await tick();
-	});
-}
-
-// gentle-pi#1175 (T2): the subagent mutation receipt carries the model and
-// effort the runtime resolved for the task, so ASSESS never re-trusts a model
-// declaration. An inherited (unresolved) model is omitted, never "default".
-for (const scenario of ["resolved", "inherited"] as const) {
-	test(`subagent mutation receipt records the runtime-resolved writer profile: ${scenario}`, async () => {
-		const h = fakePi();
-		const d = deps();
-		const { ctx } = fakeContext();
-		if (scenario === "inherited") {
-			const fixtureHome = realpathSync(mkdtempSync(join(root, "inherited-writer-")));
-			mkdirSync(join(fixtureHome, ".pi", "agent", "agents"), { recursive: true });
-			writeFileSync(join(fixtureHome, ".pi", "agent", "agents", "explore.md"), "---\ndescription: inherits the parent model\ntools: [read]\n---\nYou map things.");
-			d.deps.home = fixtureHome;
-		}
-		ctx.sessionManager.getEntries = (() => h.entries) as typeof ctx.sessionManager.getEntries;
-		ctx.sessionManager.getBranch = (() => h.entries) as typeof ctx.sessionManager.getBranch;
-		d.deps.resolveWorktree = (path, base) => containsResolvedPath(cwd, resolve(base, path)) ? { root: cwd, commonDir: "/fixture/common" } : undefined;
-		const spawn = d.deps.spawn!;
-		d.deps.spawn = (...args) => {
-			const child = spawn(...args);
-			const on = child.on.bind(child);
-			child.on = ((event: string, listener: () => void) => {
-				if (event === "spawn") queueMicrotask(listener);
-				return on(event as "spawn", listener);
-			}) as typeof child.on;
-			return child;
-		};
-		gentleAgents(h.pi, {}, d.deps);
-		await h.fire("session_start", ctx);
-		await h.tools.get("subagent_run")!.execute("mutation", { agent: "explore", task: "Write", mode: "background", workspace_root: cwd }, undefined, undefined, ctx);
-		await tick();
-		d.children[0].emit({ type: "tool_execution_start", toolCallId: "write", toolName: "write", args: { path: "file.ts" } });
-		d.children[0].emit({ type: "tool_execution_end", toolCallId: "write", isError: false, result: { content: [] } });
-		await tick();
-		const receipts = h.entries.filter((entry) => entry.customType === REVIEW_REMINDER_RECEIPT);
-		assert.equal(receipts.length, 1);
-		const data = receipts[0].data as Record<string, unknown>;
-		if (scenario === "resolved") {
-			assert.equal(data.writerModelId, "openai-codex/gpt-5.6-terra");
-			assert.equal(data.writerEffort, "low", "the profile effort override is the runtime-resolved effort");
-		} else {
-			assert.equal(Object.hasOwn(data, "writerModelId"), false, "an inherited model is unknown here and must never be recorded as \"default\"");
-			assert.equal(Object.hasOwn(data, "writerEffort"), false);
-		}
-		assert.deepEqual(pendingReviewMutationProfiles(ctx.sessionManager, cwd), [scenario === "resolved" ? { writerModelId: "openai-codex/gpt-5.6-terra", writerEffort: "low" } : {}]);
-		await h.fire("session_shutdown", ctx);
-		await tick();
-	});
-}
-
 // C1 diagnostics (odd/tasks/usage-click-and-changes-attribution.md): the
 // guard chain's posture is unchanged (spawn-gated registration stays, a
 // parent decision) -- these only verify each drop explains itself once, in
 // the task's own thread, naming the exact guard that fired.
 async function openTaskThread(commands: ReturnType<typeof fakePi>["commands"], ctx: ExtensionContext, overlays: Overlay[]): Promise<string> {
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10));
 	const overlay = overlays[0];
 	const text = overlay ? stripAnsi(overlay.render(100).join("\n")) : "";
@@ -2448,7 +2347,7 @@ test("default Node spawn adapter distinguishes IPC-only and permission-capable c
 		const launch = async (mode: "task" | "background", env: NodeJS.ProcessEnv, sessionCwd = nonGitCwd) => {
 			const h = fakePi();
 			// The launch reads the global active profile; keep it on the scratch config home.
-			env = { ...env, GENTLE_PI_CONFIG_HOME: process.env.GENTLE_PI_CONFIG_HOME };
+			env = { ...env, TOMIDEV_CONFIG_HOME: process.env.TOMIDEV_CONFIG_HOME };
 			gentleAgents(h.pi, env, { home, agentHome: join(home, ".pi", "agent"), env, pi: { command: "/fixture/pi", args: ["--host-flag"] }, resolveWorktree: () => undefined, sessionTransport: inertSessionTransport });
 			const { ctx } = fakeContext();
 			(ctx.sessionManager as unknown as { getCwd(): string }).getCwd = () => sessionCwd;
@@ -2475,7 +2374,7 @@ test("default Node spawn adapter distinguishes IPC-only and permission-capable c
 		const permissionChannelStdio = process.platform === "win32" ? "overlapped" : "pipe";
 		for (const [index, fixture] of ["task", "background", "permission"].entries()) {
 			const permissionChannel = index === 2;
-			const ownedIpc = captured[index]?.options.env.GENTLE_PI_AGENTS_OWNED_IPC;
+			const ownedIpc = captured[index]?.options.env.TOMIDEV_AGENTS_OWNED_IPC;
 			assert.match(ownedIpc ?? "", /^\d+-[a-z0-9]+$/, "the child receives an opaque owned-IPC marker");
 			assert.equal(captured[index]?.command, "/fixture/pi");
 			assert.deepEqual(captured[index]?.args, args);
@@ -2483,11 +2382,11 @@ test("default Node spawn adapter distinguishes IPC-only and permission-capable c
 			const scratch = captured[index]?.options.env.TMPDIR;
 			assert.match(scratch ?? "", /[\\/]ga[A-Za-z0-9]{6}$/, "each child receives its own TMPDIR");
 			const scratchEnv = process.platform === "win32" ? { TMPDIR: scratch, TMP: scratch, TEMP: scratch } : { TMPDIR: scratch };
-			assert.deepEqual(captured[index]?.options.env, { PATH: "/bin", FIXTURE: fixture, GENTLE_PI_CONFIG_HOME: process.env.GENTLE_PI_CONFIG_HOME, GENTLE_PI_AGENTS_CHILD: "1", GENTLE_PI_AGENTS_OWNED_IPC: ownedIpc, ...(permissionChannel ? { GENTLE_PI_AGENTS_PARENT_PERMISSION_FD: "3" } : {}), [REQUESTED_TOOLS_ENV]: "read,grep,subagent_parent_message", ...scratchEnv });
+			assert.deepEqual(captured[index]?.options.env, { PATH: "/bin", FIXTURE: fixture, TOMIDEV_CONFIG_HOME: process.env.TOMIDEV_CONFIG_HOME, TOMIDEV_AGENTS_CHILD: "1", TOMIDEV_AGENTS_OWNED_IPC: ownedIpc, [REQUESTED_TOOLS_ENV]: "read,grep,subagent_parent_message", ...scratchEnv });
 			assert.equal(captured[index]?.options.shell, undefined, "the adapter does not invoke a shell");
 			assert.equal(captured[index]?.options.windowsHide, true, "the adapter always hides a Windows console");
 			assert.equal(captured[index]?.options.detached, process.platform !== "win32", "the adapter forwards the runner's platform selection");
-			assert.deepEqual(captured[index]?.options.stdio, permissionChannel ? ["pipe", "pipe", "pipe", permissionChannelStdio, "ipc"] : ["pipe", "pipe", "pipe", "ipc"], permissionChannel ? "canonical repository children retain an fd3 permission channel and receive messaging IPC at fd4" : "IPC-only children have no inherited permission fd");
+			assert.deepEqual(captured[index]?.options.stdio, ["pipe", "pipe", "pipe", "ipc"]);
 		}
 		await Promise.all(shutdown.map((close) => close()));
 		assert.deepEqual(children[1]?.killed, ["SIGTERM"], "session shutdown cleans up an active background child");
@@ -2575,11 +2474,11 @@ test("foreign clone tool requires consent before queueing and never enters paren
 		for (const path of [parent, foreign]) execFileSync("git", ["init", "--quiet", `--template=${template}`, path]);
 		const configHome = join(fixture, "config");
 		mkdirSync(configHome);
-		writeFileSync(join(configHome, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, profiles: { pinned: { explore: { model: "openai/foreign-model", thinking: "minimal" } } } }));
+		writeFileSync(join(configHome, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, profiles: { pinned: { explore: { model: "openai/foreign-model", thinking: "minimal" } } } }));
 		mkdirSync(join(foreign, ".git", "gentle-ai"));
-		writeFileSync(join(foreign, ".git", "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "pinned" }));
+		writeFileSync(join(foreign, ".git", "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "pinned" }));
 		const h = fakePi(), runtime = deps();
-		runtime.deps.env = { PATH: "/bin", GENTLE_PI_CONFIG_HOME: configHome };
+		runtime.deps.env = { PATH: "/bin", TOMIDEV_CONFIG_HOME: configHome };
 		runtime.deps.resolveWorktree = resolveSessionWorktree;
 		const spawned: string[] = [];
 		const spawnEnvs: Array<Record<string, string | undefined>> = [];
@@ -2650,7 +2549,7 @@ test("foreign clone tool requires consent before queueing and never enters paren
 		assert.equal((queued.details.gentleAgents as { cwd: string }).cwd, foreign);
 		assert.equal(runtime.children.length, 3, "later launches wait in the runner queue");
 		await run.execute("same-clone", { agent: "explore", task: "Map parent", workspace_root: parent, mode: "background" }, undefined, undefined, ctx);
-		assert.equal(typeof (runnerRun.mock.calls.at(-1)?.arguments[0] as { authorizeParentStandingReviewPermission?: unknown }).authorizeParentStandingReviewPermission, "function", "same-clone child retains parent review permission channel");
+		assert.equal((runnerRun.mock.calls.at(-1)?.arguments[0] as { authorizeParentStandingReviewPermission?: unknown }).authorizeParentStandingReviewPermission, undefined, "same-clone child retains no parent review permission channel since RDD retirement");
 		const { ctx: successor } = fakeContext();
 		successor.sessionManager.getCwd = () => parent;
 		await h.fire("session_start", successor);
@@ -2673,14 +2572,14 @@ test("a frozen session profile routes a foreign repository launch over that repo
 	for (const path of [parent, foreign]) execFileSync("git", ["init", "--quiet", `--template=${template}`, path]);
 	const configHome = join(fixture, "config");
 	mkdirSync(configHome);
-	writeFileSync(join(configHome, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "session", profiles: {
+	writeFileSync(join(configHome, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "session", profiles: {
 		session: { explore: { model: "openai/session-model", thinking: "low" } },
 		pinned: { explore: { model: "openai/foreign-model", thinking: "minimal" } },
 	} }));
 	mkdirSync(join(foreign, ".git", "gentle-ai"));
-	writeFileSync(join(foreign, ".git", "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "pinned" }));
+	writeFileSync(join(foreign, ".git", "gentle-ai", "profile-pin.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "pinned" }));
 	const h = fakePi(), runtime = deps();
-	runtime.deps.env = { PATH: "/bin", GENTLE_PI_CONFIG_HOME: configHome };
+	runtime.deps.env = { PATH: "/bin", TOMIDEV_CONFIG_HOME: configHome };
 	runtime.deps.resolveWorktree = resolveSessionWorktree;
 	gentleAgents(h.pi, {}, runtime.deps);
 	const { ctx } = fakeContext();
@@ -2732,14 +2631,14 @@ test("foreign child Changes require successful target-bound tool evidence, never
 		};
 		child.emit({ type: "message_update", text: `I edited ${join(foreign, "claimed.md")}` });
 		await send("unspawned", foreign, "unspawned.md");
-		assert.equal(h.entries.some(entry => entry.customType === "gentle-pi.session-change/v1"), false, "unproven spawn cannot attribute a mutation");
+		assert.equal(h.entries.some(entry => entry.customType === "tomidev.session-change/v1"), false, "unproven spawn cannot attribute a mutation");
 		assert.ok(proveSpawn);
 		proveSpawn();
 		await tick();
 		await send("sibling", sibling, "sibling.md");
 		await send("forged", foreign, "forged.md", false, parent);
 		await send("failed", foreign, "failed.md", true);
-		assert.equal(h.entries.some(entry => entry.customType === "gentle-pi.session-change/v1"), false);
+		assert.equal(h.entries.some(entry => entry.customType === "tomidev.session-change/v1"), false);
 		await send("accepted", foreign, "accepted.md");
 		const spacedEvidence = await childSessionChangeEvidence(foreign, "space name.md", "unicode-space", "agent output\n");
 		child.emit({ type: "tool_execution_start", toolCallId: "unicode-space", toolName: "write", args: { path: "space\u00a0name.md" } });
@@ -2753,8 +2652,8 @@ test("foreign child Changes require successful target-bound tool evidence, never
 		assert.deepEqual(changes.worktrees.map(tree => tree.root), [foreign]);
 		assert.deepEqual(changes.model.files.map(file => file.path).sort(), ["accepted.md", "edited.md", "space name.md"]);
 		assert.deepEqual(h.entries.filter(entry => entry.customType === SESSION_WORKTREE_ENTRY), []);
-		assert.equal(h.events.some(event => event.name === "gentle-pi:child-session-change"), false);
-		assert.equal(h.entries.filter(entry => entry.customType === "gentle-pi.session-change/v1").length, 3);
+		assert.equal(h.events.some(event => event.name === "td:child-session-change"), false);
+		assert.equal(h.entries.filter(entry => entry.customType === "tomidev.session-change/v1").length, 3);
 		assert.equal(changes.worktrees[0]?.model.files.find(file => file.path === "accepted.md")?.status, "added");
 		assert.equal(changes.worktrees[0]?.model.files.find(file => file.path === "edited.md")?.status, "modified");
 		mkdirSync(join(foreign, "nested"));
@@ -2763,7 +2662,7 @@ test("foreign child Changes require successful target-bound tool evidence, never
 		execFileSync("git", ["init", "--quiet", `--template=${template}`, join(foreign, "nested")]);
 		child.emit({ type: "tool_execution_end", toolCallId: "rebound", isError: false, result: { content: [], details: { gentleSessionChange: rebound } } });
 		await tick();
-		assert.equal(h.entries.filter(entry => entry.customType === "gentle-pi.session-change/v1").length, 3, "new nested Git identity must not inherit foreign target attribution");
+		assert.equal(h.entries.filter(entry => entry.customType === "tomidev.session-change/v1").length, 3, "new nested Git identity must not inherit foreign target attribution");
 		const stale = await childSessionChangeEvidence(foreign, "stale.md", "stale", "not attributed\n");
 		child.emit({ type: "tool_execution_start", toolCallId: "stale", toolName: "write", args: { path: "stale.md" } });
 		const { ctx: successor } = fakeContext();
@@ -2771,7 +2670,7 @@ test("foreign child Changes require successful target-bound tool evidence, never
 		await h.fire("session_start", successor);
 		child.emit({ type: "tool_execution_end", toolCallId: "stale", isError: false, result: { content: [], details: { gentleSessionChange: stale } } });
 		await tick();
-		assert.equal(h.entries.filter(entry => entry.customType === "gentle-pi.session-change/v1").length, 3, "session replacement during a tool cannot attribute its result");
+		assert.equal(h.entries.filter(entry => entry.customType === "tomidev.session-change/v1").length, 3, "session replacement during a tool cannot attribute its result");
 		assert.equal(h.entries.filter(entry => entry.customType === SESSION_WORKTREE_ENTRY).length, 0);
 		await h.fire("session_shutdown", successor);
 	} finally { rmSync(fixture, TEST_DIR_REMOVAL); }
@@ -2898,7 +2797,7 @@ test("foreign selector rejects RPC and retired SDD selections before consent", a
 		assert.match((await run.execute("foreign-sdd", { ...base, agent: "sdd-apply", sdd_change: { changeName: "alpha", workspaceRoot: foreign, phase: "apply" } }, undefined, undefined, ctx)).content[0].text, /retired SDD/);
 		assert.equal(existsSync(join(agentHome, ".pi", "agent", "sessions")), false, "foreign explicit selection rejection must precede child session directory creation");
 		const childHost = fakePi();
-		gentleAgents(childHost.pi, { GENTLE_PI_AGENTS_CHILD: "1" }, runtime.deps);
+		gentleAgents(childHost.pi, { TOMIDEV_AGENTS_CHILD: "1" }, runtime.deps);
 		assert.equal(childHost.tools.has("subagent_run"), false, "child-originated foreign launches have no delegation tool");
 		assert.equal(dialogs.length, 0);
 		assert.equal(runtime.children.length, 0);
@@ -3091,10 +2990,10 @@ for (const scenario of ["implicit-worker", "explicit-worker", "implicit-gentle-a
 		// freezes it at session_start (gentle-shell#1064 slice 3b-ii).
 		if (scenario === "profile-model" || scenario === "profile-valid") {
 			mkdirSync(join(project, ".pi", "gentle-ai"), { recursive: true });
-			writeFileSync(join(project, ".pi", "gentle-ai", "profile.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "invalid" }));
-			const config = runtime.deps.env!.GENTLE_PI_CONFIG_HOME = join(fixture, "config");
+			writeFileSync(join(project, ".pi", "gentle-ai", "profile.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "invalid" }));
+			const config = runtime.deps.env!.TOMIDEV_CONFIG_HOME = join(fixture, "config");
 			mkdirSync(config, { recursive: true });
-			writeFileSync(join(config, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, profiles: { invalid: { worker: { model: scenario === "profile-valid" ? "offline/pinned-good" : "offline/bad" } } } }));
+			writeFileSync(join(config, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, profiles: { invalid: { worker: { model: scenario === "profile-valid" ? "offline/pinned-good" : "offline/bad" } } } }));
 		}
 		await h.fire("session_start", ctx);
 		let calls = 0;
@@ -3145,15 +3044,15 @@ test("a session binding keeps writer admission and launch resolution in agreemen
 	// session binding at another: only agreement between the two resolutions can
 	// let this launch through, and both must pick the binding's model.
 	mkdirSync(join(project, ".pi", "gentle-ai"), { recursive: true });
-	writeFileSync(join(project, ".pi", "gentle-ai", "profile.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile: "declared" }));
+	writeFileSync(join(project, ".pi", "gentle-ai", "profile.json"), JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile: "declared" }));
 	const configHome = join(fixture, "config");
 	mkdirSync(configHome, { recursive: true });
-	writeFileSync(join(configHome, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, profiles: { declared: { worker: { model: "offline/pinned-good" } }, bound: { worker: { model: "offline/bound-good" } } } }));
+	writeFileSync(join(configHome, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, profiles: { declared: { worker: { model: "offline/pinned-good" } }, bound: { worker: { model: "offline/bound-good" } } } }));
 	bindSessionProfile("s1", "bound", { worker: { model: "offline/bound-good" } });
 	const h = fakePi();
 	const runtime = deps();
 	runtime.deps.home = fixtureHome;
-	runtime.deps.env!.GENTLE_PI_CONFIG_HOME = configHome;
+	runtime.deps.env!.TOMIDEV_CONFIG_HOME = configHome;
 	runtime.deps.resolveWorktree = resolveSessionWorktree;
 	gentleAgents(h.pi, {}, runtime.deps);
 	const { ctx } = fakeContext();
@@ -3208,7 +3107,6 @@ for (const explicit of [false, true]) {
 		await tick();
 		const taskId = (result.details.gentleAgents as { taskId: string }).taskId;
 		assert.match((await h.tools.get("subagent_status")!.execute("status", { task_id: taskId }, undefined, undefined, ctx)).content[0].text, /completed/);
-		assert.equal(h.entries.some(entry => entry.customType === REVIEW_REMINDER_RECEIPT), false, "spawn registration is not mutation evidence");
 	});
 }
 
@@ -3292,7 +3190,7 @@ test("extension resolves each profile environment at setup time without changing
 		return overrides;
 	};
 	const principal = fakePi();
-	gentleAgents(principal.pi, { GENTLE_PI_AGENT_HOME: principalHome, PI_CODING_AGENT_DIR: labHome }, withoutExplicitHome());
+	gentleAgents(principal.pi, { TOMIDEV_AGENT_HOME: principalHome, PI_CODING_AGENT_DIR: labHome }, withoutExplicitHome());
 	const principalContext = fakeContext();
 	await principal.fire("session_start", principalContext.ctx);
 	assert.match((await principal.tools.get("subagent_list_agents")!.execute("p1", {}, undefined, undefined, principalContext.ctx)).content[0].text, /principal/);
@@ -3303,7 +3201,7 @@ test("extension resolves each profile environment at setup time without changing
 	assert.match((await lab.tools.get("subagent_list_agents")!.execute("l1", {}, undefined, undefined, labContext.ctx)).content[0].text, /lab/);
 });
 
-for (const [key, tilde] of [["GENTLE_PI_AGENT_HOME", false], ["PI_CODING_AGENT_DIR", false], ["GENTLE_PI_AGENT_HOME", true], ["PI_CODING_AGENT_DIR", true]] as const) {
+for (const [key, tilde] of [["TOMIDEV_AGENT_HOME", false], ["PI_CODING_AGENT_DIR", false], ["TOMIDEV_AGENT_HOME", true], ["PI_CODING_AGENT_DIR", true]] as const) {
 	test(`${key} ${tilde ? "tilde" : "relative"} profile shares an absolute parent and child session root`, async () => {
 		const agentHome = join(root, `${key}-${tilde}`, "agent");
 		mkdirSync(join(agentHome, "agents"), { recursive: true });
@@ -3346,7 +3244,7 @@ function pinFixture(name: string) {
 	for (const dir of [worktreeRoot, commonDir, configHome]) mkdirSync(dir, { recursive: true });
 	const writePinText = (path: string, profile: string) => {
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, `${JSON.stringify({ kind: "gentle-pi.agent_model_profile_pin", version: 1, profile }, null, 2)}\n`);
+		writeFileSync(path, `${JSON.stringify({ kind: "tomidev.agent_model_profile_pin", version: 1, profile }, null, 2)}\n`);
 	};
 	const localPinPath = join(commonDir, "gentle-ai", "profile-pin.json");
 	const declarationPath = join(worktreeRoot, ".pi", "gentle-ai", "profile.json");
@@ -3359,7 +3257,7 @@ function pinFixture(name: string) {
 		writePin: (profile: string) => writePinText(localPinPath, profile),
 		writeDeclaration: (profile: string) => writePinText(declarationPath, profile),
 		writeStore: (profiles: Record<string, unknown>, active?: string) => {
-			writeFileSync(join(configHome, "profiles.json"), `${JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, ...(active === undefined ? {} : { active }), profiles }, null, 2)}\n`);
+			writeFileSync(join(configHome, "profiles.json"), `${JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, ...(active === undefined ? {} : { active }), profiles }, null, 2)}\n`);
 		},
 	};
 }
@@ -3369,7 +3267,7 @@ function pinFixture(name: string) {
 async function launchPinned(base: ReturnType<typeof pinFixture>): Promise<string> {
 	const harness = deps();
 	harness.deps.resolveWorktree = () => ({ root: base.root, commonDir: base.commonDir });
-	harness.deps.env = { PATH: "/bin", GENTLE_PI_CONFIG_HOME: base.configHome };
+	harness.deps.env = { PATH: "/bin", TOMIDEV_CONFIG_HOME: base.configHome };
 	const { pi, tools, fire } = fakePi();
 	gentleAgents(pi, {}, harness.deps);
 	const { ctx } = fakeContext();
@@ -3448,7 +3346,7 @@ test("a launch without a session manager fails closed with the authority message
 	base.writePin("pinned");
 	const harness = deps();
 	harness.deps.resolveWorktree = () => ({ root: base.root, commonDir: base.commonDir });
-	harness.deps.env = { PATH: "/bin", GENTLE_PI_CONFIG_HOME: base.configHome };
+	harness.deps.env = { PATH: "/bin", TOMIDEV_CONFIG_HOME: base.configHome };
 	const { pi, tools, fire } = fakePi();
 	gentleAgents(pi, {}, harness.deps);
 	const { ctx } = fakeContext();
@@ -3483,7 +3381,7 @@ test("a queued launch keeps the session routing frozen across a rebind", async t
 	bindSessionProfile("s1", "first", { explore: { model: "openai/alpha", thinking: "minimal" } });
 	const harness = deps();
 	harness.deps.resolveWorktree = () => ({ root: base.root, commonDir: base.commonDir });
-	harness.deps.env = { PATH: "/bin", GENTLE_PI_CONFIG_HOME: base.configHome };
+	harness.deps.env = { PATH: "/bin", TOMIDEV_CONFIG_HOME: base.configHome };
 	const { pi, tools, fire } = fakePi();
 	gentleAgents(pi, {}, harness.deps);
 	const { ctx } = fakeContext();
@@ -3507,12 +3405,12 @@ test("a queued launch keeps the session routing frozen across a rebind", async t
 
 // gentle-shell#1064 slice 3b-ii: a parent session without an explicit Enter
 // binding freezes p → P → G at session_start; later default changes only show
-// a drift notice once per change. GENTLE_PI_PROFILE_FOLLOW=1 keeps the live
+// a drift notice once per change. TOMIDEV_PROFILE_FOLLOW=1 keeps the live
 // resolution.
 async function launchSession(base: ReturnType<typeof pinFixture>, env: Record<string, string> = {}) {
 	const harness = deps();
 	harness.deps.resolveWorktree = () => ({ root: base.root, commonDir: base.commonDir });
-	harness.deps.env = { PATH: "/bin", GENTLE_PI_CONFIG_HOME: base.configHome, ...env };
+	harness.deps.env = { PATH: "/bin", TOMIDEV_CONFIG_HOME: base.configHome, ...env };
 	const { pi, tools, fire } = fakePi();
 	gentleAgents(pi, {}, harness.deps);
 	const { ctx, dialogs } = fakeContext();
@@ -3556,7 +3454,7 @@ test("session_start freezes the inherited pin: a later pin change does not move 
 	assert.equal(await session.launch(), "openai/alpha:minimal");
 	assert.equal(await session.launch(), "openai/alpha:minimal");
 	assert.deepEqual(session.driftNotices(), [
-		'notify:el Gentleman: the default profile changed to "local" (local), this session keeps "frontier" (local). Open /gentle:profiles and choose Use in this session to adopt one.',
+		'notify:Tomidev: the default profile changed to "local" (local), this session keeps "frontier" (local). Open /td:profiles and choose Use in this session to adopt one.',
 	], "one notice for one change, across two launches");
 	base.writeStore(DRIFT_PROFILES, "local");
 	base.writeDeclaration("local");
@@ -3585,7 +3483,7 @@ test("a session with no profile anywhere keeps today's routing even after a pin 
 	base.writePin("frontier");
 	assert.equal(await session.launch(), "openai-codex/gpt-5.6-terra:low");
 	assert.deepEqual(session.driftNotices(), [
-		'notify:el Gentleman: the default profile changed to "frontier" (local), this session keeps no profile. Open /gentle:profiles and choose Use in this session to adopt one.',
+		'notify:Tomidev: the default profile changed to "frontier" (local), this session keeps no profile. Open /td:profiles and choose Use in this session to adopt one.',
 	]);
 });
 
@@ -3609,7 +3507,7 @@ test("follow mode re-resolves the defaults on every launch without a notice; Ent
 	const base = pinFixture("follow");
 	base.writeStore(DRIFT_PROFILES);
 	base.writePin("frontier");
-	const session = await launchSession(base, { GENTLE_PI_PROFILE_FOLLOW: "1" });
+	const session = await launchSession(base, { TOMIDEV_PROFILE_FOLLOW: "1" });
 	t.after(session.shutdown);
 	assert.equal(readFrozenInheritedProfile("s1"), undefined, "follow never freezes");
 	assert.equal(await session.launch(), "openai/alpha:minimal");
@@ -3644,7 +3542,7 @@ function captureLaunches(t: TestContext): LaunchCapture[] {
 async function launchNonGitSession(base: ReturnType<typeof pinFixture>, env: Record<string, string> = {}) {
 	const harness = deps();
 	harness.deps.resolveWorktree = () => undefined;
-	harness.deps.env = { PATH: "/bin", GENTLE_PI_CONFIG_HOME: base.configHome, ...env };
+	harness.deps.env = { PATH: "/bin", TOMIDEV_CONFIG_HOME: base.configHome, ...env };
 	const { pi, tools, fire } = fakePi();
 	gentleAgents(pi, {}, harness.deps);
 	const { ctx } = fakeContext();
@@ -3731,7 +3629,7 @@ test("a follow launch through the globally active profile records profile as the
 	const captures = captureLaunches(t);
 	const base = pinFixture("source-follow-global");
 	base.writeStore(DRIFT_PROFILES, "frontier");
-	const session = await launchSession(base, { GENTLE_PI_PROFILE_FOLLOW: "1" });
+	const session = await launchSession(base, { TOMIDEV_PROFILE_FOLLOW: "1" });
 	t.after(session.shutdown);
 	await session.launch();
 	assert.equal(captures[0]!.request.modelSource, "profile");
@@ -3742,7 +3640,7 @@ test("a follow launch through the local pin records pin:local as the model sourc
 	const base = pinFixture("source-follow-pin");
 	base.writeStore(DRIFT_PROFILES);
 	base.writePin("frontier");
-	const session = await launchSession(base, { GENTLE_PI_PROFILE_FOLLOW: "1" });
+	const session = await launchSession(base, { TOMIDEV_PROFILE_FOLLOW: "1" });
 	t.after(session.shutdown);
 	await session.launch();
 	assert.equal(captures[0]!.request.modelSource, "pin:local");
@@ -3753,7 +3651,7 @@ test("a follow launch through a committed repository declaration records pin:rep
 	const base = pinFixture("source-follow-declaration");
 	base.writeStore({ declared: { explore: { model: "openai/alpha", thinking: "minimal" } } });
 	base.writeDeclaration("declared");
-	const session = await launchSession(base, { GENTLE_PI_PROFILE_FOLLOW: "1" });
+	const session = await launchSession(base, { TOMIDEV_PROFILE_FOLLOW: "1" });
 	t.after(session.shutdown);
 	await session.launch();
 	assert.equal(captures[0]!.request.modelSource, "pin:repo");
@@ -3764,7 +3662,7 @@ test("a follow launch through a non-Git repository declaration records declarati
 	const base = pinFixture("source-follow-nongit");
 	base.writeStore({ declared: { explore: { model: "openai/alpha", thinking: "minimal" } } });
 	base.writeDeclaration("declared");
-	const session = await launchNonGitSession(base, { GENTLE_PI_PROFILE_FOLLOW: "1" });
+	const session = await launchNonGitSession(base, { TOMIDEV_PROFILE_FOLLOW: "1" });
 	t.after(session.shutdown);
 	await session.launch();
 	assert.equal(captures[0]!.request.modelSource, "declaration");
@@ -3784,11 +3682,11 @@ test("the agents task card shows the winning layer next to the model, and render
 test("saved keymaps replace the agents shortcuts, and the environment still wins", () => {
 	const home = keymapsConfigHome({ "agents.view": "alt+v", "agents.stop": null, "agents.collapse": "alt+c" });
 	const { pi, shortcuts } = fakePi();
-	gentleAgents(pi, { GENTLE_PI_CONFIG_HOME: home }, deps().deps);
+	gentleAgents(pi, { TOMIDEV_CONFIG_HOME: home }, deps().deps);
 	assert.ok(shortcuts.has("alt+v") && shortcuts.has("alt+c"));
 	for (const key of ["alt+a", "alt+s", "ctrl+shift+a"]) assert.equal(shortcuts.has(key), false, key);
 	const envWins = fakePi();
-	gentleAgents(envWins.pi, { GENTLE_PI_CONFIG_HOME: home, GENTLE_PI_AGENTS_VIEW_KEY: "alt+w" }, deps().deps);
+	gentleAgents(envWins.pi, { TOMIDEV_CONFIG_HOME: home, TOMIDEV_AGENTS_VIEW_KEY: "alt+w" }, deps().deps);
 	assert.ok(envWins.shortcuts.has("alt+w"));
 	assert.equal(envWins.shortcuts.has("alt+v"), false);
 	assert.equal(agentsViewKey({}, { "agents.view": "alt+v" }), "alt+v");
@@ -3797,17 +3695,17 @@ test("saved keymaps replace the agents shortcuts, and the environment still wins
 
 test("agentsEnabled and agentsCollapseKey read their flags and stay off inside a child", () => {
 	assert.equal(agentsEnabled({}), true);
-	assert.equal(agentsEnabled({ GENTLE_PI_AGENTS: "off" }), false);
-	assert.equal(agentsEnabled({ GENTLE_PI_AGENTS_CHILD: "1" }), false);
+	assert.equal(agentsEnabled({ TOMIDEV_AGENTS: "off" }), false);
+	assert.equal(agentsEnabled({ TOMIDEV_AGENTS_CHILD: "1" }), false);
 	assert.equal(agentsCollapseKey({}), "ctrl+shift+a");
-	assert.equal(agentsCollapseKey({ GENTLE_PI_AGENTS_KEY: "off" }), undefined);
+	assert.equal(agentsCollapseKey({ TOMIDEV_AGENTS_KEY: "off" }), undefined);
 	assert.equal(agentsViewKey({}), "alt+a");
-	assert.equal(agentsViewKey({ GENTLE_PI_AGENTS_VIEW_KEY: "off" }), undefined);
+	assert.equal(agentsViewKey({ TOMIDEV_AGENTS_VIEW_KEY: "off" }), undefined);
 	assert.equal(agentsStopKey({}), "alt+s");
-	assert.equal(agentsStopKey({ GENTLE_PI_AGENTS_STOP_KEY: "" }), undefined);
-	assert.equal(agentsStopKey({ GENTLE_PI_AGENTS_STOP_KEY: "off" }), undefined);
+	assert.equal(agentsStopKey({ TOMIDEV_AGENTS_STOP_KEY: "" }), undefined);
+	assert.equal(agentsStopKey({ TOMIDEV_AGENTS_STOP_KEY: "off" }), undefined);
 	const off = fakePi();
-	gentleAgents(off.pi, { GENTLE_PI_AGENTS: "0" });
+	gentleAgents(off.pi, { TOMIDEV_AGENTS: "0" });
 	assert.equal(off.tools.size, 0);
 });
 
@@ -3824,7 +3722,7 @@ test("while pi-subagents-j0k3r is still installed the tools stay unregistered an
 	const notices: string[] = [];
 	const ctx = { hasUI: true, ui: { notify: (message: string, level: string) => notices.push(`${level}:${message}`) } } as unknown as ExtensionContext;
 	await fire("session_start", ctx);
-	assert.match(notices[0] ?? "", /^warning:❀ Gentle Agents is waiting: remove the old package first with "pi remove npm:pi-subagents-j0k3r"/);
+	assert.match(notices[0] ?? "", /^warning:❀ Tomidev Agents is waiting: remove the old package first with "pi remove npm:pi-subagents-j0k3r"/);
 });
 
 test("subagent_list_agents publishes each agent's declared tool inventory so routing can check capabilities", async () => {
@@ -3988,7 +3886,7 @@ test("an agent tool result takes the error tone from the host error flag", () =>
 test("the iris float tint stays on agent info cards and leaves success cards on the theme background", async () => {
 	const { pi, tools, renderers } = fakePi();
 	gentleAgents(pi, {}, deps().deps);
-	const irisTint = "\x1b[48;2;26;21;38m";
+	const irisTint = "\x1b[48;2;34;29;48m";
 	const themeBg = "\x1b[48;5;236m";
 	const bgTheme = { fg: (_color: string, text: string) => text, bg: (_role: string, text: string) => `${themeBg}${text}\x1b[49m` };
 	setCardStyle(CARD_STYLE.FLOAT);
@@ -4046,7 +3944,7 @@ test("the Agents card moves to the fullscreen rail like Todos and its header tog
 	assert.equal(component.handleMouse?.(event("click", "right", 1)), undefined, "a right click on an agent row does nothing");
 	assert.equal(component.handleMouse?.(event("click", "left", 1))?.handled, true, "a left click on an agent row is handled");
 	await tick();
-	assert.equal(overlays.length, 1, "a left click on an agent row opens /gentle:agents");
+	assert.equal(overlays.length, 1, "a left click on an agent row opens /td:agents");
 	assert.match(stripAnsi(component.render(72)[0]!), /Agents ▾ Collapse/, "only a left click on the header toggles");
 	assert.equal(component.handleMouse?.(event("click", "left"))?.handled, true);
 	const collapsed = component.render(72).map(stripAnsi);
@@ -4059,7 +3957,7 @@ test("the Agents card moves to the fullscreen rail like Todos and its header tog
 	assert.match(stripAnsi(rail.render(46)[0]!), /^▾ AGENTS/);
 	assert.equal(rail.handleMouse?.({ ...railClick, y: 1, screenY: 1 })?.handled, true, "a left click on a rail agent row is handled");
 	await tick();
-	assert.equal(overlays.length, 2, "a left click on a rail agent row opens /gentle:agents, never the panel");
+	assert.equal(overlays.length, 2, "a left click on a rail agent row opens /td:agents, never the panel");
 	assert.match(stripAnsi(rail.render(46)[0]!), /^▾ AGENTS/, "an agent row click never toggles the section");
 	assert.equal(typeof (rail as { open?: unknown }).open, "function", "the rail part exposes the agents view for the mobile work row");
 });
@@ -4363,7 +4261,7 @@ test("AgentsView production composition observes each pointer event once and acc
 		};
 	});
 	try {
-		const opened = commands.get("gentle:agents")!.handler("", ctx);
+		const opened = commands.get("td:agents")!.handler("", ctx);
 		for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 		const overlay = overlays[0];
 		assert.ok(overlay, "the production extension mounted its fullscreen interaction");
@@ -4418,7 +4316,7 @@ test("AgentsView production footer uses rendered bounds and invalidates them bef
 		return subscribeSummary.apply(this, args);
 	});
 	try {
-		const opened = commands.get("gentle:agents")!.handler("", ctx);
+		const opened = commands.get("td:agents")!.handler("", ctx);
 		for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 		const overlay = overlays[0];
 		assert.ok(overlay, "the production extension mounted its fullscreen interaction");
@@ -4506,8 +4404,8 @@ test("a task that finishes live stays visible as history, in both scopes, and it
 
 	// Back in the session where it actually finished, it stays listed as
 	// history -- in the current-session view and under "all sessions" too.
-	assert.ok(commands.has("gentle:agents") && shortcuts.has("alt+a"));
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	assert.ok(commands.has("td:agents") && shortcuts.has("alt+a"));
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	const overlay = overlays[0];
 	assert.ok(overlay, "the overlay component was created");
@@ -4653,7 +4551,7 @@ test("the overlay confirms a running task once and reports when it finishes duri
 	await fire("session_start", ctx);
 	await tools.get("subagent_run")!.execute("c1", { agent: "explore", task: "Race", mode: "background" }, undefined, undefined, ctx);
 	await tick();
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	const overlay = overlays[0];
 	assert.ok(overlay, "the overlay component was created");
@@ -4687,7 +4585,7 @@ test("the overlay stops a queued selection immediately without confirmation", as
 	await tick();
 	const queued = await tools.get("subagent_run")!.execute("c2", { agent: "explore", task: "Queued", mode: "background" }, undefined, undefined, ctx);
 	const queuedId = (queued.details.gentleAgents as { taskId: string }).taskId;
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	overlays[0]!.handleInput("s");
 	await tick();
@@ -4714,7 +4612,7 @@ test("the overlay explains that stopping a waiting subagent dismisses its questi
 	await tick();
 	harness.children[0].emit({ type: "extension_ui_request", id: "wait", method: "input", title: "Need input" });
 	await tick();
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	overlays[0]!.handleInput("s");
 	await tick();
@@ -4764,7 +4662,7 @@ test("restored task history cannot enter the live panel or discovery during sync
 	await eventually(() => checked, "restoration callback checked");
 	assert.deepEqual(leaked, [], "summary callback must not publish restored running history");
 	assert.deepEqual(readDiscovery(profile, listPresence(profile).entries[0])?.tasks, []);
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	// The interrupted record is reconciled on resume, so it shows as finished history, never as stoppable work (#1741).
 	const rendered = stripAnsi(overlays[0]!.render(80).join("\n"));
@@ -4797,7 +4695,7 @@ test("resuming a session restores its own finished tasks as history, never anoth
 	const { ctx, overlays } = fakeContext();
 	ctx.sessionManager.getSessionId = () => "resumed-session";
 	await fire("session_start", ctx, { reason: "resume" });
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	// The disk history read behind restoreSessionHistory is fire-and-forget,
 	// so poll the overlay's own render output instead of sleeping a guess.
@@ -4815,7 +4713,7 @@ test("resuming a session restores its own finished tasks as history, never anoth
 	freshCtx.sessionManager.getSessionId = () => "brand-new-session";
 	await freshFire("session_start", freshCtx, { reason: "new" });
 	await tick();
-	const freshOpened = freshCommands.get("gentle:agents")!.handler("", freshCtx);
+	const freshOpened = freshCommands.get("td:agents")!.handler("", freshCtx);
 	for (let attempt = 0; attempt < 40 && freshOverlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	assert.doesNotMatch(stripAnsi(freshOverlays[0]!.render(100).join("\n")), /explore/, "a brand-new session restores nothing");
 	freshOverlays[0]!.handleInput("\x1b");
@@ -4843,7 +4741,7 @@ test("starting up into an existing session also restores its own finished histor
 		ctx.sessionManager.getSessionId = () => "startup-session";
 		ctx.sessionManager.getEntries = (() => [{ type: "message" }]) as typeof ctx.sessionManager.getEntries;
 		await fire("session_start", ctx, { reason: "startup" });
-		const opened = commands.get("gentle:agents")!.handler("", ctx);
+		const opened = commands.get("td:agents")!.handler("", ctx);
 		for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 		// The disk history read behind restoreSessionHistory is fire-and-forget,
 		// so poll the overlay's own render output instead of sleeping a guess.
@@ -4867,7 +4765,7 @@ test("starting up into an existing session also restores its own finished histor
 		// restoreSessionHistory never runs -- nothing to wait for beyond
 		// letting the already-fired session_start handler settle.
 		await tick();
-		const opened = commands.get("gentle:agents")!.handler("", ctx);
+		const opened = commands.get("td:agents")!.handler("", ctx);
 		for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 		assert.doesNotMatch(stripAnsi(overlays[0]!.render(100).join("\n")), /explore-startup/, "a startup report with no prior entries restores nothing");
 		overlays[0]!.handleInput("\x1b");
@@ -4921,7 +4819,7 @@ test("the card follows the active session: after /new the earlier session's task
 	await fire("session_start", ctx, { type: "session_start", reason: "new" });
 	assert.deepEqual(widget(), [], "the new session starts with an empty card");
 	assert.match((await tools.get("subagent_list_tasks")!.execute("c2", {}, undefined, undefined, ctx)).content[0].text, /No subagent tasks in this session/);
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	const overlay = overlays[0]!;
 	assert.match(stripAnsi(overlay.render(80)[0]), /this session · 0 active/, "the overlay opens on the active session");
@@ -4956,7 +4854,7 @@ test("the production overlay reads terminal rows at render time without a minimu
 	const overlayTui = { terminal: { get rows() { return rows; } }, requestRender() {} };
 	const { ctx, overlays, customOptions } = fakeContext(fakeTui, async () => true, async () => undefined, overlayTui);
 	await fire("session_start", ctx);
-	const opened = commands.get("gentle:agents")!.handler("", ctx);
+	const opened = commands.get("td:agents")!.handler("", ctx);
 	for (let attempt = 0; attempt < 40 && overlays.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 	const overlay = overlays[0]!;
 	assert.deepEqual(customOptions[0], { overlay: true, overlayOptions: { width: "100%", maxHeight: "100%", margin: 0, anchor: "center" } });
@@ -6338,7 +6236,7 @@ for (const provider of ["openai", "anthropic", "custom-extension", undefined, "c
 				assert.equal(h.sent[1]!.message.customType, "gentle-agents.wake");
 				// Pi hands custom messages to the model with the user role, so the wake
 				// must disown authorship and keep the human's reply language.
-				assert.equal(h.sent[1]!.message.content, "[System-generated Gentle Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue. Reply in the language of the human's own last message, not the language of this notification or of the subagent output.");
+				assert.equal(h.sent[1]!.message.content, "[System-generated Tomidev Agents notification, not written by the user] Subagent output was delivered to this session above. Review it and continue. Reply in the language of the human's own last message, not the language of this notification or of the subagent output.");
 				assert.deepEqual(h.delivery, [`custom:gentle-agents.${kind === "query" ? "message" : "result"}`, "custom:gentle-agents.wake"]);
 			}
 			await h.fire("session_shutdown", ctx);
@@ -7185,7 +7083,7 @@ test("issue #1162: task-mode subagent_run includes question directly in waiting 
 
 
 // gentle-shell#1587: children do not load the gentle-pi package in the
-// isolated Gentle Shell home, so every child receives the child-context
+// isolated Tomidev Shell home, so every child receives the child-context
 // extension explicitly through --extension.
 test("children receive context and safety extensions, and missing files are omitted", async () => {
 	const expected = join(dirname(fileURLToPath(import.meta.url)), "..", "extensions", "child-context.ts");
@@ -7519,7 +7417,7 @@ test("job_list and job_stop cover this session's jobs; stopped jobs send no noti
 	}
 });
 
-test("/gentle:jobs opens this session's jobs overlay, stops the selected job, and the footer counts running jobs", async () => {
+test("/td:jobs opens this session's jobs overlay, stops the selected job, and the footer counts running jobs", async () => {
 	const { pi, tools, commands, fire, sent } = fakePi();
 	const jobs = fakeJobShell();
 	gentleAgents(pi, {}, { ...deps().deps, jobShell: jobs.shell, jobOutputDir: () => jobs.dir });
@@ -7534,7 +7432,7 @@ test("/gentle:jobs opens this session's jobs overlay, stops the selected job, an
 		assert.equal(statuses.at(-1), "⧗ 1 job");
 		assert.equal(snapshots.at(-1)?.sessionId, ctx.sessionManager.getSessionId());
 		assert.deepEqual(snapshots.at(-1)?.snapshot.jobs.map(({ id, label }) => ({ id, label })), [{ id: "job-1", label: "CI" }]);
-		const opened = commands.get("gentle:jobs")!.handler("", ctx);
+		const opened = commands.get("td:jobs")!.handler("", ctx);
 		await tick();
 		const view = overlays.at(-1)!;
 		const screen = view.render(100).map(stripAnsi).join("\n");
@@ -7558,17 +7456,17 @@ test("/gentle:jobs opens this session's jobs overlay, stops the selected job, an
 	}
 });
 
-test("/gentle:jobs mouse controls route the chosen running job through the existing stop and notice path", async () => {
+test("/td:jobs mouse controls route the chosen running job through the existing stop and notice path", async () => {
 	const { pi, tools, commands, fire, sent } = fakePi();
 	const jobs = fakeJobShell();
 	gentleAgents(pi, {}, { ...deps().deps, jobShell: jobs.shell, jobOutputDir: () => jobs.dir });
 	const { ctx, overlays } = fakeContext();
 	try {
-		assert.match(commands.get("gentle:jobs")?.description ?? "", /click.*Stop/i, "command help advertises the explicit mouse control");
+		assert.match(commands.get("td:jobs")?.description ?? "", /click.*Stop/i, "command help advertises the explicit mouse control");
 		await fire("session_start", ctx);
 		await tools.get("bash_background")!.execute("b1", { command: "first command", label: "first job" }, undefined, undefined, ctx);
 		await tools.get("bash_background")!.execute("b2", { command: "second command", label: "second job" }, undefined, undefined, ctx);
-		const opened = commands.get("gentle:jobs")!.handler("", ctx);
+		const opened = commands.get("td:jobs")!.handler("", ctx);
 		await tick();
 		const overlay = overlays.at(-1)!;
 		const eventFor = (text: string, type: TuiMouseEvent["type"]) => {
@@ -7818,7 +7716,7 @@ test("events from two interleaved monitors coalesce per monitor while the parent
 	}
 });
 
-test("a human stop of a monitor from /gentle:jobs delivers its pending lines, then one stop notice, then nothing", async () => {
+test("a human stop of a monitor from /td:jobs delivers its pending lines, then one stop notice, then nothing", async () => {
 	const { pi, tools, commands, fire, sent } = fakePi();
 	const harness = deps();
 	const timers = recordTimers(harness.deps);
@@ -7830,7 +7728,7 @@ test("a human stop of a monitor from /gentle:jobs delivers its pending lines, th
 		await fire("agent_start", ctx);
 		await tools.get("monitor")!.execute("m1", { command: "tail -f log", label: "log", timeout_seconds: 60 }, undefined, undefined, ctx);
 		jobs.runs[0]!.onData(Buffer.from("ERROR seen\n"));
-		const opened = commands.get("gentle:jobs")!.handler("", ctx);
+		const opened = commands.get("td:jobs")!.handler("", ctx);
 		await tick();
 		overlays.at(-1)!.handleInput("s");
 		overlays.at(-1)!.handleInput("q");
@@ -8260,7 +8158,7 @@ test("an agent asking the user exposes an alert row for the panel editor", async
 	// A child question relayed to this session's UI is what makes a task wait for the user.
 	harness.children[0].emit({ type: "extension_ui_request", id: "u1", method: "select", title: "Which file?", options: ["a.ts", "b.ts"] });
 	await tick();
-	assert.match(alert()[0]!, /^ \? explore asked: Which file\? +\/gentle:agents $/, "the alert row names the asking agent and its question");
+	assert.match(alert()[0]!, /^ \? explore asked: Which file\? +\/td:agents $/, "the alert row names the asking agent and its question");
 });
 
 test("a subagent launched under a profile carries its fallback chain, and a quota error switches it with a notice and a session entry", async () => {
@@ -8270,12 +8168,12 @@ test("a subagent launched under a profile carries its fallback chain, and a quot
 	mkdirSync(config, { recursive: true });
 	writeFileSync(join(agentHome, "agents", "fallbacker.md"), "---\ndescription: fallback fixture\n---\nMap things.");
 	writeFileSync(join(agentHome, "subagents.json"), JSON.stringify({ default_model: "fbx/primary-model" }));
-	writeFileSync(join(config, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "home", profiles: { home: {} } }));
-	writeFileSync(join(config, "profile-fallbacks.json"), JSON.stringify({ kind: "gentle-pi.profile_model_fallbacks", version: 1, profiles: { home: { "*": [{ model: "fby/second-model", thinking: "low" }] } } }));
+	writeFileSync(join(config, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "home", profiles: { home: {} } }));
+	writeFileSync(join(config, "profile-fallbacks.json"), JSON.stringify({ kind: "tomidev.profile_model_fallbacks", version: 1, profiles: { home: { "*": [{ model: "fby/second-model", thinking: "low" }] } } }));
 	const harness = deps();
 	const { home: _home, env: _env, ...overrides } = harness.deps;
 	const { pi, tools, fire, entries } = fakePi();
-	gentleAgents(pi, { GENTLE_PI_AGENT_HOME: agentHome, GENTLE_PI_CONFIG_HOME: config }, overrides);
+	gentleAgents(pi, { TOMIDEV_AGENT_HOME: agentHome, TOMIDEV_CONFIG_HOME: config }, overrides);
 	const { ctx, dialogs } = fakeContext();
 	await fire("session_start", ctx);
 	await tools.get("subagent_run")!.execute("fb", { agent: "fallbacker", task: "Map", mode: "background" }, undefined, undefined, ctx);
@@ -8287,7 +8185,7 @@ test("a subagent launched under a profile carries its fallback chain, and a quot
 		await tick(); await tick(); await tick();
 		assert.deepEqual(child.written.filter((command) => command.type === "set_model").map((command) => `${command.provider}/${command.modelId}`), ["fby/second-model"]);
 		assert.ok(dialogs.some((line) => /fallbacker: fbx\/primary-model hit its usage limit; continuing on fby\/second-model/.test(line)), dialogs.join("\n"));
-		const recorded = entries.filter((entry) => entry.customType === "gentle-pi.model-fallback/v1").map((entry) => entry.data as Record<string, unknown>);
+		const recorded = entries.filter((entry) => entry.customType === "tomidev.model-fallback/v1").map((entry) => entry.data as Record<string, unknown>);
 		assert.equal(recorded.length, 1);
 		assert.deepEqual({ agent: recorded[0]!.agent, from: recorded[0]!.from, to: recorded[0]!.to, category: recorded[0]!.category }, { agent: "fallbacker", from: "fbx/primary-model", to: "fby/second-model", category: "quota" });
 	} finally {
@@ -8299,8 +8197,8 @@ test("a subagent launched under a profile carries its fallback chain, and a quot
 test("the orchestrator's usage limit moves the session to the profile's orchestrator fallback and resumes; children never do it themselves", async () => {
 	const config = join(root, "orchestrator-fallback", "config");
 	mkdirSync(config, { recursive: true });
-	writeFileSync(join(config, "profiles.json"), JSON.stringify({ kind: "gentle-pi.agent_model_profiles", version: 1, active: "home", profiles: { home: {} } }));
-	writeFileSync(join(config, "profile-fallbacks.json"), JSON.stringify({ kind: "gentle-pi.profile_model_fallbacks", version: 1, profiles: { home: { orchestrator: [{ model: "orx/backup", thinking: "high" }] } } }));
+	writeFileSync(join(config, "profiles.json"), JSON.stringify({ kind: "tomidev.agent_model_profiles", version: 1, active: "home", profiles: { home: {} } }));
+	writeFileSync(join(config, "profile-fallbacks.json"), JSON.stringify({ kind: "tomidev.profile_model_fallbacks", version: 1, profiles: { home: { orchestrator: [{ model: "orx/backup", thinking: "high" }] } } }));
 	const catalog = new Map([["orx/main", { provider: "orx", id: "main", cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } }], ["orx/backup", { provider: "orx", id: "backup", cost: { input: 3, output: 3, cacheRead: 0, cacheWrite: 0 } }]]);
 	const run = async (env: Record<string, string>) => {
 		const harness = deps();
@@ -8309,7 +8207,7 @@ test("the orchestrator's usage limit moves the session to the profile's orchestr
 		const selected: string[] = [];
 		const levels: string[] = [];
 		Object.assign(fake.pi, { setModel: async (model: { provider: string; id: string }) => { selected.push(`${model.provider}/${model.id}`); return true; }, setThinkingLevel: (level: string) => levels.push(level) });
-		gentleAgents(fake.pi, { GENTLE_PI_CONFIG_HOME: config, ...env }, overrides);
+		gentleAgents(fake.pi, { TOMIDEV_CONFIG_HOME: config, ...env }, overrides);
 		const { ctx, dialogs } = fakeContext();
 		Object.assign(ctx, { model: catalog.get("orx/main"), modelRegistry: { find: (provider: string, id: string) => catalog.get(`${provider}/${id}`), getAll: () => [...catalog.values()] } });
 		await fake.fire("session_start", ctx);
@@ -8328,10 +8226,10 @@ test("the orchestrator's usage limit moves the session to the profile's orchestr
 	assert.deepEqual(parent.selected, ["orx/backup"]);
 	assert.deepEqual(parent.levels, ["high"]);
 	assert.ok(parent.dialogs.some((line) => /orchestrator: orx\/main hit its usage limit; continuing on orx\/backup \(3\.0x the price\)/.test(line)), parent.dialogs.join("\n"));
-	assert.equal(parent.entries.filter((entry) => entry.customType === "gentle-pi.model-fallback/v1").length, 1);
+	assert.equal(parent.entries.filter((entry) => entry.customType === "tomidev.model-fallback/v1").length, 1);
 	assert.equal(parent.userMessages.length, 1);
 	assert.match(String(parent.userMessages[0]!.content), /continue/i);
-	const child = await run({ GENTLE_PI_AGENTS_CHILD: "1" });
+	const child = await run({ TOMIDEV_AGENTS_CHILD: "1" });
 	assert.deepEqual(child.selected, [], "a child leaves its fallback to the parent's runner");
 });
 

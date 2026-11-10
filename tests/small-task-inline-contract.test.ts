@@ -30,7 +30,7 @@ test("S15 (b): parallel writers never fire for units of about 100 changed lines 
 
 test("S15 (c): the differential check runs in scratch and is never committed as a test", () => {
 	const clause = "a copy of the base commit in a `mktemp -d` scratch directory, never committed as a test; committed tests never read git history or a fixed commit";
-	const harness = __testing.buildGentlePrompt("neutral");
+	const harness = __testing.buildGentlePrompt();
 	assert.ok(harness.includes(clause), "the always-on test-first policy must keep the differential check in scratch");
 	assert.ok(!harness.includes("(`git stash` or a copy of HEAD)"), "the harness must not suggest git stash or HEAD copies");
 	assert.ok(read("assets/agents/gentle-ai-worker.md").includes(clause), "the worker must keep the differential check in scratch");

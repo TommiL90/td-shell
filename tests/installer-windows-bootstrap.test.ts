@@ -6,7 +6,7 @@ import { gzipSync } from "node:zlib";
 import { spawn, spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
-import { acquireGo, artifactFor, compatibleEngine, installedGo, windowsBootstrapMessage } from "../scripts/installer-downloads.mjs";
+import { artifactFor, compatibleEngine, windowsBootstrapMessage } from "../scripts/installer-downloads.mjs";
 import { createProbes, hostAdapters } from "../scripts/installer-probes.mjs";
 import { planPreflight } from "../scripts/installer-preflight.mjs";
 import { lookPath, upgradeInvocation, windowsInvocation } from "../scripts/installer-runner.mjs";
@@ -104,8 +104,8 @@ test("only complete known Windows shims name what they run: npm cmd-shim, pnpm's
 test("CMD entry contains fixed commands, data-only paths, early bundle checks and no policy bypass", () => {
 	const source = readFileSync(new URL("../scripts/bootstrap.cmd", import.meta.url), "utf8");
 	assert.match(source, /DisableDelayedExpansion/i);
-	assert.match(source, /\$env:GENTLE_BOOTSTRAP_BUNDLE/);
-	assert.ok(source.indexOf("gentle-shell-install.mjs") < source.indexOf("New-Item"));
+	assert.match(source, /\$env:TOMIDEV_BOOTSTRAP_BUNDLE/);
+	assert.ok(source.indexOf("tomidev-install.mjs") < source.indexOf("New-Item"));
 	assert.doesNotMatch(source, /ExecutionPolicy|Unblock-File|EncodedCommand|Invoke-Expression|\biex\b|\.ps1\b|SkipCertificateCheck|RunAs/i);
 	assert.match(source, /LanguageMode/);
 	assert.match(source, /ReparsePoint/);
@@ -684,7 +684,7 @@ function cmdStage(marker: string) {
 	const source = readFileSync(new URL("../scripts/bootstrap.cmd", import.meta.url), "utf8");
 	const markerAt = source.indexOf(marker);
 	assert.ok(markerAt >= 0, marker);
-	const start = source.indexOf('"%GENTLE_BOOTSTRAP_PS%" -NoLogo', markerAt);
+	const start = source.indexOf('"%TOMIDEV_BOOTSTRAP_PS%" -NoLogo', markerAt);
 	assert.ok(start >= 0);
 	const ends = ["\nif errorlevel 1 goto failed", "\nif errorlevel 3 goto failed", "\nendlocal & exit /b 0", "\n:finishfailure"]
 		.map((terminator) => source.indexOf(terminator, start)).filter((index) => index >= 0);
@@ -706,13 +706,13 @@ test("success removes only the exact claimed marked root and never fails the ins
 	const stage = cmdStage(stageMarkers.success).replaceAll("\r\n", "\n");
 	assert.equal(source.slice(source.indexOf(stage) + stage.length, exit), "", "no errorlevel turns a removal problem into failure");
 	assert.ok(stage.includes("$parent -ne [IO.Path]::GetFullPath($env:LOCALAPPDATA) -and $parent -ne [IO.Path]::GetFullPath($env:USERPROFILE)"), "a direct child of either claim base");
-	assert.match(stage, /StartsWith\('\.gentle-shell-bootstrap-tools\.',\[StringComparison\]::Ordinal\)/);
+	assert.match(stage, /StartsWith\('\.tomidev-bootstrap-tools\.',\[StringComparison\]::Ordinal\)/);
 	assert.match(stage, /ReparsePoint/);
 	assert.match(stage, /'\.bootstrap-owned'/);
-	assert.match(stage, /-ne 'gentle-pi prerequisite tooling only'/);
+	assert.match(stage, /-ne 'tomidev prerequisite tooling only'/);
 	assert.match(stage, /\[IO\.Directory\]::Delete\(\$tools, \$true\)/);
 	assert.doesNotMatch(stage, /Remove-Item/, "Windows PowerShell 5.1 Remove-Item may follow links");
-	assert.match(stage, /could not be removed: ' \+ \$env:GENTLE_BOOTSTRAP_TOOLS/);
+	assert.match(stage, /could not be removed: ' \+ \$env:TOMIDEV_BOOTSTRAP_TOOLS/);
 });
 
 // Fixed, non-sensitive claim diagnostics: a code names the failed check, never a
@@ -748,9 +748,9 @@ test("claim reports one fixed non-sensitive reason code per check beside the unc
 // folder directly under %USERPROFILE%, held to the same checks. Exit 2 tells CMD.
 test("claim tries %LOCALAPPDATA% first and one %USERPROFILE% fallback only after acl-mask or home-owner", () => {
 	const source = readFileSync(new URL("../scripts/bootstrap.cmd", import.meta.url), "utf8").replaceAll("\r\n", "\n");
-	assert.ok(source.includes('set "GENTLE_BOOTSTRAP_TOOLS=%LOCALAPPDATA%\\.gentle-shell-bootstrap-tools.%RANDOM%.%RANDOM%.%RANDOM%"\nset "GENTLE_BOOTSTRAP_FALLBACK_TOOLS=%USERPROFILE%\\.gentle-shell-bootstrap-tools.%RANDOM%.%RANDOM%.%RANDOM%"\n'));
+	assert.ok(source.includes('set "TOMIDEV_BOOTSTRAP_TOOLS=%LOCALAPPDATA%\\.tomidev-bootstrap-tools.%RANDOM%.%RANDOM%.%RANDOM%"\nset "TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS=%USERPROFILE%\\.tomidev-bootstrap-tools.%RANDOM%.%RANDOM%.%RANDOM%"\n'));
 	const stage = cmdStage(stageMarkers.claim).replaceAll("\r\n", "\n");
-	assert.ok(stage.includes("$candidates = @(,@($env:GENTLE_BOOTSTRAP_TOOLS,$env:LOCALAPPDATA)); if ($env:GENTLE_BOOTSTRAP_FALLBACK_TOOLS) { $candidates += ,@($env:GENTLE_BOOTSTRAP_FALLBACK_TOOLS,$env:USERPROFILE) };"), "LOCALAPPDATA first, then exactly one USERPROFILE candidate");
+	assert.ok(stage.includes("$candidates = @(,@($env:TOMIDEV_BOOTSTRAP_TOOLS,$env:LOCALAPPDATA)); if ($env:TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS) { $candidates += ,@($env:TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS,$env:USERPROFILE) };"), "LOCALAPPDATA first, then exactly one USERPROFILE candidate");
 	assert.ok(stage.includes("if ($index -eq 0 -and $candidates.Count -gt 1 -and $code -cmatch '^(acl-mask|home-owner)$') { continue }; throw"), "only acl-mask or home-owner on the first candidate reaches the fallback");
 	// Every candidate gets the exact-parent rule, the base owner and the whole walk before anything is created.
 	const steps = ["for ($index = 0; $index -lt $candidates.Count; $index++)", "$step = 'path-mismatch'", "throw 'path-mismatch'", "$step = 'home-owner'", "$step = 'ancestor-walk'",
@@ -761,7 +761,7 @@ test("claim tries %LOCALAPPDATA% first and one %USERPROFILE% fallback only after
 	assert.ok(stage.includes("if ($index -gt 0) { exit 2 };"));
 	// CMD switches to the fallback only on exit 2, before it records ownership.
 	const end = source.indexOf(stage) + stage.length;
-	assert.ok(source.slice(end).startsWith('\nif errorlevel 3 goto failed\nif errorlevel 2 goto fallbackclaimed\nif errorlevel 1 goto failed\ngoto claimed\n:fallbackclaimed\nset "GENTLE_BOOTSTRAP_TOOLS=%GENTLE_BOOTSTRAP_FALLBACK_TOOLS%"\n:claimed\nset "GENTLE_BOOTSTRAP_FALLBACK_TOOLS="\nset "GENTLE_BOOTSTRAP_OWNED=1"\n'));
+	assert.ok(source.slice(end).startsWith('\nif errorlevel 3 goto failed\nif errorlevel 2 goto fallbackclaimed\nif errorlevel 1 goto failed\ngoto claimed\n:fallbackclaimed\nset "TOMIDEV_BOOTSTRAP_TOOLS=%TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS%"\n:claimed\nset "TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS="\nset "TOMIDEV_BOOTSTRAP_OWNED=1"\n'));
 });
 
 test("the claim base may be owned by the user, SYSTEM or Administrators and the private folder is set to the user", () => {
@@ -838,7 +838,7 @@ test("an older or untrusted user Node re-enters the pinned acquisition once; the
 	assert.match(probe, /throw 'missing-target' \}; \$acquired = Test-Path -LiteralPath \(Join-Path \$tools '\.node-stem'\);/);
 	assert.match(probe, /if \(\$acquired -and \$version -ne 'v24\.21\.0'\) \{ throw 'acquired-version' \};/);
 	assert.match(probe, /\[Version\]\$metadata\.engines\.node\.Substring\(2\)\) \{ if \(\$acquired\) \{ throw 'engine' \}; \[IO\.File\]::Delete\(\(Join-Path \$tools '\.node-target'\)\) \};/);
-	const untrusted = probe.match(/if \(-not \$acquired -and \$reason -cmatch '\^\(([a-z|()-]+)\)\$'\) \{ \[IO\.File\]::Delete\(\(Join-Path \$env:GENTLE_BOOTSTRAP_TOOLS '\.node-target'\)\) \}\" \^\n {2}\"else \{ \[Console\]::Error\.WriteLine\(/);
+	const untrusted = probe.match(/if \(-not \$acquired -and \$reason -cmatch '\^\(([a-z|()-]+)\)\$'\) \{ \[IO\.File\]::Delete\(\(Join-Path \$env:TOMIDEV_BOOTSTRAP_TOOLS '\.node-target'\)\) \}\" \^\n {2}\"else \{ \[Console\]::Error\.WriteLine\(/);
 	assert.ok(untrusted, "only fixed storage codes leave the user's Node; everything else still refuses");
 	const leaves = new RegExp(`^(?:${untrusted[1]})$`);
 	for (const code of ["unsafe-target", "unsafe-path", ...probeRoles.flatMap((role) => probeWalkChecks.map((check) => `${role}-${check}`))]) assert.match(code, leaves);
@@ -846,7 +846,7 @@ test("an older or untrusted user Node re-enters the pinned acquisition once; the
 	assert.ok(probe.indexOf("$step = 'acl-walk'") < probe.indexOf("$child.Start()"), "the storage walk finishes before the Node could start");
 	// Flow: a removed record jumps back to the verified download, ZIP and probe stages.
 	const end = source.indexOf(probe) + probe.length;
-	assert.ok(source.slice(end).startsWith('\nif errorlevel 1 goto failed\nif not exist "%GENTLE_BOOTSTRAP_TOOLS%\\.node-target" goto acquirenode\n\nrem Launch'));
+	assert.ok(source.slice(end).startsWith('\nif errorlevel 1 goto failed\nif not exist "%TOMIDEV_BOOTSTRAP_TOOLS%\\.node-target" goto acquirenode\n\nrem Launch'));
 	const label = source.indexOf("\n:acquirenode\n");
 	assert.ok(source.indexOf(stageMarkers.resolve) < label && source.includes("\n:acquirenode\nrem Fixed official ZIP transport"), "the label opens the download stage");
 	assert.equal(source.split(":acquirenode").length, 2, "one label");
@@ -1022,7 +1022,7 @@ test("verifyWindowsStorageMany walks every path in one Windows PowerShell launch
 	assert.equal(calls[0].command, join("C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"));
 	assert.deepEqual(calls[0].args.slice(0, 4), ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]);
 	assert.equal(calls[0].args[4], manyCheck());
-	assert.deepEqual(calls[0].env, { ...env, GENTLE_WINDOWS_CHECKS: paths.join("|") }, "paths travel only as environment data, joined by a character no Windows path holds");
+	assert.deepEqual(calls[0].env, { ...env, TOMIDEV_WINDOWS_CHECKS: paths.join("|") }, "paths travel only as environment data, joined by a character no Windows path holds");
 	// A reparse point and an owner are findings too; nothing to walk launches nothing.
 	assert.deepEqual(many(`unsafe:target-reparse|${encoded("C:\\link|||")}\nunsafe:ancestor-owner|${encoded("C:\\Users|S-1-5-21-9||")}\nsafe`),
 		[{ check: "target-reparse", at: "C:\\link" }, { check: "ancestor-owner", at: "C:\\Users", sid: "S-1-5-21-9" }, null]);
@@ -1048,7 +1048,7 @@ test("the one-launch walk applies the single-path walk, per path, with its own f
 	assert.equal(walkLoop(many), walkLoop(single), "the same walk, statement for statement");
 	assert.ok(walkLoop(many).length > 500);
 	assert.match(many, /if \(\$ExecutionContext\.SessionState\.LanguageMode -ne 'FullLanguage'\) \{ 'unsafe:policy'; exit 0 \};/);
-	assert.match(many, /foreach \(\$start in \$env:GENTLE_WINDOWS_CHECKS\.Split\('\|'\)\) \{/);
+	assert.match(many, /foreach \(\$start in \$env:TOMIDEV_WINDOWS_CHECKS\.Split\('\|'\)\) \{/);
 	assert.match(many, /\$detail = '';\s+try \{\s+\$path = \[IO\.Path\]::GetFullPath\(\$start\);/);
 	assert.ok(many.includes("} else { 'unknown' } }"), "an unexpected error on one path is that path's `unknown` line, never a stop");
 	assert.doesNotMatch(many, /Invoke-Expression|\biex\b|ScriptBlock\]::Create|EncodedCommand/);
@@ -1059,7 +1059,7 @@ test("storage metadata public adapters preserve verdicts and unexpected failures
 	const env = { SystemRoot: "C:\\Windows" };
 	let calls = 0;
 	const single = (output: string) => verifyWindowsStorage(path, env, (_command: string, _args: string[], data: Record<string, string>) => {
-		calls++; assert.equal(data.GENTLE_WINDOWS_CHECK, path); return output;
+		calls++; assert.equal(data.TOMIDEV_WINDOWS_CHECK, path); return output;
 	});
 	if (process.platform === "win32") {
 		assert.equal(single("safe"), undefined);
@@ -1076,7 +1076,7 @@ test("storage metadata public adapters preserve verdicts and unexpected failures
 	}
 	const paths = [path, "D:\\metadata fixture\\next.cmd"];
 	assert.deepEqual(windowsModule.verifyWindowsStorageMany(paths, env, { platform: "win32", processAdapter: (_command: string, _args: string[], data: Record<string, string>) => {
-		assert.equal(data.GENTLE_WINDOWS_CHECKS, paths.join("|")); return "unknown\nsafe";
+		assert.equal(data.TOMIDEV_WINDOWS_CHECKS, paths.join("|")); return "unknown\nsafe";
 	} }), [{ check: "unchecked", at: path }, null]);
 });
 
@@ -1086,7 +1086,7 @@ for (const mode of ["single", "batch"] as const) {
 		let script = "";
 		const processAdapter = (_command: string, args: string[], env: Record<string, string>) => {
 			script = args[4];
-			assert.equal(env[mode === "single" ? "GENTLE_WINDOWS_CHECK" : "GENTLE_WINDOWS_CHECKS"], "C:\\metadata\\node.exe");
+			assert.equal(env[mode === "single" ? "TOMIDEV_WINDOWS_CHECK" : "TOMIDEV_WINDOWS_CHECKS"], "C:\\metadata\\node.exe");
 			return "safe";
 		};
 		if (mode === "single") verifyWindowsStorage("C:\\metadata\\node.exe", { SystemRoot: "C:\\Windows" }, processAdapter);
@@ -1149,8 +1149,8 @@ test("a weak default holding nothing switches to %USERPROFILE%\\.pnpm, which mus
 		assert.deepEqual(h.walked, [weakAt, "C:\\Users\\m"]);
 	}
 	// The private folder already created by this flow (marked) or empty is accepted.
-	const marker = `${W_PRIVATE}\\.gentle-shell-pnpm-home`;
-	for (const [dirs, files] of [[[W_PRIVATE], {}], [[W_PRIVATE, `${W_PRIVATE}\\bin`], { [marker]: "gentle-pi private pnpm home" }]] as const) {
+	const marker = `${W_PRIVATE}\\.tomidev-pnpm-home`;
+	for (const [dirs, files] of [[[W_PRIVATE], {}], [[W_PRIVATE, `${W_PRIVATE}\\bin`], { [marker]: "tomidev private pnpm home" }]] as const) {
 		const h = homeDecision({ dirs: [...dirs], files: { ...files }, weak: { [W_LOCAL]: "target-acl-mask" } });
 		assert.equal(h.decide().source, "private");
 	}
@@ -1167,7 +1167,7 @@ test("a weak default that already holds files, a weak or foreign private folder,
 	assert.equal(file.decide().installed, true, "anything but an empty real directory counts as installed");
 	const foreign = homeDecision({ dirs: [W_PRIVATE], files: { [`${W_PRIVATE}\\notes.txt`]: "x" }, weak: { [W_LOCAL]: "target-acl-mask" } });
 	assert.deepEqual(foreign.decide(), { available: true, path: W_DEFAULT, source: "default", untrusted: finding(W_LOCAL), private: { path: W_PRIVATE, foreign: true } });
-	const forged = homeDecision({ dirs: [W_PRIVATE], files: { [`${W_PRIVATE}\\.gentle-shell-pnpm-home`]: "other text" }, weak: { [W_LOCAL]: "target-acl-mask" } });
+	const forged = homeDecision({ dirs: [W_PRIVATE], files: { [`${W_PRIVATE}\\.tomidev-pnpm-home`]: "other text" }, weak: { [W_LOCAL]: "target-acl-mask" } });
 	assert.equal(forged.decide().private?.foreign, true);
 	const weakPrivate = homeDecision({ weak: { [W_LOCAL]: "target-acl-mask", "C:\\Users\\m": "target-owner" } });
 	assert.deepEqual(weakPrivate.decide(), { available: true, path: W_DEFAULT, source: "default", untrusted: finding(W_LOCAL),
@@ -1206,11 +1206,11 @@ test("the private PNPM_HOME claim reuses the bootstrap's protected DACL and read
 		assert.ok(claim.includes(statement), `claim: ${statement}`);
 	}
 	assert.ok(claim.includes("if (@(Get-ChildItem -LiteralPath $target -Force).Count -ne 0) {"), "only an empty folder is adopted");
-	assert.ok(claim.includes("(Get-Content -LiteralPath $marker -Raw) -ne 'gentle-pi private pnpm home') { throw 'foreign' };"), "a non-empty one must carry the exact marker");
+	assert.ok(claim.includes("(Get-Content -LiteralPath $marker -Raw) -ne 'tomidev private pnpm home') { throw 'foreign' };"), "a non-empty one must carry the exact marker");
 	assert.ok(claim.includes("if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'foreign' };"));
 	assert.ok(claim.indexOf("throw 'private-ace'") < claim.indexOf("$null = New-Item -ItemType File -Path $marker"), "marked only after the readback");
 	assert.ok(claim.includes("if ($created) { Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue };"), "only a folder this run created is removed");
-	assert.equal(windowsModule.privatePnpmHome.text, "gentle-pi private pnpm home");
+	assert.equal(windowsModule.privatePnpmHome.text, "tomidev private pnpm home");
 	// The Node side accepts only the fixed results, then walks the folder again.
 	if (process.platform !== "win32") assert.throws(() => windowsModule.ensureWindowsPnpmHome(W_PRIVATE, homeEnv, { processAdapter: () => "claimed" }), /Native Windows/);
 });
@@ -1228,7 +1228,7 @@ test("prepare-pnpm-home creates the private tmp folder inside the claimed home a
 	for (const output of ["claimed", "kept"]) {
 		const walked: string[] = []; const scripts: string[] = [];
 		const result = windowsModule.ensureWindowsPnpmHome(W_PRIVATE, homeEnv, { platform: "win32",
-			processAdapter: (_command: string, args: string[], env: Record<string, string>) => { scripts.push(args[4]); assert.equal(env.GENTLE_WINDOWS_PNPM_HOME, W_PRIVATE); return output; },
+			processAdapter: (_command: string, args: string[], env: Record<string, string>) => { scripts.push(args[4]); assert.equal(env.TOMIDEV_WINDOWS_PNPM_HOME, W_PRIVATE); return output; },
 			storage: (path: string) => { walked.push(path); } });
 		assert.equal(result, output);
 		assert.deepEqual(walked, [W_PRIVATE, `${W_PRIVATE}\\tmp`]);
@@ -1251,10 +1251,10 @@ test("production and fixture PowerShell never depend on autoloading Microsoft.Po
 		assert.match(source, /if \(\$attributes -band \[IO\.FileAttributes\]::Directory\) \{ \$acl = \[IO\.Directory\]::GetAccessControl\(\$path\) \} else \{ \$acl = \[IO\.File\]::GetAccessControl\(\$path\) \}/);
 	}
 });
-const psRecordLine = '  "$record = [Diagnostics.Process]::GetCurrentProcess(); [IO.File]::AppendAllText($env:GENTLE_FIXTURE_RECORDS,([string]$record.Id + [char]124 + [string]$record.StartTime.ToUniversalTime().Ticks + [Environment]::NewLine));" ^';
+const psRecordLine = '  "$record = [Diagnostics.Process]::GetCurrentProcess(); [IO.File]::AppendAllText($env:TOMIDEV_FIXTURE_RECORDS,([string]$record.Id + [char]124 + [string]$record.StartTime.ToUniversalTime().Ticks + [Environment]::NewLine));" ^';
 // Entry-only telemetry: this timestamps execution of the PowerShell body, not
 // merely process creation. Keep it separate from the guard's PID/ticks records.
-const psReadyLine = '  "[IO.File]::WriteAllText([IO.Path]::Combine($env:GENTLE_FIXTURE_ROOT,\'powershell-ready-ms\'),[string][DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds());" ^';
+const psReadyLine = '  "[IO.File]::WriteAllText([IO.Path]::Combine($env:TOMIDEV_FIXTURE_ROOT,\'powershell-ready-ms\'),[string][DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds());" ^';
 function observeStage(stage: string, entryReadiness = false) {
 	const lines = stage.split("\n");
 	const index = lines.findIndex((line) => line.includes("LanguageMode"));
@@ -1263,7 +1263,7 @@ function observeStage(stage: string, entryReadiness = false) {
 	return lines.join("\n");
 }
 function cmdComposition(stages: string[]) {
-	return ["@echo off", "setlocal DisableDelayedExpansion", 'set "GENTLE_BOOTSTRAP_PS=%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"',
+	return ["@echo off", "setlocal DisableDelayedExpansion", 'set "TOMIDEV_BOOTSTRAP_PS=%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"',
 		// The stage's own code is kept: a claim reports its fallback with exit 2.
 		...stages.flatMap((stage) => [...observeStage(stage).split("\n"), "if errorlevel 1 exit /b %errorlevel%"]),
 		"echo fixture-sentinel", "exit /b 0", ""].join("\r\n");
@@ -1278,8 +1278,8 @@ function processPrimitive() {
 	const languageAt = stage.findIndex((line) => line.includes("LanguageMode"));
 	assert.ok(childAt > languageAt);
 	const prefix = stage.slice(0, languageAt + 1);
-	prefix.push('  "$tools = $env:GENTLE_BOOTSTRAP_TOOLS; $acquired = Test-Path -LiteralPath (Join-Path $tools \'.node-stem\'); $start = New-Object Diagnostics.ProcessStartInfo; $start.FileName = $env:GENTLE_FIXTURE_NODE; $start.Arguments = [string][char]34 + $env:GENTLE_FIXTURE_PROBE + [char]34; $start.UseShellExecute = $false; $start.CreateNoWindow = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true;" ^');
-	const recordChild = '  "[IO.File]::AppendAllText($env:GENTLE_FIXTURE_RECORDS,([string]$child.Id + [char]124 + [string]$child.StartTime.ToUniversalTime().Ticks + [Environment]::NewLine));" ^';
+	prefix.push('  "$tools = $env:TOMIDEV_BOOTSTRAP_TOOLS; $acquired = Test-Path -LiteralPath (Join-Path $tools \'.node-stem\'); $start = New-Object Diagnostics.ProcessStartInfo; $start.FileName = $env:TOMIDEV_FIXTURE_NODE; $start.Arguments = [string][char]34 + $env:TOMIDEV_FIXTURE_PROBE + [char]34; $start.UseShellExecute = $false; $start.CreateNoWindow = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true;" ^');
+	const recordChild = '  "[IO.File]::AppendAllText($env:TOMIDEV_FIXTURE_RECORDS,([string]$child.Id + [char]124 + [string]$child.StartTime.ToUniversalTime().Ticks + [Environment]::NewLine));" ^';
 	return [...prefix, stage[childAt], recordChild, ...stage.slice(childAt + 1)].join("\n");
 }
 
@@ -1338,9 +1338,9 @@ function nativeFixture() {
 	return f;
 }
 function nativeEnv(root: string, tools = join(root, "tools")) {
-	return { ...process.env, LOCALAPPDATA: root, GENTLE_BOOTSTRAP_TOOLS: tools,
-		GENTLE_BOOTSTRAP_BUNDLE: root, GENTLE_FIXTURE_ROOT: root,
-		GENTLE_FIXTURE_RECORDS: join(root, "process-records"), NODE_OPTIONS: "" };
+	return { ...process.env, LOCALAPPDATA: root, TOMIDEV_BOOTSTRAP_TOOLS: tools,
+		TOMIDEV_BOOTSTRAP_BUNDLE: root, TOMIDEV_FIXTURE_ROOT: root,
+		TOMIDEV_FIXTURE_RECORDS: join(root, "process-records"), NODE_OPTIONS: "" };
 }
 
 // Independent hard guard: kill only fresh fixture handles with matching creation
@@ -1350,10 +1350,10 @@ function nativeEnv(root: string, tools = join(root, "tools")) {
 const guardCommand = String.raw`
 $ErrorActionPreference = 'Stop';
 if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { throw 'Policy constrained' };
-if ((Get-Content -LiteralPath (Join-Path $env:GENTLE_FIXTURE_ROOT '.fixture-owned') -Raw) -ne 'gentle Windows acceptance fixture') { throw 'Unknown fixture' };
+if ((Get-Content -LiteralPath (Join-Path $env:TOMIDEV_FIXTURE_ROOT '.fixture-owned') -Raw) -ne 'gentle Windows acceptance fixture') { throw 'Unknown fixture' };
 $reaped = $false;
-if (Test-Path -LiteralPath $env:GENTLE_FIXTURE_RECORDS) {
-  $records = @(Get-Content -LiteralPath $env:GENTLE_FIXTURE_RECORDS);
+if (Test-Path -LiteralPath $env:TOMIDEV_FIXTURE_RECORDS) {
+  $records = @(Get-Content -LiteralPath $env:TOMIDEV_FIXTURE_RECORDS);
   [Array]::Reverse($records);
   foreach ($record in $records) {
     if ($record -notmatch '^([1-9][0-9]*)\|([1-9][0-9]*)$') { throw 'Unknown process record' };
@@ -1440,7 +1440,7 @@ test("native Windows: entry fixture deadline is bounded and leaves no recorded d
 	try {
 		// A finite sleep preserves CMD → PowerShell ancestry without relying on
 		// runner load or leaving a permanently hanging child after a worker crash.
-		const sleepingStage = `"%GENTLE_BOOTSTRAP_PS%" -NoLogo -NoProfile -NonInteractive -Command ^
+		const sleepingStage = `"%TOMIDEV_BOOTSTRAP_PS%" -NoLogo -NoProfile -NonInteractive -Command ^
   "& { if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { throw 'Policy constrained' };" ^
   "[Threading.Thread]::Sleep(20000); }"`;
 		writeFileSync(join(f.root, "fixture.cmd"), cmdComposition([sleepingStage]));
@@ -1480,13 +1480,13 @@ function assertClaimRejected(result: NativeResult, reason?: string) {
 
 // Fixture ACL mutations are restricted to NEW owned descendants, never operator
 // directories, global ACLs, policies or the existing Node/PowerShell installation.
-const fixtureAclSetup = `"%GENTLE_BOOTSTRAP_PS%" -NoLogo -NoProfile -NonInteractive -Command ^
+const fixtureAclSetup = `"%TOMIDEV_BOOTSTRAP_PS%" -NoLogo -NoProfile -NonInteractive -Command ^
   "& { $ErrorActionPreference = 'Stop';" ^
   "if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { throw 'Policy constrained' };" ^
-  "$root = [IO.Path]::GetFullPath($env:GENTLE_FIXTURE_ROOT); $target = [IO.Path]::GetFullPath($env:GENTLE_FIXTURE_ACL_TARGET);" ^
+  "$root = [IO.Path]::GetFullPath($env:TOMIDEV_FIXTURE_ROOT); $target = [IO.Path]::GetFullPath($env:TOMIDEV_FIXTURE_ACL_TARGET);" ^
   "if (-not $target.StartsWith($root + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or (Get-Content -LiteralPath (Join-Path $root '.fixture-owned') -Raw) -ne 'gentle Windows acceptance fixture') { throw 'Not fixture-owned' };" ^
   "$item = Get-Item -LiteralPath $target -Force; if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Unsafe fixture' };" ^
-  "$rights = [int]$env:GENTLE_FIXTURE_RIGHTS; if (@(4,2,16,256,64,65536,262144,524288,1245631) -notcontains $rights) { throw 'Unknown fixture right' };" ^
+  "$rights = [int]$env:TOMIDEV_FIXTURE_RIGHTS; if (@(4,2,16,256,64,65536,262144,524288,1245631) -notcontains $rights) { throw 'Unknown fixture right' };" ^
   "$acl = [IO.Directory]::GetAccessControl($target); $sid = New-Object Security.Principal.SecurityIdentifier('S-1-1-0');" ^
   "$rule = New-Object Security.AccessControl.FileSystemAccessRule($sid,$rights,'None','None','Allow'); $acl.SetAccessRule($rule); [IO.Directory]::SetAccessControl($target,$acl);" ^
   "}"`;
@@ -1496,10 +1496,10 @@ const fixtureAclSetup = `"%GENTLE_BOOTSTRAP_PS%" -NoLogo -NoProfile -NonInteract
 // Production's home-owner check accepts the user, SYSTEM or Administrators; a fixture
 // directory used as LOCALAPPDATA still gets the invoking SID as owner, read back
 // before any stage, so only the check under test can reject a claim.
-const fixtureOwnerSetup = `"%GENTLE_BOOTSTRAP_PS%" -NoLogo -NoProfile -NonInteractive -Command ^
+const fixtureOwnerSetup = `"%TOMIDEV_BOOTSTRAP_PS%" -NoLogo -NoProfile -NonInteractive -Command ^
   "& { $ErrorActionPreference = 'Stop';" ^
   "if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { throw 'Policy constrained' };" ^
-  "$root = [IO.Path]::GetFullPath($env:GENTLE_FIXTURE_ROOT); $target = [IO.Path]::GetFullPath($env:GENTLE_FIXTURE_OWNER_TARGET);" ^
+  "$root = [IO.Path]::GetFullPath($env:TOMIDEV_FIXTURE_ROOT); $target = [IO.Path]::GetFullPath($env:TOMIDEV_FIXTURE_OWNER_TARGET);" ^
   "if (($target -ne $root -and -not $target.StartsWith($root + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) -or (Get-Content -LiteralPath (Join-Path $root '.fixture-owned') -Raw) -ne 'gentle Windows acceptance fixture') { throw 'Not fixture-owned' };" ^
   "$item = Get-Item -LiteralPath $target -Force; if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe fixture' };" ^
   "$me = [Security.Principal.WindowsIdentity]::GetCurrent().User; $acl = [IO.Directory]::GetAccessControl($target); $acl.SetOwner($me); [IO.Directory]::SetAccessControl($target,$acl);" ^
@@ -1511,7 +1511,7 @@ const fixtureAdministratorsOwnerSetup = fixtureOwnerSetup
 	.replace("$me = [Security.Principal.WindowsIdentity]::GetCurrent().User;", "$me = New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544');")
 	.replace("($target -ne $root -and -not $target.StartsWith(", "(-not $target.StartsWith(");
 async function ownFixtureDirectory(root: string, target: string) {
-	const result = await nativeCmd(root, [fixtureOwnerSetup], { ...nativeEnv(root), GENTLE_FIXTURE_OWNER_TARGET: target });
+	const result = await nativeCmd(root, [fixtureOwnerSetup], { ...nativeEnv(root), TOMIDEV_FIXTURE_OWNER_TARGET: target });
 	assert.equal(result.status, 0, `fixture could not own its LOCALAPPDATA directory; stderr: ${result.stderr.slice(0, 4000)}`);
 }
 async function ownedNativeFixture() {
@@ -1536,14 +1536,14 @@ test("native Windows: storage check resolves case-insensitive environment copies
 	assert.equal(calls[0].args.length, 5);
 	assert.deepEqual(calls[0].args.slice(0, 4), ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]);
 	assert.match(calls[0].args[4], /LanguageMode -ne 'FullLanguage'/);
-	assert.deepEqual(calls[0].env, { ...canonical, GENTLE_WINDOWS_CHECK: target });
+	assert.deepEqual(calls[0].env, { ...canonical, TOMIDEV_WINDOWS_CHECK: target });
 	assert.deepEqual(canonical, { SystemRoot: root });
 	const copied = { SYSTEMROOT: root };
 	assert.equal(verifyWindowsStorage(target, copied, adapter), undefined);
 	assert.equal(calls.length, 2);
 	assert.equal(calls[1].executable, calls[0].executable);
 	assert.deepEqual(calls[1].args, calls[0].args);
-	assert.deepEqual(calls[1].env, { ...copied, GENTLE_WINDOWS_CHECK: target });
+	assert.deepEqual(calls[1].env, { ...copied, TOMIDEV_WINDOWS_CHECK: target });
 	assert.deepEqual(copied, { SYSTEMROOT: root });
 });
 
@@ -1552,29 +1552,29 @@ test("native Windows: production owned claim/check, ACL depth and collision pres
 	try {
 		const env = nativeEnv(f.root);
 		assertNative(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], env), 0);
-		verifyWindowsStorage(env.GENTLE_BOOTSTRAP_TOOLS, env);
-		writeFileSync(join(env.GENTLE_BOOTSTRAP_TOOLS, "unrelated"), "preserve");
+		verifyWindowsStorage(env.TOMIDEV_BOOTSTRAP_TOOLS, env);
+		writeFileSync(join(env.TOMIDEV_BOOTSTRAP_TOOLS, "unrelated"), "preserve");
 		assertClaimRejected(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], env), "collision");
-		assert.equal(readFileSync(join(env.GENTLE_BOOTSTRAP_TOOLS, "unrelated"), "utf8"), "preserve");
+		assert.equal(readFileSync(join(env.TOMIDEV_BOOTSTRAP_TOOLS, "unrelated"), "utf8"), "preserve");
 		for (const rights of [4, 2, 16, 256, 64, 65536, 262144, 524288]) {
-			const ancestor = join(env.GENTLE_BOOTSTRAP_TOOLS, `ancestor-${rights}`);
+			const ancestor = join(env.TOMIDEV_BOOTSTRAP_TOOLS, `ancestor-${rights}`);
 			const parent = join(ancestor, "parent"); const target = join(parent, "target");
 			mkdirSync(target, { recursive: true });
-			assertNative(await nativeCmd(f.root, [fixtureAclSetup], { ...env, GENTLE_FIXTURE_ACL_TARGET: ancestor, GENTLE_FIXTURE_RIGHTS: String(rights) }), 0);
+			assertNative(await nativeCmd(f.root, [fixtureAclSetup], { ...env, TOMIDEV_FIXTURE_ACL_TARGET: ancestor, TOMIDEV_FIXTURE_RIGHTS: String(rights) }), 0);
 			if (rights === 4) verifyWindowsStorage(target, env);
 			else assert.throws(() => verifyWindowsStorage(target, env));
 			// The same CreateDirectories permission on the target/parent is unsafe.
 			if (rights === 4) {
-				const ownedTarget = join(env.GENTLE_BOOTSTRAP_TOOLS, "unsafe-target"); mkdirSync(ownedTarget);
-				assertNative(await nativeCmd(f.root, [fixtureAclSetup], { ...env, GENTLE_FIXTURE_ACL_TARGET: ownedTarget, GENTLE_FIXTURE_RIGHTS: "4" }), 0);
+				const ownedTarget = join(env.TOMIDEV_BOOTSTRAP_TOOLS, "unsafe-target"); mkdirSync(ownedTarget);
+				assertNative(await nativeCmd(f.root, [fixtureAclSetup], { ...env, TOMIDEV_FIXTURE_ACL_TARGET: ownedTarget, TOMIDEV_FIXTURE_RIGHTS: "4" }), 0);
 				assert.throws(() => verifyWindowsStorage(ownedTarget, env));
-				assertNative(await nativeCmd(f.root, [fixtureAclSetup], { ...env, GENTLE_FIXTURE_ACL_TARGET: parent, GENTLE_FIXTURE_RIGHTS: "4" }), 0);
+				assertNative(await nativeCmd(f.root, [fixtureAclSetup], { ...env, TOMIDEV_FIXTURE_ACL_TARGET: parent, TOMIDEV_FIXTURE_RIGHTS: "4" }), 0);
 				assert.throws(() => verifyWindowsStorage(target, env));
 				// Owned like a real LOCALAPPDATA, so only the parent's ACL can reject the claim.
 				await ownFixtureDirectory(f.root, parent);
-				const claimEnv = { ...env, LOCALAPPDATA: parent, GENTLE_BOOTSTRAP_TOOLS: join(parent, "new-claim") };
+				const claimEnv = { ...env, LOCALAPPDATA: parent, TOMIDEV_BOOTSTRAP_TOOLS: join(parent, "new-claim") };
 				assertClaimRejected(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], claimEnv), "acl-mask");
-				assert.equal(existsSync(claimEnv.GENTLE_BOOTSTRAP_TOOLS), false);
+				assert.equal(existsSync(claimEnv.TOMIDEV_BOOTSTRAP_TOOLS), false);
 			}
 		}
 	} finally { f.cleanup(); }
@@ -1585,13 +1585,13 @@ test("native Windows: production checks reject an owned fixture junction without
 	try {
 		const env = nativeEnv(f.root);
 		assertNative(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], env), 0);
-		const target = join(env.GENTLE_BOOTSTRAP_TOOLS, "junction-target"); mkdirSync(target);
+		const target = join(env.TOMIDEV_BOOTSTRAP_TOOLS, "junction-target"); mkdirSync(target);
 		writeFileSync(join(target, "unrelated"), "preserve");
 		const home = join(target, "home"); mkdirSync(home);
 		// Owned real directories: only the junction itself can be rejected.
 		await ownFixtureDirectory(f.root, target);
 		await ownFixtureDirectory(f.root, home);
-		const junction = join(env.GENTLE_BOOTSTRAP_TOOLS, "junction");
+		const junction = join(env.TOMIDEV_BOOTSTRAP_TOOLS, "junction");
 		try { symlinkSync(target, junction, "junction"); }
 		catch (error) {
 			const code = (error as NodeJS.ErrnoException).code;
@@ -1601,10 +1601,10 @@ test("native Windows: production checks reject an owned fixture junction without
 		assert.throws(() => verifyWindowsStorage(junction, env));
 		// Junction as an ancestor: home-owner reads the owned real directory through
 		// the junction, so the walk must stop at the reparse point itself.
-		assertClaimRejected(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], { ...env, LOCALAPPDATA: join(junction, "home"), GENTLE_BOOTSTRAP_TOOLS: join(junction, "home", "new-claim") }), "ancestor-reparse");
+		assertClaimRejected(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], { ...env, LOCALAPPDATA: join(junction, "home"), TOMIDEV_BOOTSTRAP_TOOLS: join(junction, "home", "new-claim") }), "ancestor-reparse");
 		// Junction as LOCALAPPDATA: the ACL read sees either the owned target or the
 		// junction object; both rejections name the junction, never another object.
-		const direct = await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], { ...env, LOCALAPPDATA: junction, GENTLE_BOOTSTRAP_TOOLS: join(junction, "new-claim") });
+		const direct = await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], { ...env, LOCALAPPDATA: junction, TOMIDEV_BOOTSTRAP_TOOLS: join(junction, "new-claim") });
 		assertClaimRejected(direct);
 		assert.ok(["ancestor-reparse", "home-owner"].some((reason) => direct.stderr.includes(`Reason: ${reason}`)), `stderr: ${direct.stderr.slice(0, 4000)}`);
 		assert.equal(readFileSync(join(target, "unrelated"), "utf8"), "preserve");
@@ -1618,14 +1618,14 @@ test("native Windows: production checks reject an owned fixture junction without
 // bases; every ancestor above them is the runner's real path, walked as usual.
 const modifyRights = 0x1301bf;
 function candidateEnv(root: string, local: string, profile: string) {
-	return { ...nativeEnv(root, join(local, ".gentle-shell-bootstrap-tools.primary")), LOCALAPPDATA: local, USERPROFILE: profile,
-		GENTLE_BOOTSTRAP_FALLBACK_TOOLS: join(profile, ".gentle-shell-bootstrap-tools.fallback") };
+	return { ...nativeEnv(root, join(local, ".tomidev-bootstrap-tools.primary")), LOCALAPPDATA: local, USERPROFILE: profile,
+		TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS: join(profile, ".tomidev-bootstrap-tools.fallback") };
 }
 async function grantEveryone(root: string, target: string, rights: number) {
-	assertNative(await nativeCmd(root, [fixtureAclSetup], { ...nativeEnv(root), GENTLE_FIXTURE_ACL_TARGET: target, GENTLE_FIXTURE_RIGHTS: String(rights) }), 0);
+	assertNative(await nativeCmd(root, [fixtureAclSetup], { ...nativeEnv(root), TOMIDEV_FIXTURE_ACL_TARGET: target, TOMIDEV_FIXTURE_RIGHTS: String(rights) }), 0);
 }
 async function ownByAdministrators(root: string, target: string) {
-	const result = await nativeCmd(root, [fixtureAdministratorsOwnerSetup], { ...nativeEnv(root), GENTLE_FIXTURE_OWNER_TARGET: target });
+	const result = await nativeCmd(root, [fixtureAdministratorsOwnerSetup], { ...nativeEnv(root), TOMIDEV_FIXTURE_OWNER_TARGET: target });
 	assert.equal(result.status, 0, `fixture could not hand its directory to Administrators; stderr: ${result.stderr.slice(0, 4000)}`);
 }
 function candidateLine(stderr: string, base: string) {
@@ -1642,20 +1642,20 @@ test("native Windows: a %LOCALAPPDATA% another principal may modify falls back t
 		const result = await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], env);
 		assertNative(result, 2);
 		assert.equal(result.stderr.trim(), "");
-		assert.equal(existsSync(env.GENTLE_BOOTSTRAP_TOOLS), false, "nothing is created under the writable base");
+		assert.equal(existsSync(env.TOMIDEV_BOOTSTRAP_TOOLS), false, "nothing is created under the writable base");
 		// Exit 2 follows the claim's own private-owner readback: the user owns the new folder.
-		assert.equal(readFileSync(join(env.GENTLE_BOOTSTRAP_FALLBACK_TOOLS, ".bootstrap-owned"), "utf8"), "gentle-pi prerequisite tooling only");
+		assert.equal(readFileSync(join(env.TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS, ".bootstrap-owned"), "utf8"), "tomidev prerequisite tooling only");
 		// The Node side accepts the same location and still rejects the writable base.
-		verifyWindowsStorage(env.GENTLE_BOOTSTRAP_FALLBACK_TOOLS, env);
+		verifyWindowsStorage(env.TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS, env);
 		assert.throws(() => verifyWindowsStorage(local, env), (error: { check?: string }) => error.check === "target-acl-mask");
 		// Without a fallback candidate the same base fails acl-mask as before.
-		const alone: NodeJS.ProcessEnv = { ...env }; delete alone.GENTLE_BOOTSTRAP_FALLBACK_TOOLS;
+		const alone: NodeJS.ProcessEnv = { ...env }; delete alone.TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS;
 		assertClaimRejected(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], alone), "acl-mask");
-		assert.equal(existsSync(env.GENTLE_BOOTSTRAP_TOOLS), false);
+		assert.equal(existsSync(env.TOMIDEV_BOOTSTRAP_TOOLS), false);
 		// A base owned by Administrators (home-owner) is now a valid first candidate too.
-		const owned = { ...candidateEnv(f.root, profile, local), GENTLE_BOOTSTRAP_TOOLS: join(profile, ".gentle-shell-bootstrap-tools.direct") };
+		const owned = { ...candidateEnv(f.root, profile, local), TOMIDEV_BOOTSTRAP_TOOLS: join(profile, ".tomidev-bootstrap-tools.direct") };
 		assertNative(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], owned), 0);
-		verifyWindowsStorage(owned.GENTLE_BOOTSTRAP_TOOLS, owned);
+		verifyWindowsStorage(owned.TOMIDEV_BOOTSTRAP_TOOLS, owned);
 	} finally { f.cleanup(); }
 });
 
@@ -1672,8 +1672,8 @@ test("native Windows: when both candidates fail, the claim names each folder, pr
 		assertClaimRejected(result, "acl-mask");
 		assert.match(candidateLine(result.stderr, local), /: acl-mask at .+: S-1-1-0( \([^)]+\))? allowed 0x001301BF$/, result.stderr);
 		assert.match(candidateLine(result.stderr, profile), /: acl-mask at .+\\weak: S-1-1-0( \([^)]+\))? allowed 0x00100002$/, result.stderr);
-		assert.equal(existsSync(env.GENTLE_BOOTSTRAP_TOOLS), false);
-		assert.equal(existsSync(env.GENTLE_BOOTSTRAP_FALLBACK_TOOLS), false);
+		assert.equal(existsSync(env.TOMIDEV_BOOTSTRAP_TOOLS), false);
+		assert.equal(existsSync(env.TOMIDEV_BOOTSTRAP_FALLBACK_TOOLS), false);
 		const inside = join(profile, "tools"); mkdirSync(inside);
 		assert.throws(() => verifyWindowsStorage(inside, env), (error: { check?: string }) => error.check === "ancestor-acl-mask");
 	} finally { f.cleanup(); }
@@ -1687,10 +1687,10 @@ test("native Windows: a user pnpm in a folder another principal may write is nev
 		const commands = join(f.root, "commands"); pnpmWrapperDirectory(commands);
 		await grantEveryone(f.root, commands, modifyRights);
 		const ran: string[] = [];
-		const result = await ensureWindowsPnpm({ tools: env.GENTLE_BOOTSTRAP_TOOLS, env: nativePath([commands], env), adapters: {
+		const result = await ensureWindowsPnpm({ tools: env.TOMIDEV_BOOTSTRAP_TOOLS, env: nativePath([commands], env), adapters: {
 			download: async () => pnpmTar(), digest, process: (command: string, args: string[]) => { ran.push(command); return cliProcess(command, args); } } });
 		assert.equal(result.acquired, true);
-		assert.deepEqual(result.prefix, [join(env.GENTLE_BOOTSTRAP_TOOLS, "pnpm", "package", "bin", "pnpm.mjs")]);
+		assert.deepEqual(result.prefix, [join(env.TOMIDEV_BOOTSTRAP_TOOLS, "pnpm", "package", "bin", "pnpm.mjs")]);
 		assert.equal(ran.some((command) => command.startsWith(commands)), false, "the untrusted wrapper's Node never runs");
 	} finally { f.cleanup(); }
 });
@@ -1724,7 +1724,7 @@ test("native Windows: a weak default PNPM_HOME holding nothing makes the plan us
 		// Its tmp folder (the children's TEMP/TMP) exists and, inheriting the DACL, passed the same walk.
 		assert.equal(existsSync(join(own, "tmp")), true);
 		verifyWindowsStorage(own, env);
-		assert.equal(readFileSync(join(own, ".gentle-shell-pnpm-home"), "utf8"), "gentle-pi private pnpm home");
+		assert.equal(readFileSync(join(own, ".tomidev-pnpm-home"), "utf8"), "tomidev private pnpm home");
 		mkdirSync(join(own, "bin"));
 		assert.equal(windowsModule.ensureWindowsPnpmHome(own, env), "kept");
 		assert.equal(windowsModule.windowsPnpmHome({ env }).source, "private", "the folder this flow created is accepted again");
@@ -1766,13 +1766,13 @@ test("native Windows: a weak default PNPM_HOME that already holds files blocks a
 test("native Windows: the wizard probe never runs a pnpm in a folder another principal may write", { skip: nativeUnavailable }, async () => {
 	const f = await ownedNativeFixture();
 	try {
-		const tools = join(f.root, ".gentle-shell-bootstrap-tools.probe"); mkdirSync(tools);
+		const tools = join(f.root, ".tomidev-bootstrap-tools.probe"); mkdirSync(tools);
 		const entry = join(tools, "pnpm.mjs"); writeFileSync(entry, "console.log('11.1.1');\n");
 		const weakBin = join(f.root, "weak-bin"); mkdirSync(weakBin);
 		const exe = join(weakBin, "pnpm.exe"); copyFileSync(process.execPath, exe);
 		const home = join(f.root, "home"); mkdirSync(home);
 		const env = withoutPnpmHome(nativePath([weakBin, join(process.env.SystemRoot!, "System32")]),
-			{ PNPM_HOME: home, GENTLE_BOOTSTRAP_TOOLS: tools, GENTLE_INSTALL_PNPM_NODE: process.execPath, GENTLE_INSTALL_PNPM_ENTRY: entry });
+			{ PNPM_HOME: home, TOMIDEV_BOOTSTRAP_TOOLS: tools, TOMIDEV_INSTALL_PNPM_NODE: process.execPath, TOMIDEV_INSTALL_PNPM_ENTRY: entry });
 		const adapters = hostAdapters();
 		const probe = async () => {
 			const ran: string[] = [];
@@ -1891,12 +1891,12 @@ for (const mode of probeModes) {
 	test(`native Windows: pre-Node production process primitive ${mode}`, { skip: nativeUnavailable }, async () => {
 		const f = await ownedNativeFixture();
 		try {
-			const env = nativeEnv(f.root); mkdirSync(env.GENTLE_BOOTSTRAP_TOOLS);
+			const env = nativeEnv(f.root); mkdirSync(env.TOMIDEV_BOOTSTRAP_TOOLS);
 			const pidFile = join(f.root, "probe.pid"); const probe = join(f.root, "probe.mjs");
 			writeFileSync(join(f.root, "package.json"), JSON.stringify({ engines: { node: ">=24.3.0" } }));
 			writeFileSync(probe, `import { writeFileSync } from 'node:fs';
-writeFileSync(process.env.GENTLE_FIXTURE_PID, String(process.pid));
-const mode = process.env.GENTLE_FIXTURE_MODE;
+writeFileSync(process.env.TOMIDEV_FIXTURE_PID, String(process.pid));
+const mode = process.env.TOMIDEV_FIXTURE_MODE;
 if (mode === 'stdout-limit') process.stdout.write('x'.repeat(2*1024*1024));
 else if (mode === 'stderr-limit') process.stderr.write('x'.repeat(2*1024*1024));
 else {
@@ -1906,7 +1906,7 @@ else {
 if (mode === 'nonzero') process.exitCode = 7;
 if (mode.endsWith('hang')) { process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); }
 `);
-			const result = await nativeCmd(f.root, [processPrimitive()], { ...env, GENTLE_FIXTURE_NODE: process.execPath, GENTLE_FIXTURE_PROBE: probe, GENTLE_FIXTURE_PID: pidFile, GENTLE_FIXTURE_MODE: mode });
+			const result = await nativeCmd(f.root, [processPrimitive()], { ...env, TOMIDEV_FIXTURE_NODE: process.execPath, TOMIDEV_FIXTURE_PROBE: probe, TOMIDEV_FIXTURE_PID: pidFile, TOMIDEV_FIXTURE_MODE: mode });
 			assertNative(result, mode === "valid" ? 0 : 1);
 			if (mode !== "valid") {
 				const expected = { nonzero: "exit-code", "stdout-limit": "output-limit", "stderr-limit": "output-limit" }[mode as string] ?? "deadline";
@@ -1941,17 +1941,17 @@ test("native Windows: complete local sentinel composes production entry and late
 		writeFileSync(join(packageDir, "package.json"), JSON.stringify(pinnedPackage));
 		writeFileSync(join(packageDir, "bin/pnpm.mjs"), "console.log(process.argv[2] === '--version' ? '11.1.1' : '--global');\n");
 		writeFileSync(join(commands, "pnpm.cmd"), wrapper("node_modules\\pnpm\\bin\\pnpm.mjs"));
-		writeFileSync(join(bin, "gentle-shell-install.mjs"), "import { writeFileSync } from 'node:fs'; writeFileSync(process.env.GENTLE_FIXTURE_REPORT, JSON.stringify({ node: process.env.GENTLE_INSTALL_PNPM_NODE, entry: process.env.GENTLE_INSTALL_PNPM_ENTRY, path: process.env.PATH })); console.log('wizard-sentinel');\n");
-		const tools = join(f.root, ".gentle-shell-bootstrap-tools.fixture");
-		const env = { ...nativeEnv(f.root, tools), PATH: [dirname(fixtureNode), commands, join(process.env.SystemRoot!, "System32")].join(";"), PATHEXT: ".EXE;.CMD", GENTLE_FIXTURE_REPORT: join(f.root, "handoff.json") };
+		writeFileSync(join(bin, "tomidev-install.mjs"), "import { writeFileSync } from 'node:fs'; writeFileSync(process.env.TOMIDEV_FIXTURE_REPORT, JSON.stringify({ node: process.env.TOMIDEV_INSTALL_PNPM_NODE, entry: process.env.TOMIDEV_INSTALL_PNPM_ENTRY, path: process.env.PATH })); console.log('wizard-sentinel');\n");
+		const tools = join(f.root, ".tomidev-bootstrap-tools.fixture");
+		const env = { ...nativeEnv(f.root, tools), PATH: [dirname(fixtureNode), commands, join(process.env.SystemRoot!, "System32")].join(";"), PATHEXT: ".EXE;.CMD", TOMIDEV_FIXTURE_REPORT: join(f.root, "handoff.json") };
 		const stages = [stageMarkers.bundle, stageMarkers.claim, stageMarkers.resolve, stageMarkers.probe, stageMarkers.launch, stageMarkers.success].map(cmdStage);
 		const result = await nativeCmd(f.root, stages, env, 45000);
 		assertNative(result, 0); assert.match(result.stdout, /wizard-sentinel/);
-		const report = JSON.parse(readFileSync(env.GENTLE_FIXTURE_REPORT, "utf8")) as Record<string, string>;
+		const report = JSON.parse(readFileSync(env.TOMIDEV_FIXTURE_REPORT, "utf8")) as Record<string, string>;
 		assert.equal(report.node.toLowerCase(), fixtureNode.toLowerCase());
 		assert.deepEqual(readFileSync(fixtureNode), readFileSync(process.execPath));
 		assert.equal(report.entry, join(packageDir, "bin/pnpm.mjs"));
-		assert.equal(existsSync(env.GENTLE_BOOTSTRAP_TOOLS), false, "exact production success block removes only its claimed fixture tools");
+		assert.equal(existsSync(env.TOMIDEV_BOOTSTRAP_TOOLS), false, "exact production success block removes only its claimed fixture tools");
 		assert.equal(existsSync(join(commands, "pnpm.cmd")), true);
 	} finally { f.cleanup(); }
 });
@@ -1959,22 +1959,22 @@ test("native Windows: complete local sentinel composes production entry and late
 test("native Windows: success cleanup keeps unprovable roots, reports them and preserves siblings", { skip: nativeUnavailable }, async () => {
 	const f = await ownedNativeFixture();
 	try {
-		const sibling = join(f.root, ".gentle-shell-bootstrap-tools.sibling");
-		mkdirSync(sibling); writeFileSync(join(sibling, ".bootstrap-owned"), "gentle-pi prerequisite tooling only");
+		const sibling = join(f.root, ".tomidev-bootstrap-tools.sibling");
+		mkdirSync(sibling); writeFileSync(join(sibling, ".bootstrap-owned"), "tomidev prerequisite tooling only");
 		const stages = [cmdStage(stageMarkers.claim), cmdStage(stageMarkers.success)];
-		const owned = nativeEnv(f.root, join(f.root, ".gentle-shell-bootstrap-tools.owned"));
+		const owned = nativeEnv(f.root, join(f.root, ".tomidev-bootstrap-tools.owned"));
 		assertNative(await nativeCmd(f.root, stages, owned), 0);
-		assert.equal(existsSync(owned.GENTLE_BOOTSTRAP_TOOLS), false);
-		const unmarked = nativeEnv(f.root, join(f.root, ".gentle-shell-bootstrap-tools.unmarked"));
+		assert.equal(existsSync(owned.TOMIDEV_BOOTSTRAP_TOOLS), false);
+		const unmarked = nativeEnv(f.root, join(f.root, ".tomidev-bootstrap-tools.unmarked"));
 		assertNative(await nativeCmd(f.root, [cmdStage(stageMarkers.claim)], unmarked), 0);
-		rmSync(join(unmarked.GENTLE_BOOTSTRAP_TOOLS, ".bootstrap-owned"));
+		rmSync(join(unmarked.TOMIDEV_BOOTSTRAP_TOOLS, ".bootstrap-owned"));
 		const missing = await nativeCmd(f.root, [cmdStage(stageMarkers.success)], unmarked);
 		assertNative(missing, 1);
-		assert.ok(missing.stderr.includes(`could not be removed: ${unmarked.GENTLE_BOOTSTRAP_TOOLS}`), missing.stderr);
-		assert.equal(existsSync(unmarked.GENTLE_BOOTSTRAP_TOOLS), true);
+		assert.ok(missing.stderr.includes(`could not be removed: ${unmarked.TOMIDEV_BOOTSTRAP_TOOLS}`), missing.stderr);
+		assert.equal(existsSync(unmarked.TOMIDEV_BOOTSTRAP_TOOLS), true);
 		const misnamed = nativeEnv(f.root, join(f.root, "tools"));
 		assertNative(await nativeCmd(f.root, stages, misnamed), 1);
-		assert.equal(existsSync(join(misnamed.GENTLE_BOOTSTRAP_TOOLS, ".bootstrap-owned")), true);
+		assert.equal(existsSync(join(misnamed.TOMIDEV_BOOTSTRAP_TOOLS, ".bootstrap-owned")), true);
 		assert.equal(existsSync(join(sibling, ".bootstrap-owned")), true);
 	} finally { f.cleanup(); }
 });
@@ -2069,24 +2069,24 @@ test("native Windows: one Windows PowerShell launch walks every reused tool path
 	const f = await ownedNativeFixture();
 	try {
 		const safe = join(f.root, "safe"); const weak = join(f.root, "weak"); mkdirSync(safe); mkdirSync(weak);
-		writeFileSync(join(safe, "node.exe"), "not executed fixture"); writeFileSync(join(weak, "go.exe"), "not executed fixture");
+		writeFileSync(join(safe, "pi.exe"), "not executed fixture"); writeFileSync(join(weak, "node.exe"), "not executed fixture");
 		await grantEveryone(f.root, weak, modifyRights);
 		const launches: string[] = [];
 		const processAdapter = (command: string, args: string[], env: NodeJS.ProcessEnv) => { launches.push(command); return windowsProcessCheck(command, args, env); };
-		const results = windowsModule.verifyWindowsStorageMany([join(safe, "node.exe"), join(weak, "go.exe"), join(f.root, "missing", "pi.cmd")], process.env, { processAdapter });
+		const results = windowsModule.verifyWindowsStorageMany([join(safe, "pi.exe"), join(weak, "node.exe"), join(f.root, "missing", "pi.cmd")], process.env, { processAdapter });
 		assert.equal(launches.length, 1);
 		assert.equal(results[0], null);
 		assert.deepEqual([results[1]?.check, realpathSync.native(results[1]!.at!), results[1]?.sid, results[1]?.rights], ["parent-acl-mask", realpathSync.native(weak), "S-1-1-0", "0x001301BF"]);
 		assert.deepEqual(results[2], { check: "unchecked", at: join(f.root, "missing", "pi.cmd") }, "a path whose walk cannot finish could not be checked");
 		// The single-path walk agrees on both.
-		verifyWindowsStorage(join(safe, "node.exe"), process.env);
-		assert.throws(() => verifyWindowsStorage(join(weak, "go.exe"), process.env), (error: { check?: string }) => error.check === "parent-acl-mask");
-		// The wizard's probe reaches the same finding for the Go on the user's PATH.
+		verifyWindowsStorage(join(safe, "pi.exe"), process.env);
+		assert.throws(() => verifyWindowsStorage(join(weak, "node.exe"), process.env), (error: { check?: string }) => error.check === "parent-acl-mask");
+		// The wizard's probe reaches the same finding for Node on the user's PATH.
 		const adapters = hostAdapters();
 		const env = withoutPnpmHome(nativePath([safe, weak, join(process.env.SystemRoot!, "System32")]), {});
 		const folders = await createProbes({ platform: "win32", env, run: adapters.run, fs: adapters.fs }).folders();
-		assert.deepEqual(Object.keys(folders ?? {}), ["go"], JSON.stringify(folders));
-		assert.equal(folders.go.check, "parent-acl-mask");
+		assert.deepEqual(Object.keys(folders ?? {}), ["node"], JSON.stringify(folders));
+		assert.equal(folders.node.check, "parent-acl-mask");
 	} finally { f.cleanup(); }
 });
 
@@ -2095,9 +2095,9 @@ test("native Windows: one Windows PowerShell launch walks every reused tool path
 test("native Windows: the reused-folder walk follows a junction to the real folder and reports only a weak real folder", { skip: nativeUnavailable }, async (t) => {
 	const f = await ownedNativeFixture();
 	try {
-		const real = join(f.root, "store", "go"); mkdirSync(real, { recursive: true });
-		writeFileSync(join(real, "go.exe"), "not executed fixture");
-		const link = join(f.root, "linked-go");
+		const real = join(f.root, "store", "node"); mkdirSync(real, { recursive: true });
+		writeFileSync(join(real, "node.exe"), "not executed fixture");
+		const link = join(f.root, "linked-node");
 		try { symlinkSync(real, link, "junction"); }
 		catch (error) {
 			const code = (error as NodeJS.ErrnoException).code;
@@ -2105,15 +2105,15 @@ test("native Windows: the reused-folder walk follows a junction to the real fold
 			throw error;
 		}
 		// Control: the unresolved path stops at the junction, as the single-path walk does.
-		assert.throws(() => verifyWindowsStorage(join(link, "go.exe"), process.env), (error: { check?: string }) => error.check === "parent-reparse");
+		assert.throws(() => verifyWindowsStorage(join(link, "node.exe"), process.env), (error: { check?: string }) => error.check === "parent-reparse");
 		const adapters = hostAdapters();
 		const env = withoutPnpmHome(nativePath([link, join(process.env.SystemRoot!, "System32")]), {});
 		const probe = () => createProbes({ platform: "win32", env, run: adapters.run, fs: adapters.fs }).folders();
 		assert.equal(await probe(), null, "the junction is not a finding");
 		await grantEveryone(f.root, join(f.root, "store"), modifyRights);
 		const weak = await probe();
-		assert.equal(weak?.go?.check, "ancestor-acl-mask", JSON.stringify(weak));
-		assert.equal(realpathSync.native(weak.go.at!), realpathSync.native(join(f.root, "store")));
+		assert.equal(weak?.node?.check, "ancestor-acl-mask", JSON.stringify(weak));
+		assert.equal(realpathSync.native(weak.node.at!), realpathSync.native(join(f.root, "store")));
 	} finally { f.cleanup(); }
 });
 
@@ -2124,12 +2124,12 @@ test("native Windows: the production probe leaves an older stable user Node for 
 	] as const) {
 		const f = await ownedNativeFixture();
 		try {
-			const env = nativeEnv(f.root); mkdirSync(env.GENTLE_BOOTSTRAP_TOOLS);
-			const record = join(env.GENTLE_BOOTSTRAP_TOOLS, ".node-target"); writeFileSync(record, process.execPath);
-			if (stem) writeFileSync(join(env.GENTLE_BOOTSTRAP_TOOLS, ".node-stem"), "node-v24.21.0-win-x64");
+			const env = nativeEnv(f.root); mkdirSync(env.TOMIDEV_BOOTSTRAP_TOOLS);
+			const record = join(env.TOMIDEV_BOOTSTRAP_TOOLS, ".node-target"); writeFileSync(record, process.execPath);
+			if (stem) writeFileSync(join(env.TOMIDEV_BOOTSTRAP_TOOLS, ".node-stem"), "node-v24.21.0-win-x64");
 			writeFileSync(join(f.root, "package.json"), JSON.stringify({ engines: { node: ">=24.3.0" } }));
 			const probe = join(f.root, "probe.mjs"); writeFileSync(probe, `console.log(${JSON.stringify(version)});\n`);
-			const result = await nativeCmd(f.root, [processPrimitive()], { ...env, GENTLE_FIXTURE_NODE: process.execPath, GENTLE_FIXTURE_PROBE: probe });
+			const result = await nativeCmd(f.root, [processPrimitive()], { ...env, TOMIDEV_FIXTURE_NODE: process.execPath, TOMIDEV_FIXTURE_PROBE: probe });
 			assertNative(result, status);
 			assert.equal(existsSync(record), kept, `${version} stem=${stem}`);
 			if (reason) assert.ok(result.stderr.includes(`${probeMessage} Reason: ${reason}`), result.stderr.slice(0, 4000));
@@ -2140,7 +2140,7 @@ test("native Windows: the production probe leaves an older stable user Node for 
 test("native Windows: the production probe never runs a user Node behind a junction and leaves it for the pinned one", { skip: nativeUnavailable }, async (t) => {
 	const f = await ownedNativeFixture();
 	try {
-		const env = nativeEnv(f.root); mkdirSync(env.GENTLE_BOOTSTRAP_TOOLS);
+		const env = nativeEnv(f.root); mkdirSync(env.TOMIDEV_BOOTSTRAP_TOOLS);
 		writeFileSync(join(f.root, "package.json"), JSON.stringify({ engines: { node: ">=24.3.0" } }));
 		const real = join(f.root, "real-node"); mkdirSync(real); copyFileSync(process.execPath, join(real, "node.exe"));
 		const linked = join(f.root, "linked-node");
@@ -2150,7 +2150,7 @@ test("native Windows: the production probe never runs a user Node behind a junct
 			if (["EPERM", "EACCES", "ENOTSUP"].includes(code ?? "")) { t.skip(`owned junction creation capability unavailable: ${code}`); return; }
 			throw error;
 		}
-		const record = join(env.GENTLE_BOOTSTRAP_TOOLS, ".node-target");
+		const record = join(env.TOMIDEV_BOOTSTRAP_TOOLS, ".node-target");
 		const stage = cmdStage(stageMarkers.probe);
 		// The same current Node in a real directory is trusted, run and kept.
 		writeFileSync(record, join(real, "node.exe"));
@@ -2162,7 +2162,7 @@ test("native Windows: the production probe never runs a user Node behind a junct
 		assertNative(untrusted, 0);
 		assert.equal(existsSync(record), false, "a current version would have kept the record had it run");
 		// The acquired Node is held to every check: behind a junction it refuses.
-		writeFileSync(record, join(linked, "node.exe")); writeFileSync(join(env.GENTLE_BOOTSTRAP_TOOLS, ".node-stem"), "node-v24.21.0-win-x64");
+		writeFileSync(record, join(linked, "node.exe")); writeFileSync(join(env.TOMIDEV_BOOTSTRAP_TOOLS, ".node-stem"), "node-v24.21.0-win-x64");
 		const acquired = await nativeCmd(f.root, [stage], env);
 		assertNative(acquired, 1);
 		assert.ok(acquired.stderr.includes(`${probeMessage} Reason: parent-reparse`), acquired.stderr.slice(0, 4000));
@@ -2200,51 +2200,10 @@ test("native Windows: the main channel extracts its source with System32's tar.e
 		const bytes = readFileSync(archive);
 		const fetch = async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
 		const { packMainShell } = await import("../scripts/main-channel.mjs");
-		const tgz = await packMainShell({ commit, ctx: { env: { GENTLE_PI_CONFIG_HOME: join(root, "config") }, home: root }, fetch, run,
+		const tgz = await packMainShell({ commit, ctx: { env: { TOMIDEV_CONFIG_HOME: join(root, "config") }, home: root }, fetch, run,
 			pnpm: { command: "pnpm", prefix: [] }, fs: await import("node:fs/promises"), platform: "win32" });
 		assert.equal(tgz, join(root, "config", "main", "packages", "gentle-pi-4.0.0-main.6e7e3a18f794.tgz"));
 		assert.deepEqual(extracted, [join(process.env.SystemRoot!, "System32", "tar.exe")]);
-	} finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-// Run 38063142924: from a 179-character package root (a pnpm 11 store path) Go's asm.exe failed
-// with "The directory name is invalid." while building inside the package. The real source
-// build (network: proxy.golang.org and sum.golang.org) from a root deeper than 200 characters.
-test("native Windows: the pinned Go downloads from go.dev, verifies and runs", { skip: nativeUnavailable }, async () => {
-	// The real transport: dl.google.com gzips archives unless identity is requested.
-	const root = mkdtempSync(join(tmpdir(), "gentle pinned go "));
-	try {
-		const result = await acquireGo({ root, platform: "win32", arch: process.arch });
-		assert.equal(result.acquired, true);
-		assert.equal(installedGo(root, "win32", process.arch), result.goPath);
-		const version = spawnSync(result.goPath, ["version"], { encoding: "utf8", env: { ...process.env, GOTOOLCHAIN: "local" } });
-		assert.equal(version.status, 0, version.stderr);
-		assert.match(version.stdout.trim(), new RegExp(`^go version go${result.version} windows/`));
-	} finally {
-		rmSync(root, { recursive: true, force: true });
-	}
-});
-
-test("native Windows: the Gentle AI source build succeeds from a package root deeper than 200 characters", { skip: nativeUnavailable }, async (t) => {
-	const installer = await import("../scripts/gentle-ai-installer.mjs");
-	const where = spawnSync(join(process.env.SystemRoot!, "System32", "where.exe"), ["go.exe"], { encoding: "utf8", windowsHide: true });
-	const go = where.status === 0 ? where.stdout.split(/\r?\n/)[0].trim() : "";
-	const version = go ? /go version (go\d+\.\d+\.\d+) /.exec(spawnSync(go, ["version"], { encoding: "utf8", windowsHide: true }).stdout ?? "")?.[1] : undefined;
-	if (!version || !installer.isGentleAiWindowsGoVersionSupported(version)) {
-		t.skip(`Go ${installer.GENTLE_AI_WINDOWS_MINIMUM_GO_VERSION} or newer is not on PATH (found ${version ?? "none"})`);
-		return;
-	}
-	const root = realpathSync(mkdtempSync(join(tmpdir(), "gentle-deep-root-")));
-	try {
-		let packageRoot = root;
-		while (packageRoot.length <= 200) packageRoot = join(packageRoot, "nested-package-store-segment");
-		mkdirSync(packageRoot, { recursive: true });
-		const temporaryDirectory = join(root, "t"); mkdirSync(temporaryDirectory);
-		const result = await installer.installGentleAi({ packageRoot, platform: "win32", arch: process.arch, temporaryDirectory });
-		assert.equal(result.installed, true);
-		assert.equal(result.binaryPath, join(packageRoot, ".gentle-ai", `v${installer.INSTALLER_VERSION}`, "gentle-ai.exe"));
-		assert.ok(existsSync(result.binaryPath));
-		assert.deepEqual(readdirSync(temporaryDirectory), [], "the short build directory is removed");
 	} finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -2270,11 +2229,7 @@ function bundledPrefix(root: string) {
 	const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(?:pnpm_home|localappdata|appdata|userprofile|home)$/i.test(key))),
 		LOCALAPPDATA: local, APPDATA: roaming, USERPROFILE: profile, HOME: profile } as Record<string, string>;
 	const layout = bundled.claimPrefix({ platform: "win32", env, home: profile, adapters: { storage: () => {}, claim: (folder: string) => { mkdirSync(folder); return "claimed"; } } });
-	// installVersion requires the pinned Go on Windows; the fixture packages never run it.
-	const go = join(layout.goRoot, "1.25.14", "go", "bin", "go.exe");
-	mkdirSync(dirname(go), { recursive: true });
-	writeFileSync(go, "");
-	return { local, profile, env, layout, go };
+	return { local, profile, env, layout };
 }
 function bundledLinks(folder: string): string[] {
 	return readdirSync(folder).flatMap((name) => {
@@ -2288,7 +2243,7 @@ const insideFolder = (folder: string, path: string) => path.toLowerCase().starts
 test("native Windows: a bundled version installs in place with the real pinned pnpm, every link resolves inside versions\\<id>, and the launcher runs it", { skip: nativeUnavailable }, async () => {
 	const root = realpathSync(mkdtempSync(join(tmpdir(), "gentle bundled ")));
 	try {
-		const { env, layout, go } = bundledPrefix(root);
+		const { env, layout } = bundledPrefix(root);
 		await bundled.ensureRuntime({ layout, platform: "win32", arch: process.arch, env, adapters: { download: bundledDownload } });
 		const packages = join(layout.root, "packages"); mkdirSync(packages);
 		writeFileSync(join(packages, "gentle-pi.tgz"), tarFixture({
@@ -2298,15 +2253,15 @@ test("native Windows: a bundled version installs in place with the real pinned p
 		}));
 		writeFileSync(join(packages, "pi.tgz"), tarFixture({ "package/package.json": JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: bundledManifest.pi }) }));
 		// Both project folders sit two levels under the prefix, so the lockfile's relative file: paths match.
-		const files = { "package.json": JSON.stringify({ name: "gentle-shell-distribution", version: bundledManifest.shell, private: true,
+		const files = { "package.json": JSON.stringify({ name: "tomidev-distribution", version: bundledManifest.shell, private: true,
 			dependencies: { "gentle-pi": "file:../../packages/gentle-pi.tgz", "@earendil-works/pi-coding-agent": "file:../../packages/pi.tgz" } }),
 			"pnpm-workspace.yaml": bundled.distributionFiles(bundledManifest)["pnpm-workspace.yaml"] };
 		const resolve = join(layout.root, "lockfile", "4.1.0-1.0.2"); mkdirSync(resolve, { recursive: true });
 		for (const [name, text] of Object.entries(files)) writeFileSync(join(resolve, name), text);
-		const childEnv = bundled.pnpmEnvironment(layout, { platform: "win32", env, go });
+		const childEnv = bundled.pnpmEnvironment(layout, { platform: "win32", env });
 		const lock = spawnSync(layout.node, [layout.pnpm, "install", "--lockfile-only"], { cwd: resolve, env: childEnv, encoding: "utf8", timeout: 300000, windowsHide: true });
 		assert.equal(lock.status, 0, lock.stderr + lock.stdout);
-		const result = await bundled.installVersion({ layout, manifest: bundledManifest, lockfile: readFileSync(join(resolve, "pnpm-lock.yaml"), "utf8"), env, go,
+		const result = await bundled.installVersion({ layout, manifest: bundledManifest, lockfile: readFileSync(join(resolve, "pnpm-lock.yaml"), "utf8"), env,
 			adapters: { distribution: () => files } });
 		assert.deepEqual(result, { id: "4.1.0-1.0.2", path: join(layout.versions, "4.1.0-1.0.2"), installed: true });
 		const version = realpathSync.native(result.path);
@@ -2361,8 +2316,8 @@ test("native Windows: the bundled user Path entry is added once with the value k
 		registry.remove(entry);
 		assert.equal(read(), `${kind === "absent" ? "ExpandString" : kind}|${parts.join(";")}`);
 	} finally {
-		userPath("$k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment'); if ($env:GENTLE_TEST_KIND -eq 'absent') { $k.DeleteValue('Path', $false) } " +
-			"else { $k.SetValue('Path', $env:GENTLE_TEST_VALUE, [Microsoft.Win32.RegistryValueKind]$env:GENTLE_TEST_KIND) }; $k.Close()", { GENTLE_TEST_KIND: kind, GENTLE_TEST_VALUE: value });
+		userPath("$k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment'); if ($env:TOMIDEV_TEST_KIND -eq 'absent') { $k.DeleteValue('Path', $false) } " +
+			"else { $k.SetValue('Path', $env:TOMIDEV_TEST_VALUE, [Microsoft.Win32.RegistryValueKind]$env:TOMIDEV_TEST_KIND) }; $k.Close()", { TOMIDEV_TEST_KIND: kind, TOMIDEV_TEST_VALUE: value });
 	}
 	assert.equal(read(), before);
 });
@@ -2374,8 +2329,6 @@ test("native Windows: the bundled .cmd launcher runs from a path holding spaces 
 		const layout = bundled.prefixLayout({ platform: "win32", env: {}, home: profile, root: join(f.root, "a^b,c (d) !e %f%", "gentle-shell") });
 		for (const folder of [layout.versions, layout.bin, dirname(layout.node)]) mkdirSync(folder, { recursive: true });
 		copyFileSync(process.execPath, layout.node);
-		const go = join(layout.goRoot, "1.25.14", "go", "bin", "go.exe");
-		mkdirSync(dirname(go), { recursive: true }); writeFileSync(go, "");
 		const run = (_command: string, _args: string[], { cwd }: { cwd: string }) => {
 			const shell = join(cwd, "node_modules", "gentle-pi"); const pi = join(cwd, "node_modules", "@earendil-works", "pi-coding-agent");
 			mkdirSync(join(shell, "bin"), { recursive: true }); mkdirSync(pi, { recursive: true });
@@ -2384,13 +2337,13 @@ test("native Windows: the bundled .cmd launcher runs from a path holding spaces 
 			writeFileSync(join(pi, "package.json"), JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: bundledManifest.pi }));
 			return { status: 0, stdout: "", stderr: "" };
 		};
-		const { id } = await bundled.installVersion({ layout, manifest: bundledManifest, lockfile: "x", env: {}, go, adapters: { run } });
+		const { id } = await bundled.installVersion({ layout, manifest: bundledManifest, lockfile: "x", env: {}, adapters: { run } });
 		bundled.ensureLauncher(layout);
 		// Run by name through PATH, as a terminal does.
 		const env = nativePath([layout.bin, join(process.env.SystemRoot!, "System32")]);
 		const cmd = join(process.env.SystemRoot!, "System32", "cmd.exe");
 		const launch = () => spawnSync(cmd, ["/d", "/c", "gentle-shell 7 \"x & y\" 100%"], { env, encoding: "utf8", timeout: 60000, windowsHide: true, windowsVerbatimArguments: true });
-		const missing = "gentle-shell: no active Gentle Shell version; run the Gentle Shell installer again.";
+		const missing = "tomidev: no active Tomidev Shell version; run the Tomidev Shell installer again.";
 		const none = launch();
 		assert.deepEqual([none.status, none.stderr.trim(), none.stdout], [1, missing, ""]);
 		bundled.activateVersion(layout, id);
@@ -2410,10 +2363,10 @@ test("native Windows: the bundled prefix claim creates, adopts an empty folder, 
 		const layout = bundled.claimPrefix({ platform: "win32", env, home: profile });
 		assert.equal(layout.root, join(local, "gentle-shell"));
 		verifyWindowsStorage(layout.root, env);
-		assert.equal(readFileSync(join(layout.root, ".gentle-shell-bundle"), "utf8"), "gentle-shell bundled install");
+		assert.equal(readFileSync(join(layout.root, ".tomidev-bundle"), "utf8"), "tomidev bundled install");
 		for (const folder of [layout.runtime, layout.store, layout.versions, layout.bin, layout.tmp]) assert.equal(existsSync(folder), true, folder);
 		assert.equal(bundled.claimPrefix({ platform: "win32", env, home: profile }).root, layout.root, "a marked prefix is kept");
-		const claim = (folder: string) => windowsModule.ensureWindowsPrivateFolder(folder, env, { marker: ".gentle-shell-bundle", text: "gentle-shell bundled install" });
+		const claim = (folder: string) => windowsModule.ensureWindowsPrivateFolder(folder, env, { marker: ".tomidev-bundle", text: "tomidev bundled install" });
 		assert.equal(claim(layout.root), "kept");
 		const empty = join(f.root, "empty"); mkdirSync(empty);
 		assert.equal(claim(empty), "claimed");
@@ -2461,12 +2414,12 @@ test("native Windows: the deferred self-uninstall removal waits for the running 
 		const nodeDir = join(root, "runtime", "node-24.21.0");
 		const node = join(nodeDir, "node.exe");
 		const launcher = join(root, "bin", "gentle-shell.cmd");
-		const marker = join(root, ".gentle-shell-bundle");
+		const marker = join(root, ".tomidev-bundle");
 		mkdirSync(nodeDir, { recursive: true });
 		mkdirSync(dirname(launcher));
 		copyFileSync(process.execPath, node);
 		writeFileSync(launcher, "@echo off\r\n");
-		writeFileSync(marker, "gentle-shell bundled install");
+		writeFileSync(marker, "tomidev bundled install");
 		writeFileSync(join(root, "notes.txt"), "mine");
 		const running = spawn(node, ["-e", "setTimeout(() => {}, 5000)"], { stdio: "ignore", windowsHide: true });
 		await new Promise((resolve, reject) => { running.once("spawn", resolve); running.once("error", reject); });
@@ -2483,15 +2436,15 @@ test("native Windows: the deferred self-uninstall removal waits for the running 
 		assert.equal(readFileSync(join(root, "notes.txt"), "utf8"), "mine");
 		// A4: when a listed path cannot be removed (here a folder in a file's place), the marker stays for a retry.
 		const stuck = join(f.root, "stuck", "gentle-shell");
-		const stuckMarker = join(stuck, ".gentle-shell-bundle");
+		const stuckMarker = join(stuck, ".tomidev-bundle");
 		mkdirSync(join(stuck, "bin", "gentle-shell.cmd"), { recursive: true });
-		writeFileSync(stuckMarker, "gentle-shell bundled install");
+		writeFileSync(stuckMarker, "tomidev bundled install");
 		const done = spawn(process.execPath, ["-e", ""], { stdio: "ignore", windowsHide: true });
 		await new Promise((resolve) => done.once("exit", resolve));
 		bundled.scheduleWindowsRemoval({ pid: done.pid!, files: [join(stuck, "bin", "gentle-shell.cmd")], last: stuckMarker, directories: [join(stuck, "bin"), stuck],
 			env: process.env as Record<string, string> });
 		await new Promise((resolve) => setTimeout(resolve, 15000));
-		assert.equal(readFileSync(stuckMarker, "utf8"), "gentle-shell bundled install");
+		assert.equal(readFileSync(stuckMarker, "utf8"), "tomidev bundled install");
 		assert.equal(existsSync(join(stuck, "bin", "gentle-shell.cmd")), true);
 	} finally { f.cleanup(); }
 });

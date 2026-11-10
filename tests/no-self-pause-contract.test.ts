@@ -16,26 +16,21 @@ const read = (relative: string): string => readFileSync(join(REPO_ROOT, relative
 const tracking = read("assets/orchestrator-tracking.md");
 const core = read("assets/orchestrator.md");
 
-const contextualApproval = 'Interpret short replies such as "yes", "go ahead", or "eso mismo" against the immediately preceding proposal. When the human unambiguously accepts a concrete implementation action they already understand, execute that action within its agreed scope without asking again. Confirming a preference alone does not authorize implementation; genuinely unclear change intent still requires one focused question. Contextual approval never substitutes for provider-owned consent, exact-token authorization, or separate publishing and destructive-action permission.';
+const contextualApproval = 'Treat short replies such as "yes" or "go ahead" as acceptance of the immediately preceding concrete proposal and execute it within its agreed scope.';
 const informedClarification = 'Clarify scope, constraints, acceptance criteria, and non-goals when needed for the human to understand the action or to resolve consequential uncertainty. Reuse what is already established; after informed approval, proceed without repeating the clarification unless new consequential uncertainty appears.';
 
 test("contextual approval continues the agreed action without weakening consent boundaries", () => {
-	assert.ok(__testing.buildGentlePrompt("gentleman").includes(contextualApproval));
+	assert.ok(__testing.buildGentlePrompt().includes(contextualApproval));
 });
 
 test("clarification preserves understanding without reopening informed approval", () => {
-	assert.ok(__testing.buildGentlePrompt("gentleman").includes(informedClarification));
-	assert.ok(read("skills/gentle-ai/SKILL.md").includes(informedClarification));
+	assert.ok(__testing.buildGentlePrompt().includes(informedClarification));
 });
 
-test("resolved subdecisions retain the original authorized objective", () => {
-	const prompt = __testing.buildGentlePrompt("gentleman");
-	assert.ok(prompt.includes("Resolving an incident or subdecision does not complete or cancel the original authorized objective; resume safe, necessary in-scope steps automatically, using judgment for proportionate recovery and respecting explicit user dispositions. Investigate pending technical uncertainty rather than treating it alone as a new human decision."));
-	assert.ok(prompt.includes("Stop for an unresolved consequential scope/product decision, required explicit consent, a denied action, or the human's explicit stop."));
-	assert.ok(prompt.includes("Unavailable required proof blocks completion and delivery; it does not alone prohibit specifically authorized in-scope implementation where actual native authority and other limits permit it."));
-	assert.ok(prompt.includes("After a setup prerequisite is repaired, the human may explicitly request one new bounded verification attempt."));
-	assert.ok(prompt.includes("Never bypass consent, a denial, explicit one-run or no-retry limits, terminal native outcomes, or exhausted native budgets."));
-	assert.ok(prompt.includes("Do not infer permission for publishing, destructive actions, unrelated scope or native consent from this continuity rule."));
+test("the continuity stops are limited to real decisions and no permission is inferred", () => {
+	const prompt = __testing.buildGentlePrompt();
+	assert.ok(prompt.includes("Stop only for an unresolved consequential scope or product decision, required consent, a denied action, missing required proof (it blocks completion and delivery), or the human's explicit stop."));
+	assert.ok(prompt.includes("Do not infer permission for publishing (push, pull request, release), commits, destructive actions, or unrelated scope from a continuation or a short reply; each needs an explicit request in the current turn."));
 });
 
 function authorizationSection(): string {
@@ -63,7 +58,7 @@ test("T13: hedged delivery wording asks for resumable notes and separate commits
 	const section = authorizationSection();
 	for (const clause of [
 		"Hedged delivery wording (the user may stop you, review commits one at a time, or pick the work up later)",
-		"asks for resumable notes and separate commits, not a stop",
+		"asks for resumable notes, not automatic commits or a stop",
 		"complete every authorized task in the current turn unless the user explicitly says to wait",
 	]) {
 		assert.ok(section.includes(clause), `tracking module is missing: ${clause}`);
@@ -95,14 +90,14 @@ test("T13: the always-on harness narrows conditional intent and gates Close on p
 	// The harness ODD steps are injected on every request, including the small
 	// path that never loads the tracking module, so the narrowing must live there too.
 	// They are rendered from the mirrored routing/pi.md, so check the rendered harness.
-	const harness = __testing.buildGentlePrompt("gentleman");
+	const harness = __testing.buildGentlePrompt();
 	assert.ok(
 		harness.includes("Ambiguous or conditional change intent (unclear whether a change is authorized at all) gets one clarification; stop and wait."),
 		"harness Authorize step must narrow conditional intent",
 	);
 	assert.ok(!harness.includes("Ambiguous or conditional change intent gets one clarification"), "the broad harness wording must be gone");
 	assert.ok(
-		harness.includes("A user saying they may stop you or resume later asks for notes and separate commits, not a stop."),
+		harness.includes("A user saying they may stop you or resume later asks for notes, not automatic commits or a stop."),
 		"harness must say hedged delivery wording is not a stop",
 	);
 	assert.ok(

@@ -1,6 +1,6 @@
-# Gentle Agents activity schema (`gentle-agents.activity/v1`)
+# Tomidev Agents activity schema (`gentle-agents.activity/v1`)
 
-An interactive RPC host — a client that runs `pi --mode rpc` itself, such as the Gentle Shell desktop app — receives live Gentle Agents subagent state as one bounded JSON document per coalescing window, so it can render a per-chat Helpers view without polling `subagent_status`.
+An interactive RPC host — a client that runs `pi --mode rpc` itself, such as the Tomidev Shell desktop app — receives live Tomidev Agents subagent state as one bounded JSON document per coalescing window, so it can render a per-chat Helpers view without polling `subagent_status`.
 
 Source map: [publisher](../lib/agents-rpc-publisher.ts), [wiring](../extensions/gentle-agents.ts), [store](../lib/agents-protocol.ts).
 
@@ -412,7 +412,7 @@ execution is verified below; interactive human UI proof remains deferred.
 `registerProvider` streaming and `session.prompt`. Four separate managers/runtimes
 share one trusted fixture profile: owner, JSON caller, simulated-UI RPC caller,
 and fresh replacement owner. Provider/API IDs are unique per runtime.
-Production Gentle Agents/Shell extensions supply the actual registered tools.
+Production Tomidev Agents/Shell extensions supply the actual registered tools.
 No private SDK invocation, fabricated tool context or transport adapter is used.
 
 The fixture also proves actual SDK JSON/no-UI reasoning denial with exactly two
@@ -551,7 +551,7 @@ an exhaustive global writer inventory; the earlier Git prefix retains its own ga
 
 ## Turning it on
 
-Set `GENTLE_SHELL_INTERACTIVE_HOST=1` on the `pi --mode rpc` process the host spawns directly. `lib/rpc-host.ts`'s `isInteractiveRpcHost(mode, env)` gates the feature on that exact value; any other value, or its absence, keeps RPC headless — the existing subagent-child behavior is byte-identical. `lib/agents-runner.ts` strips the variable from every subagent child's environment, so a subagent spawned by an interactive host never inherits it and stays headless itself.
+Set `TOMIDEV_INTERACTIVE_HOST=1` on the `pi --mode rpc` process the host spawns directly. `lib/rpc-host.ts`'s `isInteractiveRpcHost(mode, env)` gates the feature on that exact value; any other value, or its absence, keeps RPC headless — the existing subagent-child behavior is byte-identical. `lib/agents-runner.ts` strips the variable from every subagent child's environment, so a subagent spawned by an interactive host never inherits it and stays headless itself.
 
 ## Transport
 

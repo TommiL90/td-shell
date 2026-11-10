@@ -11,7 +11,7 @@ try {
 	const modes = JSON.parse(`[${modesSource[1]}]`);
 	if (!Array.isArray(modes) || modes.some((mode) => typeof mode !== "string")) fail("invalid native modes");
 	names.push(...modes.map((mode) => `native Windows: pre-Node production process primitive ${mode}`));
-	if (names.length !== 38 || new Set(names).size !== 38) fail("expected 38 unique native declarations");
+	if (names.length !== 36 || new Set(names).size !== 36) fail("expected 36 unique native declarations");
 
 	const text = readFileSync(0, "utf8").replaceAll("\r\n", "\n");
 	if (!text.startsWith("TAP version 13\n") || !text.endsWith("\n") || [...text.matchAll(/^TAP version 13$/gm)].length !== 1) fail("missing or duplicate TAP header, or missing final newline");
@@ -24,7 +24,7 @@ try {
 	const results = [...text.matchAll(/^(ok|not ok) (\d+) - (.+)$/gm)];
 	const [tests, suites, pass, failed, cancelled, skipped, todo] = summaries[0].slice(1, 8).map(Number);
 	const topLevelSkips = results.filter((result) => /\s+# SKIP\b/i.test(result[3])).length;
-	if (failed || cancelled || todo || pass < 38 || tests !== pass + skipped || results.length !== Number(plans[0][1]) || results.length > tests + suites || topLevelSkips > skipped || results.length - topLevelSkips > pass + suites) fail("inconsistent TAP accounting");
+	if (failed || cancelled || todo || pass < 36 || tests !== pass + skipped || results.length !== Number(plans[0][1]) || results.length > tests + suites || topLevelSkips > skipped || results.length - topLevelSkips > pass + suites) fail("inconsistent TAP accounting");
 	if (results.some((result, index) => Number(result[2]) !== index + 1 || result.index >= plans[0].index || result[1] !== "ok")) fail("invalid TAP results");
 	// Node's TAP reporter escapes backslashes in names before printing them.
 	const seen = new Map(names.map((name) => [name.replaceAll("\\", "\\\\"), 0]));
@@ -38,7 +38,7 @@ try {
 	for (const line of text.split("\n")) {
 		if (line && !line.startsWith(" ") && line !== "TAP version 13" && !line.startsWith("#") && !/^(?:ok|not ok) \d+ - .+$/.test(line) && !/^1\.\.\d+$/.test(line)) fail(`malformed top-level line: ${line}`);
 	}
-	console.log("installer TAP: 38 native passes, zero native skips");
+	console.log("installer TAP: 36 native passes, zero native skips");
 } catch (error) {
 	console.error(`installer TAP: ${error.message}`);
 	process.exitCode = 1;

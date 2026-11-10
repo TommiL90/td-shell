@@ -7,7 +7,7 @@ import type { VISUAL_SECTION_KEYS, VisualSettings } from "./visual-customization
 const MAIN = 26;
 const RAIL = 22;
 /** Rail sections in rail order, named as the rail labels them. */
-const RAIL_SECTIONS: ReadonlyArray<[(typeof VISUAL_SECTION_KEYS)[number], string]> = [["todo", "todos"], ["agents", "agents"], ["changes", "changes"], ["rdd", "review"], ["stats", "stats"]];
+const RAIL_SECTIONS: ReadonlyArray<[(typeof VISUAL_SECTION_KEYS)[number], string]> = [["todo", "todos"], ["agents", "agents"], ["changes", "changes"], ["stats", "stats"]];
 
 const fill = (text: string, width: number) => (text.length > width ? text.slice(0, width - 1) + "…" : text + " ".repeat(width - text.length));
 const rule = (label: string, width: number) => (label ? `─ ${label} ` : "").padEnd(width, "─").slice(0, width);

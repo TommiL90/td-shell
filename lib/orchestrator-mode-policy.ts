@@ -4,7 +4,7 @@
 // owning profile plumbing. No pi imports belong in this file.
 //
 // Resolution order (first hit wins):
-//   1. Env `GENTLE_PI_ORCHESTRATOR_MODE` ("organic" | "full-delegation")
+//   1. Env `TOMIDEV_ORCHESTRATOR_MODE` ("organic" | "full-delegation")
 //   2. The session's profile, read live through `resolveSessionProfile`
 //   3. Default "organic"
 //
@@ -23,8 +23,9 @@
 
 import { profilesFilePath, readProfileWorkflow, readProfilesFileResult, DEFAULT_ORCHESTRATOR_MODE, type OrchestratorMode } from "./agent-profiles.ts";
 import { resolveSessionProfile } from "./session-profile-freeze.ts";
+import { ENV_PREFIX } from "./brand.ts";
 
-export const ORCHESTRATOR_MODE_ENV = "GENTLE_PI_ORCHESTRATOR_MODE";
+export const ORCHESTRATOR_MODE_ENV = `${ENV_PREFIX}ORCHESTRATOR_MODE`;
 
 /** Which layer decided the effective mode. */
 export type OrchestratorModeSource = "environment" | "session_profile" | "default";
@@ -40,7 +41,7 @@ export interface OrchestratorModeResolution {
 
 export interface ResolveOrchestratorModeOptions {
 	cwd: string;
-	/** Gentle Pi config home directory (honors GENTLE_PI_CONFIG_HOME at the call site). */
+	/** Gentle Pi config home directory (honors TOMIDEV_CONFIG_HOME at the call site). */
 	configHome: string;
 	sessionId: string | undefined;
 	/** Override the environment lookup (used in tests). */

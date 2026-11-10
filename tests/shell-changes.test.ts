@@ -139,7 +139,7 @@ test("changesSummary and the widget describe the session at a glance", () => {
 
 	const [line, ...rest] = renderChangesWidget(model, plainTheme, 120);
 	assert.equal(rest.length, 0);
-	assert.match(line, /^✎ 3 files · \+42 −7 · extensions\/gentle-shell\.ts · lib\/shell-bar\.ts · tests\/x\.test\.ts {2,}\/gentle:changes$/);
+	assert.match(line, /^✎ 3 files · \+42 −7 · extensions\/gentle-shell\.ts · lib\/shell-bar\.ts · tests\/x\.test\.ts {2,}\/td:changes$/);
 	assert.equal(visibleWidth(line), 120, "the command sits on the right edge");
 });
 
@@ -148,12 +148,12 @@ test("renderChangesWidget colors counts by direction and yields nothing when cle
 	const [line] = renderChangesWidget(model, taggedTheme, 400);
 	assert.match(line, /<accent>✎<\/accent>/);
 	assert.match(line, /<success>\+1<\/success> <error>−2<\/error>/);
-	assert.match(line, /<dim>\/gentle:changes<\/dim>$/);
+	assert.match(line, /<dim>\/td:changes<\/dim>$/);
 	assert.deepEqual(renderChangesWidget(emptyChanges(), plainTheme, 120), []);
 });
 
 // The unborn state (no commits yet) is silence in the idle bar: the widget
-// renders only tracked files, and /gentle:changes explains the state on demand.
+// renders only tracked files, and /td:changes explains the state on demand.
 test("renderChangesWidget stays silent when nothing is tracked", () => {
 	assert.deepEqual(renderChangesWidget(emptyChanges(), plainTheme, 120), []);
 	assert.deepEqual(renderChangesWidget(emptyChanges(), taggedTheme, 400), []);
@@ -164,7 +164,7 @@ test("renderChangesWidget drops the file list before truncating on narrow termin
 	const model = changesModel([file("a/very/long/path/one.ts", 1, 0), file("a/very/long/path/two.ts", 1, 0)]);
 	const [line] = renderChangesWidget(model, plainTheme, 40);
 	assert.equal(visibleWidth(line), 40);
-	assert.match(line, /^✎ 2 files · \+2 −0 +\/gentle:changes$/);
+	assert.match(line, /^✎ 2 files · \+2 −0 +\/td:changes$/);
 	assert.doesNotMatch(line, /one\.ts/);
 	const [tiny] = renderChangesWidget(model, plainTheme, 20);
 	assert.ok(visibleWidth(tiny) <= 20);

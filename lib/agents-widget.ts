@@ -356,12 +356,22 @@ export function renderAgentsCard(tasks: readonly TaskRecord[], theme: CardTheme,
 // rows and counts the rest.
 const SECTION_ROWS = 8;
 const KIND_MAX = 10;
-const AGENTS_VIEW = "/gentle:agents";
+const AGENTS_VIEW = "/td:agents";
 const SECTION_ORDER: TaskStatus[] = [TASK_STATUS.WAITING, TASK_STATUS.RUNNING, TASK_STATUS.QUEUED, TASK_STATUS.FAILED, TASK_STATUS.TIMED_OUT];
 const SECTION_TEXT_ROLE: Partial<Record<TaskStatus, string>> = { [TASK_STATUS.WAITING]: "warning", [TASK_STATUS.QUEUED]: "muted", [TASK_STATUS.FAILED]: "error", [TASK_STATUS.TIMED_OUT]: "error" };
 
+const REVIEWER_LABELS: Readonly<Record<string, string>> = {
+	"review-risk": "Risk",
+	"review-readability": "Readability",
+	"review-reliability": "Reliability",
+	"review-resilience": "Resilience",
+};
+
 function agentKind(agent: string): string {
-	return agent.replace(/^gentle-ai-/, "");
+	// Put the distinguishing role first so narrow columns do not hide it.
+	return Object.hasOwn(REVIEWER_LABELS, agent)
+		? REVIEWER_LABELS[agent]!
+		: agent.replace(/^gentle-ai-/, "");
 }
 
 function sectionRight(task: TaskRecord, now: number): string {

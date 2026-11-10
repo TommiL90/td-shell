@@ -12,7 +12,7 @@ nothing is stored unless you explicitly opt in.
 
 ### Turn capture on or off
 
-1. Run `/gentle:customize` and open the **History** category.
+1. Run `/td:customize` and open the **History** category.
 2. Select **Prompt history capture: enable** (or **disable**) and press Enter
    or Space. Highlighting a row only previews the saved preference and the
    effective state.
@@ -20,22 +20,22 @@ nothing is stored unless you explicitly opt in.
 
 The preference is saved globally in `<configHome>/history-capture.json`
 (default config home `~/.pi/gentle-ai`, overridable with
-`GENTLE_PI_CONFIG_HOME`) with the strict shape
-`{"schema":"gentle-pi.history-capture/v1","policy":"on"}` or `off`. It is
+`TOMIDEV_CONFIG_HOME`) with the strict shape
+`{"schema":"tomidev.history-capture/v1","policy":"on"}` or `off`. It is
 written atomically and is not part of visual profiles or visual reset.
 
 For a single session or a script, the environment variable still works:
 
 ```bash
-GENTLE_PI_HISTORY_CAPTURE=1 pi
+TOMIDEV_HISTORY_CAPTURE=1 pi
 ```
 
 ### Which setting wins
 
 | Situation | Capture |
 |-----------|---------|
-| `GENTLE_PI_HISTORY_CAPTURE` is `1`, `true`, or `on` | on, whatever Customize says |
-| `GENTLE_PI_HISTORY_CAPTURE` is `0`, `false`, or `off` | off, whatever Customize says |
+| `TOMIDEV_HISTORY_CAPTURE` is `1`, `true`, or `on` | on, whatever Customize says |
+| `TOMIDEV_HISTORY_CAPTURE` is `0`, `false`, or `off` | off, whatever Customize says |
 | Variable unset, empty, or any other value | the Customize preference |
 | No preference saved | off |
 | Preference file malformed or unreadable | off (fail closed) |
@@ -74,7 +74,7 @@ described in "What disabling capture does" below.
 
 ## Where the files live
 
-Everything sits under `~/.pi/agent/history/` (in a bundled Gentle Shell, under `<agent home>/history/` instead, with the legacy files and the transcript scan in that agent home too: [Bundled install](bundled-install.md#isolation-from-the-users-gentle-ai)):
+Everything sits under `~/.pi/agent/history/` (in a bundled Tomidev Shell, under `<agent home>/history/` instead, with the legacy files and the transcript scan in that agent home too: [Bundled install](bundled-install.md#isolation-from-the-users-gentle-ai)):
 
 - `registry.json` — advisory map of project hash → cwd, used for display
   labels.

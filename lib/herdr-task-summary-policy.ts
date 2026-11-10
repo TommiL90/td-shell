@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, fstatSync, mkdirSync, openSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -13,8 +14,8 @@ export interface HerdrTaskSummarySettings {
 export const DEFAULT_HERDR_TASK_SUMMARY_SETTINGS: HerdrTaskSummarySettings = {
 	enabled: true, summaryColor: "accent", continuationColor: "muted",
 };
-export const HERDR_TASK_SUMMARY_SCHEMA = "gentle-pi.herdr-task-summary/v1";
-export const HERDR_TASK_SUMMARY_CHANGED = "gentle-pi:herdr-task-summary:changed";
+export const HERDR_TASK_SUMMARY_SCHEMA = brandSchema("herdr-task-summary", 1);
+export const HERDR_TASK_SUMMARY_CHANGED = "td:herdr-task-summary:changed";
 export interface HerdrTaskSummaryChanged { configHome: string }
 export interface HerdrTaskSummaryOptions { gentlePiConfigHome?: string }
 export interface HerdrTaskSummaryResolution {
@@ -52,7 +53,7 @@ export function resolveHerdrTaskSummarySettings(options: HerdrTaskSummaryOptions
 			const value: unknown = JSON.parse(buffer.toString("utf8", 0, length));
 			if (typeof value === "object" && value !== null && !Array.isArray(value)) {
 				const { schema, ...candidate } = value as Record<string, unknown>;
-				if (schema === HERDR_TASK_SUMMARY_SCHEMA && isHerdrTaskSummarySettings(candidate)) settings = candidate;
+				if (isBrandSchema(schema, "herdr-task-summary", 1) && isHerdrTaskSummarySettings(candidate)) settings = candidate;
 			}
 		} catch { /* Invalid JSON is malformed, not a read failure. */ }
 		return { ...fallback, settings: settings ?? fallback.settings, malformed: !settings, readError: false, source: "global_file" };

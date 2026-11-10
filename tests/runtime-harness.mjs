@@ -10,8 +10,8 @@ import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
 import { matchesKey } from "@earendil-works/pi-tui";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { stripAnsi } from "../lib/terminal-theme.ts";
-import { domainHashV1 } from "../lib/review-canonical.ts";
-import { canonicalHash } from "../lib/review-transaction.ts";
+
+const canonicalHash = (rows) => createHash("sha256").update(JSON.stringify(rows)).digest("hex");
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const { createGentleAiExtension } = await import(pathToFileURL(join(ROOT, "extensions/gentle-ai.ts")).href);
@@ -24,27 +24,27 @@ const EXTENSIONS = [
 ];
 
 const EXPECTED_BANNER_COMMANDS = [
-	"gentle:banner",
-	"gentle:toggle-rose",
-	"gentle:toggle-text-logo",
-	"gentle:banner-color",
+	"td:banner",
+	"td:toggle-rose",
+	"td:toggle-text-logo",
+	"td:banner-color",
 ];
 
 const EXPECTED_COMMANDS = [
-	"gentle:install-delegation",
-	"gentle:install-review",
-	"gentle:profiles",
-	"gentle:persona",
-	"gentle:status",
-	"gentle:doctor",
+	"td:install-delegation",
+	"td:install-review",
+	"td:profiles",
+	"td:status",
+	"td:doctor",
 	"skill-registry:refresh",
 	...EXPECTED_BANNER_COMMANDS,
 ];
 
 const FORBIDDEN_COMPAT_COMMANDS = [
-	"gentle:install-assets",
-	// Retired: /gentle:profiles opens the same models screen.
-	"gentle:models",
+	"td:persona",
+	"td:install-assets",
+	// Retired: /td:profiles opens the same models screen.
+	"td:models",
 	"gentle-ai:models",
 	"gentleman:models",
 	"gentle-ai:persona",
@@ -213,8 +213,8 @@ function restoreWorkspaceWritePermissions(cwd) {
 const ownedFixtureRoots = [];
 const previousFixtureEnvironment = new Map([
 	"HOME", "USERPROFILE", "XDG_CONFIG_HOME", "PI_CODING_AGENT_DIR",
-	"GENTLE_PI_CONFIG_HOME", "GENTLE_PI_AGENT_HOME", "GENTLE_PI_TEST_ASSETS_DIR",
-	"GENTLE_PI_AGENTS_PARENT_PERMISSION_FD",
+	"TOMIDEV_CONFIG_HOME", "TOMIDEV_AGENT_HOME", "TOMIDEV_TEST_ASSETS_DIR",
+	"TOMIDEV_AGENTS_PARENT_PERMISSION_FD",
 ].map((key) => [key, process.env[key]]));
 
 async function loadExtensions(pi, fixtureDependencies) {
@@ -233,24 +233,24 @@ async function run() {
 	ownedFixtureRoots.push(globalAgentHome);
 	const ambientTestAssetsDir = await tempWorkspace();
 	ownedFixtureRoots.push(ambientTestAssetsDir);
-	process.env.GENTLE_PI_CONFIG_HOME = globalConfigHome;
-	process.env.GENTLE_PI_AGENT_HOME = globalAgentHome;
-	process.env.GENTLE_PI_TEST_ASSETS_DIR = ambientTestAssetsDir;
+	process.env.TOMIDEV_CONFIG_HOME = globalConfigHome;
+	process.env.TOMIDEV_AGENT_HOME = globalAgentHome;
+	process.env.TOMIDEV_TEST_ASSETS_DIR = ambientTestAssetsDir;
 	process.env.HOME = globalAgentHome;
 	process.env.USERPROFILE = globalAgentHome;
 	process.env.XDG_CONFIG_HOME = join(globalAgentHome, "xdg");
 	process.env.PI_CODING_AGENT_DIR = join(globalAgentHome, "pi");
 	// Discovery still exercises the default exports under the actual worker
 	// role, but must never acquire the worker's parent-permission channel.
-	delete process.env.GENTLE_PI_AGENTS_PARENT_PERMISSION_FD;
+	delete process.env.TOMIDEV_AGENTS_PARENT_PERMISSION_FD;
 	const fixtureDependencies = {
 		nativeReviewCli: {},
 		processEnv: {
 			HOME: globalAgentHome, USERPROFILE: globalAgentHome,
-			GENTLE_PI_CONFIG_HOME: globalConfigHome, GENTLE_PI_AGENT_HOME: globalAgentHome,
+			TOMIDEV_CONFIG_HOME: globalConfigHome, TOMIDEV_AGENT_HOME: globalAgentHome,
 			PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR,
 			XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
-			GENTLE_PI_AGENTS_CHILD: "0", GENTLE_AI_TELEMETRY: "0",
+			TOMIDEV_AGENTS_CHILD: "0", GENTLE_AI_TELEMETRY: "0",
 		},
 		resolveTelemetryTriggerBinary: () => join(globalAgentHome, "never-executed"),
 		telemetryTriggerSpawn: () => assert.fail("Runtime fixtures must not spawn telemetry"),
@@ -261,119 +261,6 @@ async function run() {
 	await loadExtensions(pi, fixtureDependencies);
 	assert.equal(providers.get("nan")?.getModels()[0]?.api, "openai-completions", "runtime extension loading registers the NaN provider");
 
-	// gentle-pi#404: a collect binding that returns the native last-event
-	// closure must terminate after one capture. It must not re-enter a public
-	// lifecycle mutation or synthesize a follow-up transition.
-	{
-		const lineageId = "runtime-last-event";
-		const sha = `sha256:${"a".repeat(64)}`;
-		const tree = "b".repeat(40);
-		const repositoryContext = `rctx1_${"c".repeat(64)}`;
-		const calls = [];
-		const arguments_ = [
-			{ name: "lineage", value: lineageId, token: `--lineage=${lineageId}` },
-			{ name: "expected-revision", value: sha, token: `--expected-revision=${sha}` },
-			{ name: "target", value: sha, token: `--target=${sha}` },
-			{ name: "repository-context", value: repositoryContext, token: `--repository-context=${repositoryContext}` },
-			{ name: "lens", value: "review-risk", token: "--lens=review-risk" },
-			{ name: "order", value: "0", token: "--order=0" },
-			{ name: "subject-hash", value: sha, token: `--subject-hash=${sha}` },
-		];
-		const input = {
-			name: "correction_plan",
-			schema: "gentle-ai.review-correction-plan/v1",
-			captureOperation: "review.capture-correction-plan",
-			arguments: arguments_,
-			submission: {
-				operationToken: "capture-correction-plan",
-				argumentTokens: [...arguments_.map((argument) => argument.token), "--correction-lines={{value}}"],
-				values: [{ slot: "correction_lines", domain: "positive_integer", substitutionLocation: 7, minimum: 1, maximum: 1 }],
-			},
-		};
-		const status = {
-			contract: "gentle-ai.review-integration/v2",
-			applicability: "current_target",
-			authority: { version: "compact-v2", lineageId, state: "correction_required", generation: 1, revision: sha },
-			receipt: { status: "expected_missing" },
-			action: "stop",
-			replayability: "not_replayable",
-			targetIdentity: sha,
-			projection: {
-				schema: "gentle-ai.review-candidate-projection/v1",
-				kind: "current-changes",
-				projection: "workspace",
-				baseTree: tree,
-				initialReviewTree: tree,
-				currentCandidateTree: tree,
-				pathsDigest: sha,
-				paths: ["app.ts"],
-				intendedUntracked: [],
-				intendedUntrackedProof: sha,
-				initialSnapshotIdentity: sha,
-				currentSnapshotIdentity: sha,
-			},
-			repair: { schema: "gentle-ai.review-authority-repair-assessment/v1", status: "unsupported", counts: { lineages: 0, compactLineages: 0, legacyLineages: 0, events: 0, bytes: 0, eligibleCandidates: 0, unsupportedLineages: 0, conflicts: 0 }, supportedOperations: ["review/complete-fix", "review/validate-fix"], authorizationSchema: "gentle-ai.review-repair-authorization/v1" },
-			candidates: [],
-			nextTransition: { kind: "collect", reasonCode: "correction_plan_required", collect: { inputs: [input] } },
-			raw: { schema: "gentle-ai.review-integration.status/v5" },
-		};
-		const nativeReviewCli = {
-			async targetStatus(request) {
-				calls.push({ operation: "status", request });
-				return status;
-			},
-			async captureCorrectionPlan(request) {
-				calls.push({ operation: "capture-correction-plan", request });
-				return {
-					schema: "gentle-ai.review-last-event-closure/v1",
-					operation: "review.capture-correction-plan",
-					lineageId,
-					state: "correction_required",
-					targetIdentity: sha,
-					requestHash: sha,
-					correctionLines: 1,
-					storeRevision: sha,
-				};
-			},
-		};
-		const lastEventPi = createPi();
-		createGentleAiExtension({ ...fixtureDependencies, nativeReviewCli })(lastEventPi.pi);
-		const controller = lastEventPi.tools.get("gentle_review");
-		const capture = lastEventPi.tools.get("gentle_review_capture");
-		assert.ok(controller, "runtime must register the public status controller");
-		assert.ok(capture, "runtime must register the one-slot capture tool");
-		assert.equal(lastEventPi.tools.get("gentle_review_capture_group")?.executionMode, "sequential", "runtime must register grouped capture with bounded foreground concurrency");
-		assert.equal(controller.parameters.properties.operation.enum.includes("finalize"), false);
-		assert.equal(controller.parameters.properties.operation.enum.includes("validate"), false);
-
-		const publicStatus = await controller.execute(
-			"runtime-status",
-			{ operation: "status", lineageId },
-			undefined,
-			undefined,
-			createCtx(ROOT, false, lineageId),
-		);
-		const collectBindings = publicStatus.details.collectBindings;
-		assert.equal(publicStatus.details.status, "blocked");
-		assert.equal(collectBindings.length, 1);
-
-		const captured = await capture.execute(
-			"runtime-capture",
-			{ lineageId, collectBinding: collectBindings[0].collectBinding, correctionLines: 1 },
-			undefined,
-			undefined,
-			createCtx(ROOT, false, lineageId),
-		);
-		assert.equal(captured.details.status, "closed");
-		assert.equal(captured.details.outcome, "native-last-event-closure");
-		assert.equal(captured.details.closure.operation, "review.capture-correction-plan");
-		assert.deepEqual(
-			calls.map(({ operation }) => operation),
-			["status", "status", "capture-correction-plan"],
-			"last-event closure must make no follow-up lifecycle mutation",
-		);
-	}
-
 	for (const name of EXPECTED_COMMANDS) {
 		assert.ok(commands.has(name), `missing command ${name}`);
 	}
@@ -382,7 +269,7 @@ async function run() {
 	}
 	// Retired SDD command entry points must not register, regardless of unrelated prompt text.
 	for (const name of [
-		"gentle:install-sdd", "gentle:sdd-preflight", "gentle-sdd-status",
+		"td:install-sdd", "td:sdd-preflight", "gentle-sdd-status",
 		"gentle-sdd-continue", "gentle-sdd-init", "sdd-init", "sdd-continue",
 		"sdd-status", "gentle-ai:install-sdd", "gentle-ai:sdd-preflight",
 		"gentle-ai:sdd-status", "gentle-ai:sdd-continue",
@@ -395,8 +282,8 @@ async function run() {
 	assert.ok(hooks.has("input"), "missing live input provenance hook");
 	for (const text of [
 		"/sdd-init", "/sdd-continue", "/sdd-status", "/gentle-sdd-init",
-		"/gentle-sdd-continue", "/gentle-sdd-status", "/gentle:install-sdd",
-		"/gentle:sdd-preflight", "/gentle-ai:install-sdd", "/gentle-ai:sdd-preflight",
+		"/gentle-sdd-continue", "/gentle-sdd-status", "/td:install-sdd",
+		"/td:sdd-preflight", "/gentle-ai:install-sdd", "/gentle-ai:sdd-preflight",
 		"/gentle-ai:sdd-status", "/gentle-ai:sdd-continue",
 		"Inspect this project without changing files.", "/ordinary-unregistered-command",
 	]) {
@@ -423,13 +310,8 @@ async function run() {
 	assert.equal(typeof codemode.renderResult, "function");
 	assert.equal(typeof codemode.prepareLoadout, "function", "upstream loadout policy must survive decoration");
 	assert.deepEqual(pi.getActiveTools(), ["read", "bash", "edit", "write"], "card registration must not change tool activation");
-	assert.ok(tools.has("gentle_review"), "missing registered bounded review controller tool");
-	assert.ok(tools.has("gentle_review_scope"), "missing registered bounded review scope tool");
-	assert.deepEqual(
-		tools.get("gentle_review").parameters.properties.operation.enum.filter((operation) => operation.includes("supersession") || operation === "supersede" || operation === "reconcile-authority"),
-		["reconcile-authority"],
-		"runtime controller must expose only native authority reconciliation",
-	);
+	assert.equal(tools.has("gentle_review"), false, "gentle_review must not be registered");
+	assert.equal(tools.has("gentle_review_scope"), false, "gentle_review_scope must not be registered");
 
 	for (const entry of await readdir(join(ROOT, "assets", "agents"))) {
 		if (!entry.endsWith(".md")) continue;
@@ -483,10 +365,10 @@ async function run() {
 		assert.equal(promptResult, undefined, "before_agent_start must not return a replacement systemPrompt");
 		assert.equal(promptEvent.systemPrompt, "base", "the original systemPrompt field must be left untouched");
 		const promptAppended = promptEvent.systemPromptOptions.appendSystemPrompt;
-		assert.match(promptAppended, /el Gentleman/);
+		assert.match(promptAppended, /Tomidev Shell/);
 		assert.match(promptAppended, /Organic Driven Development/);
 		assert.doesNotMatch(promptAppended, /## SDD Research Capabilities/);
-		assert.match(promptAppended, /review execution contract/);
+		assert.doesNotMatch(promptAppended, /review execution contract/);
 		assert.doesNotMatch(await readFile(join(ROOT, "extensions", "gentle-ai.ts"), "utf8"), /readCommandSddStatus/);
 		assert.match(promptAppended + delegationDetail, /do not pass the `model` parameter by default/);
 		assert.doesNotMatch(promptAppended, /Every Agent tool call MUST include `model`/);
@@ -499,9 +381,9 @@ async function run() {
 		assert.doesNotMatch(
 			promptAppended,
 			new RegExp(ambientTestAssetsDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-			"normal runtime must ignore ambient GENTLE_PI_TEST_ASSETS_DIR",
+			"normal runtime must ignore ambient TOMIDEV_TEST_ASSETS_DIR",
 		);
-		delete process.env.GENTLE_PI_TEST_ASSETS_DIR;
+		delete process.env.TOMIDEV_TEST_ASSETS_DIR;
 		await rm(ambientTestAssetsDir, { recursive: true, force: true });
 		await writeFile(
 			join(globalConfigHome, "persona.json"),
@@ -511,11 +393,11 @@ async function run() {
 		const neutralPromptResult = await promptHook(neutralPromptEvent, createCtx(promptCwd));
 		assert.equal(neutralPromptResult, undefined, "before_agent_start must not return a replacement systemPrompt");
 		const neutralAppended = neutralPromptEvent.systemPromptOptions.appendSystemPrompt;
-		assert.match(neutralAppended, /Do not use slang or regional expressions/);
+		assert.match(neutralAppended, /senior architect: direct, concise, technical, and professional/i);
 		assert.doesNotMatch(
 			neutralAppended,
 			/When the user writes Spanish, answer in natural Rioplatense Spanish with voseo/,
-			"neutral persona prompt must not include unconditional voseo instructions after reload",
+			"unified persona prompt must not include unconditional voseo instructions",
 		);
 		const subagentEvent = { agentName: "worker", systemPrompt: "worker base", systemPromptOptions: { appendSystemPrompt: "" } };
 		const subagentPromptResult = await promptHook(subagentEvent, createCtx(promptCwd));
@@ -531,20 +413,13 @@ async function run() {
 		assert.equal(localOverridePromptResult, undefined, "before_agent_start must not return a replacement systemPrompt");
 		assert.match(
 			localOverrideEvent.systemPromptOptions.appendSystemPrompt,
-			/When the user writes Spanish, answer in natural Rioplatense Spanish with voseo/,
+			/When the user writes in Spanish, answer in professional, technical Spanish/,
 		);
-		const personaCtx = createCtx(promptCwd, true);
-		personaCtx.ui.select = async () => "neutral";
-		await commands.get("gentle:persona").handler("", personaCtx);
-		assert.equal(
-			await readFile(join(globalConfigHome, "persona.json"), "utf8"),
-			'{\n  "mode": "neutral"\n}\n',
-		);
-		assert.equal(
-			await readFile(join(promptCwd, ".pi", "gentle-ai", "persona.json"), "utf8"),
-			'{\n  "mode": "neutral"\n}\n',
-		);
-		assert.match(personaCtx.ui.notifications.at(-1).message, /Global config:/);
+		assert.equal(commands.has("td:persona"), false);
+		assert.equal(localOverrideEvent.systemPromptOptions.appendSystemPrompt, promptAppended, "legacy project persona does not affect the fixed prompt");
+		assert.equal(neutralAppended, promptAppended, "legacy global persona does not affect the fixed prompt");
+		assert.equal(await readFile(join(globalConfigHome, "persona.json"), "utf8"), '{"mode":"neutral"}\n');
+		assert.equal(await readFile(join(promptCwd, ".pi", "gentle-ai", "persona.json"), "utf8"), '{"mode":"gentleman"}\n');
 	} finally {
 		await rm(promptCwd, { recursive: true, force: true });
 	}
@@ -555,6 +430,7 @@ async function run() {
 		const toolHook = hooks.get("tool_call")[0];
 		const toolResultHook = hooks.get("tool_result")[0];
 		const promptHook = hooks.get("before_agent_start")[0];
+		const inputHook = hooks.get("input")?.[0];
 		const oddCtx = createCtx(toolCwd, false, "odd-runtime-gate");
 		await promptHook({ systemPrompt: "primary" }, oddCtx);
 		const firstOddPath = join(toolCwd, "first.ts");
@@ -577,11 +453,6 @@ async function run() {
 		const denied = await toolHook({ toolName: "bash", input: { command: "rm -rf /" } }, createCtx(toolCwd));
 		assert.equal(denied.block, true);
 		assert.match(denied.reason, /destructive/);
-		const reviewDispatch = { agent: "review-risk", task: "review", mode: "task" };
-		const missingReviewView = await toolHook({ toolName: "subagent_run", input: reviewDispatch }, createCtx(toolCwd));
-		assert.equal(missingReviewView.block, true);
-		assert.match(missingReviewView.reason, /candidate view/i);
-		assert.equal(reviewDispatch.task, "review", "blocked review dispatch must not mutate child input");
 
 		for (const [agent, label, task] of [
 			["gentle-ai-worker", "missing", "Implement the requested change."],
@@ -606,16 +477,6 @@ async function run() {
 			assert.equal(writerDispatch.task, task, "writer guard must not mutate child input");
 		}
 
-		// S16: generic writers are admitted only for a task of an existing feature document (or at the measured
-		// context backstop); the accepted cases below name one, and an undocumented launch is told to work inline.
-		await mkdir(join(toolCwd, "odd", "tasks"), { recursive: true });
-		await writeFile(join(toolCwd, "odd", "tasks", "harness.md"), "# Harness\n");
-		const undocumentedWriter = await toolHook(
-			{ toolName: "subagent_run", input: { agent: "gentle-ai-worker", task: "Implement the requested change.\n\n## Allowed edit surfaces\nextensions/gentle-ai.ts", mode: "task" } },
-			createCtx(toolCwd),
-		);
-		assert.equal(undocumentedWriter?.block, true, "an undocumented writer must be blocked before dispatch");
-		assert.match(undocumentedWriter?.reason ?? "", /write this unit inline yourself/);
 		const scopedWriterDispatch = {
 			agent: "gentle-ai-worker",
 			task: "Spec: odd/tasks/harness.md, T1. Implement the requested change.\n\n## Allowed edit surfaces\nextensions/gentle-ai.ts\ntests/runtime-harness.mjs",
@@ -643,87 +504,6 @@ async function run() {
 			"a writer may dispatch when context carries narrow task-scoped repository-relative paths",
 		);
 
-		const canonicalFrozenFindingRow = '{"id":"JD-A-001","lens":"judgment-day","location":"extensions/gentle-ai.ts:1","severity":"CRITICAL","status_at_freeze":"open","evidence_class":"deterministic","evidence_claim":"The frozen finding has concrete user impact."}';
-		const canonicalFrozenFindingRows = [JSON.parse(canonicalFrozenFindingRow)];
-		const canonicalFrozenLedgerHash = canonicalHash(canonicalFrozenFindingRows);
-		const canonicalJdFixTask = [
-			"Apply the controller-authorized fix.",
-			"",
-			"## Judgment Day activation",
-			"User explicitly requested Judgment Day.",
-			"",
-			"## Exact authorized severe IDs",
-			"- `JD-A-001`",
-			"",
-			"## Judgment Day correction batch",
-			"Round: 1 of 2.",
-			`Frozen ledger SHA-256: \`${canonicalFrozenLedgerHash}\``,
-			"",
-			"## Exact frozen finding rows",
-			canonicalFrozenFindingRow,
-			"",
-			"## Allowed edit surfaces",
-			"extensions/gentle-ai.ts",
-			"tests/runtime-harness.mjs",
-		].join("\n");
-		const orderedFrozenFindingRows = [
-			...canonicalFrozenFindingRows,
-			{ ...canonicalFrozenFindingRows[0], id: "JD-B-002", location: "tests/runtime-harness.mjs:1" },
-		];
-		const reversedFrozenFindingRows = [...orderedFrozenFindingRows].reverse();
-		const rowOrderMismatchJdFixTask = canonicalJdFixTask
-			.replace("- `JD-A-001`", "- `JD-A-001`\n- `JD-B-002`")
-			.replace(canonicalFrozenLedgerHash, canonicalHash(reversedFrozenFindingRows))
-			.replace(canonicalFrozenFindingRow, reversedFrozenFindingRows.map((row) => JSON.stringify(row)).join("\n"));
-		const incorrectFrozenLedgerHash = `${canonicalFrozenLedgerHash.slice(0, -1)}${canonicalFrozenLedgerHash.endsWith("0") ? "1" : "0"}`;
-		for (const [label, input] of [
-			["missing activation", { agent: "jd-fix-agent", task: "## Allowed edit surfaces\nextensions/gentle-ai.ts", mode: "task" }],
-			["duplicate activation", { agent: "jd-fix-agent", task: `${canonicalJdFixTask}\n\n## Judgment Day activation\nUser explicitly requested Judgment Day.`, mode: "task" }],
-			["missing severe IDs", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("## Exact authorized severe IDs\n- `JD-A-001`\n", ""), mode: "task" }],
-			["duplicate severe ID bindings", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("- `JD-A-001`", "- `JD-A-001`\n- `JD-A-001`"), mode: "task" }],
-			["duplicate severe ID sections", { agent: "jd-fix-agent", task: canonicalJdFixTask, context: "## Exact authorized severe IDs\n- `JD-B-002`", mode: "task" }],
-			["malformed activation", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("User explicitly requested Judgment Day.", "Judgment Day is explicitly activated for this dispatch."), mode: "task" }],
-			["extra activation line", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("User explicitly requested Judgment Day.", "User explicitly requested Judgment Day.\nUnexpected activation detail."), mode: "task" }],
-			["malformed severe ID", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("- `JD-A-001`", "JD-A-001"), mode: "task" }],
-			["empty severe IDs", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("- `JD-A-001`", ""), mode: "task" }],
-			["missing correction batch", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(`## Judgment Day correction batch\nRound: 1 of 2.\nFrozen ledger SHA-256: \`${canonicalFrozenLedgerHash}\`\n`, ""), mode: "task" }],
-			["duplicate correction batch", { agent: "jd-fix-agent", task: `${canonicalJdFixTask}\n## Judgment Day correction batch\nRound: 2 of 2.\nFrozen ledger SHA-256: \`bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\``, mode: "task" }],
-			["out-of-order correction batch", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(`## Judgment Day correction batch\nRound: 1 of 2.\nFrozen ledger SHA-256: \`${canonicalFrozenLedgerHash}\`\n\n## Exact frozen finding rows\n${canonicalFrozenFindingRow}`, `## Exact frozen finding rows\n${canonicalFrozenFindingRow}\n\n## Judgment Day correction batch\nRound: 1 of 2.\nFrozen ledger SHA-256: \`${canonicalFrozenLedgerHash}\``), mode: "task" }],
-			["invalid correction round", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("Round: 1 of 2.", "Round: 3 of 2."), mode: "task" }],
-			["uppercase frozen ledger hash", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(canonicalFrozenLedgerHash, canonicalFrozenLedgerHash.toUpperCase()), mode: "task" }],
-			["incorrect frozen ledger hash", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(canonicalFrozenLedgerHash, incorrectFrozenLedgerHash), mode: "task" }],
-			["extra correction batch line", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("Round: 1 of 2.", "Round: 1 of 2.\nUnexpected line"), mode: "task" }],
-			["missing frozen rows", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(`## Exact frozen finding rows\n${canonicalFrozenFindingRow}\n`, ""), mode: "task" }],
-			["malformed frozen row", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(canonicalFrozenFindingRow, "{"), mode: "task" }],
-			["duplicate frozen row", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(canonicalFrozenFindingRow, `${canonicalFrozenFindingRow}\n${canonicalFrozenFindingRow}`), mode: "task" }],
-			["mismatched frozen row ID", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(canonicalFrozenFindingRow, canonicalFrozenFindingRow.replace("JD-A-001", "JD-B-002")), mode: "task" }],
-			["frozen row order mismatch", { agent: "jd-fix-agent", task: rowOrderMismatchJdFixTask, mode: "task" }],
-			["extra frozen row field", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace(canonicalFrozenFindingRow, canonicalFrozenFindingRow.replace("}", ",\"extra\":true}")), mode: "task" }],
-			["non-Judgment-Day frozen row", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("\"lens\":\"judgment-day\"", "\"lens\":\"review-risk\""), mode: "task" }],
-			["non-open frozen row", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("\"status_at_freeze\":\"open\"", "\"status_at_freeze\":\"closed\""), mode: "task" }],
-			["non-severe frozen row", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("\"severity\":\"CRITICAL\"", "\"severity\":\"WARNING\""), mode: "task" }],
-			["empty frozen evidence", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("\"evidence_claim\":\"The frozen finding has concrete user impact.\"", "\"evidence_claim\":\"\""), mode: "task" }],
-			["missing edit surface", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("## Allowed edit surfaces\nextensions/gentle-ai.ts\ntests/runtime-harness.mjs", ""), mode: "task" }],
-			["invalid edit surface", { agent: "jd-fix-agent", task: canonicalJdFixTask.replace("## Allowed edit surfaces\nextensions/gentle-ai.ts", "## Allowed edit surfaces\n."), mode: "task" }],
-			["mixed", { agent: ["jd-fix-agent", "gentle-ai-worker"], task: canonicalJdFixTask, mode: "task" }],
-			["agent array", { agent: ["jd-fix-agent"], task: canonicalJdFixTask, mode: "task" }],
-			["agents array", { agents: ["jd-fix-agent"], task: canonicalJdFixTask, mode: "task" }],
-			["duplicate agent binding", { agent: "jd-fix-agent", agents: "jd-fix-agent", task: canonicalJdFixTask, mode: "task" }],
-		]) {
-			const original = structuredClone(input);
-			const result = await toolHook({ toolName: "subagent_run", input }, createCtx(toolCwd));
-			assert.equal(result?.block, true, `${label} jd-fix-agent dispatch must be blocked`);
-			assert.match(result?.reason ?? "", /Judgment Day fix dispatch/i);
-			assert.deepEqual(input, original, `${label} jd-fix-agent rejection must not mutate input`);
-		}
-		assert.equal(
-			await toolHook(
-				{ toolName: "subagent_run", input: { agent: "jd-fix-agent", task: canonicalJdFixTask, mode: "task" } },
-				createCtx(toolCwd),
-			),
-			undefined,
-			"a canonical explicit Judgment Day fix dispatch with narrow edit surfaces may run",
-		);
 		for (const [label, input] of [
 			[
 				"valid scope followed by a repository-root scope",
@@ -787,11 +567,13 @@ async function run() {
 		assert.equal(sensitiveEdit.block, true);
 		assert.equal(await toolHook({ toolName: "read", input: { path: join(toolCwd, "src", "index.ts") } }, createCtx(toolCwd)), undefined);
 		const dangerousReviewCtx = createCtx(toolCwd, true, "dangerous-review-session");
+		await inputHook?.({ source: "user", text: "haz push a origin" }, dangerousReviewCtx);
 		// Scoped confirmation dialogs offer Allow once/session/always/Deny; this fake
 		// declines (last choice) so the guarded-command flow still proves the denied path.
 		dangerousReviewCtx.ui.select = async (_label, options) => options[options.length - 1];
+		// A push is decided by the commit/push dialog before the guard runs (see below), so the guard's lifecycle is shown on a rebase.
 		const needsConfirm = await toolHook(
-			{ toolName: "bash", input: { command: "git push" } },
+			{ toolName: "bash", input: { command: "git rebase origin/main" } },
 			dangerousReviewCtx,
 		);
 		assert.equal(needsConfirm.block, true);
@@ -859,11 +641,30 @@ async function run() {
 		const commitCwd = await tempWorkspace();
 		try {
 			execFileSync("git", ["init"], { cwd: commitCwd, stdio: "ignore" });
-			const deliveryResult = await toolHook(
+			const commitCtx = createCtx(commitCwd, false, "commit-session");
+			// A headless session cannot approve a commit, so it is blocked and nothing is asked.
+			const blockedCommit = await toolHook(
 				{ toolName: "bash", input: { command: "git commit -m bounded tracked.txt" } },
-				createCtx(commitCwd),
+				commitCtx,
 			);
-			assert.equal(deliveryResult, undefined, "ordinary delivery policy, not review authority, governs commits");
+			assert.equal(blockedCommit?.block, true);
+			assert.match(blockedCommit?.reason ?? "", /commits and pushes need explicit confirmation from the human in the primary session; no interactive UI/);
+
+			// The human's confirmation in the commit/push dialog allows the commit; no typed request is needed.
+			const approvingCtx = createCtx(commitCwd, true, "commit-session");
+			approvingCtx.ui.confirm = async (title) => title === "Allow git commit?";
+			const allowedCommit = await toolHook(
+				{ toolName: "bash", input: { command: "git commit -m bounded tracked.txt" } },
+				approvingCtx,
+			);
+			assert.equal(allowedCommit, undefined, "an approved commit is allowed");
+			const declinedCtx = createCtx(commitCwd, true, "commit-session");
+			const declinedCommit = await toolHook(
+				{ toolName: "bash", input: { command: "git commit -m bounded tracked.txt" } },
+				declinedCtx,
+			);
+			assert.equal(declinedCommit?.block, true);
+			assert.match(declinedCommit?.reason ?? "", /not confirmed by the human/);
 		} finally {
 			await rm(commitCwd, { recursive: true, force: true });
 		}
@@ -871,84 +672,21 @@ async function run() {
 		await rm(toolCwd, { recursive: true, force: true });
 	}
 
-	// review-candidate-view Phase 3.6 settling test: a contributor edit landing
-	// strictly between the controller-owned candidate binding and reviewer
-	// dispatch must diverge the live candidate tree from the frozen one, and
-	// dispatch must fail closed rather than expose a substituted view to the
-	// lens sub-agent. This drives the real `createGentleAiExtension` tool_call
-	// wiring (not the bare library function tested in
-	// tests/review-candidate-view.test.ts) with an injected candidate-view
-	// registry, so the actual production dispatch path is exercised.
-	const candidateDriftCwd = await tempWorkspace();
-	try {
-		const { createGentleAiExtension } = await import(
-			pathToFileURL(join(ROOT, "extensions/gentle-ai.ts")).href
-		);
-		const { CandidateViewRegistry } = await import(
-			pathToFileURL(join(ROOT, "lib/review-candidate-view.ts")).href
-		);
-
-		gitSync(candidateDriftCwd, "init", "-b", "main");
-		await writeFile(join(candidateDriftCwd, "tracked.txt"), "base\n");
-		gitSync(candidateDriftCwd, "add", "tracked.txt");
-		gitSync(
-			candidateDriftCwd,
-			"-c", "user.name=Runtime Harness",
-			"-c", "user.email=runtime-harness@example.invalid",
-			"commit", "-m", "base",
-		);
-
-		const registry = new CandidateViewRegistry();
-		const view = registry.create({ contributorRoot: candidateDriftCwd });
-		registry.bindCurrent({ token: view.token, lineageId: "harness-candidate-drift", selectedLenses: ["review-risk"] });
-
-		const dispatchPi = createPi();
-		createGentleAiExtension({ ...fixtureDependencies, candidateViews: registry })(dispatchPi.pi);
-		const dispatchToolHook = dispatchPi.hooks.get("tool_call")[0];
-
-		// The contributor edits the tracked file strictly after the candidate
-		// view was bound (START) and strictly before dispatch would run.
-		await writeFile(join(candidateDriftCwd, "tracked.txt"), "drifted after bind, before dispatch\n");
-
-		const dispatchInput = { agent: "review-risk", task: "review", mode: "task" };
-		const dispatchResult = await dispatchToolHook(
-			{ toolName: "subagent_run", input: dispatchInput },
-			createCtx(candidateDriftCwd),
-		);
-		assert.equal(dispatchResult?.block, true, "dispatch must fail closed when the candidate tree diverges between bind and dispatch");
-		assert.match(dispatchResult.reason, /live candidate|drift/i);
-		assert.equal(
-			dispatchInput.task,
-			"review",
-			"a failed-closed dispatch must never mutate the child dispatch input",
-		);
-		assert.doesNotMatch(
-			dispatchInput.task,
-			/Controller-owned review lineage/,
-			"a failed-closed dispatch must never inject a substituted candidate view into the lens sub-agent's task",
-		);
-		await chmod(view.root, 0o700);
-		registry.cleanup(view.token);
-	} finally {
-		restoreWorkspaceWritePermissions(candidateDriftCwd);
-		await rm(candidateDriftCwd, { recursive: true, force: true });
-	}
-
 	const bannerCwd = await tempWorkspace();
 	try {
 		const ctx = createCtx(bannerCwd, true);
-		await commands.get("gentle:toggle-rose").handler("", ctx);
+		await commands.get("td:toggle-rose").handler("", ctx);
 		let bannerConfig = JSON.parse(await readFile(join(globalConfigHome, "banner.json"), "utf8"));
 		assert.equal(bannerConfig.showRose, false);
 		assert.equal(bannerConfig.showTextLogo, true);
 		assert.equal(bannerConfig.color, "pink");
-		await commands.get("gentle:toggle-text-logo").handler("", ctx);
+		await commands.get("td:toggle-text-logo").handler("", ctx);
 		bannerConfig = JSON.parse(await readFile(join(globalConfigHome, "banner.json"), "utf8"));
 		assert.equal(bannerConfig.showTextLogo, false);
-		await commands.get("gentle:banner-color").handler("cyan", ctx);
+		await commands.get("td:banner-color").handler("cyan", ctx);
 		bannerConfig = JSON.parse(await readFile(join(globalConfigHome, "banner.json"), "utf8"));
 		assert.equal(bannerConfig.color, "cyan");
-		await commands.get("gentle:banner").handler("", ctx);
+		await commands.get("td:banner").handler("", ctx);
 		bannerConfig = JSON.parse(await readFile(join(globalConfigHome, "banner.json"), "utf8"));
 		assert.equal(bannerConfig.showRose, true);
 	} finally {
@@ -958,8 +696,8 @@ async function run() {
 
 	// issue-301: cancelling the color picker must be a no-op — no write,
 	// no notify, and the previously saved color must survive byte/semantically
-	// unchanged. Covers both entry points: /gentle:banner-color picker
-	// (cancelled), and /gentle:banner -> Color row -> nested picker (cancelled).
+	// unchanged. Covers both entry points: /td:banner-color picker
+	// (cancelled), and /td:banner -> Color row -> nested picker (cancelled).
 	// Also covers an invalid non-empty argument, which must still open the
 	// picker and treat its cancellation as a no-op.
 	const cancelPickerCwd = await tempWorkspace();
@@ -975,30 +713,30 @@ async function run() {
 
 		const cancelCtx = createCtx(cancelPickerCwd, true);
 
-		// (a) /gentle:banner-color picker cancelled: seeded color unchanged, no notify.
+		// (a) /td:banner-color picker cancelled: seeded color unchanged, no notify.
 		cancelCtx.ui.notifications.length = 0;
 		cancelCtx.ui.selections.length = 0;
 		cancelCtx.ui.select = async (label, options) => {
 			cancelCtx.ui.selections.push({ label, options });
 			return undefined;
 		};
-		await commands.get("gentle:banner-color").handler("", cancelCtx);
+		await commands.get("td:banner-color").handler("", cancelCtx);
 		let afterCancel = await readFile(bannerConfigPath, "utf8");
 		assert.equal(afterCancel, seededJson, "banner-color cancel must not rewrite banner.json");
 		assert.equal(cancelCtx.ui.selections.length, 1, "banner-color cancel must open the picker once");
 		assert.equal(cancelCtx.ui.notifications.length, 0, "banner-color cancel must not notify");
 
-		// (d) invalid non-empty /gentle:banner-color input still opens picker;
+		// (d) invalid non-empty /td:banner-color input still opens picker;
 		//     cancelling it is a no-op.
 		cancelCtx.ui.notifications.length = 0;
 		cancelCtx.ui.selections.length = 0;
-		await commands.get("gentle:banner-color").handler("purple", cancelCtx);
+		await commands.get("td:banner-color").handler("purple", cancelCtx);
 		afterCancel = await readFile(bannerConfigPath, "utf8");
 		assert.equal(afterCancel, seededJson, "banner-color invalid+cancel must not rewrite banner.json");
 		assert.equal(cancelCtx.ui.selections.length, 1, "invalid banner-color arg must still open the picker");
 		assert.equal(cancelCtx.ui.notifications.length, 0, "banner-color invalid+cancel must not notify");
 
-		// (b) /gentle:banner selects the Color row, then the nested picker is
+		// (b) /td:banner selects the Color row, then the nested picker is
 		//     cancelled: seeded color unchanged, no notify. The outer select
 		//     returns the Color row; the nested select returns undefined.
 		cancelCtx.ui.notifications.length = 0;
@@ -1011,7 +749,7 @@ async function run() {
 			// Second call: nested color picker -> cancel (undefined).
 			return selectCall === 1 ? options[options.length - 1] : undefined;
 		};
-		await commands.get("gentle:banner").handler("", cancelCtx);
+		await commands.get("td:banner").handler("", cancelCtx);
 		afterCancel = await readFile(bannerConfigPath, "utf8");
 		assert.equal(afterCancel, seededJson, "banner Color-row cancel must not rewrite banner.json");
 		assert.equal(cancelCtx.ui.selections.length, 2, "banner Color-row flow must open outer then nested picker");
@@ -1028,13 +766,13 @@ async function run() {
 
 	const noUiCwd = await tempWorkspace();
 	const startupAgentHome = join(noUiCwd, "agent-home");
-	process.env.GENTLE_PI_AGENT_HOME = startupAgentHome;
+	process.env.TOMIDEV_AGENT_HOME = startupAgentHome;
 	try {
 		const globalAgentHome = startupAgentHome;
 		for (const handler of hooks.get("session_start")) {
 			await handler({ reason: "startup" }, createCtx(noUiCwd, false));
 		}
-		for (const diagnostic of ["gentle:status", "gentle:doctor"]) {
+		for (const diagnostic of ["td:status", "td:doctor"]) {
 			const ctx = createCtx(noUiCwd, true);
 			await commands.get(diagnostic).handler("", ctx);
 		}
@@ -1058,8 +796,8 @@ async function run() {
 			join(globalAgentHome, "agents", "review-risk.md"),
 			"utf8",
 		);
-		assert.match(installedRiskSource, /exactly once against the supplied `initial_review_tree`/);
-		assert.match(installedRiskSource, /cannot authorize transitions, fixes, receipts, gates, or delivery/);
+		assert.match(installedRiskSource, /requesting-code-review/);
+		assert.match(installedRiskSource, /R1 Risk/);
 		const managedAssetsManifestPath = join(globalAgentHome, "gentle-ai", "managed-assets.json");
 		const managedAssetsManifest = JSON.parse(
 			await readFile(managedAssetsManifestPath, "utf8"),
@@ -1098,7 +836,7 @@ async function run() {
 		}
 		assert.equal(existsSync(retiredManagedValidatorPath), false, "review retirement still runs at startup");
 		const driftCtx = createCtx(noUiCwd, true);
-		await commands.get("gentle:status").handler("", driftCtx);
+		await commands.get("td:status").handler("", driftCtx);
 		assert.doesNotMatch(driftCtx.ui.notifications.at(-1).message, /install-(delegation|review) --force/);
 		assert.equal(
 			await readFile(installedRefuterPath, "utf8"),
@@ -1134,7 +872,7 @@ async function run() {
 			"a user-authored same-path retired asset must stay unowned",
 		);
 	} finally {
-		process.env.GENTLE_PI_AGENT_HOME = globalAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = globalAgentHome;
 		await rm(noUiCwd, { recursive: true, force: true });
 	}
 
@@ -1146,13 +884,13 @@ async function run() {
 			review: "review-risk.md",
 		};
 		try {
-			process.env.GENTLE_PI_AGENT_HOME = agentHome;
-			process.env.GENTLE_PI_CONFIG_HOME = join(fixture, "config");
-			await mkdir(process.env.GENTLE_PI_CONFIG_HOME);
-			await writeFile(join(process.env.GENTLE_PI_CONFIG_HOME, "models.json"),
+			process.env.TOMIDEV_AGENT_HOME = agentHome;
+			process.env.TOMIDEV_CONFIG_HOME = join(fixture, "config");
+			await mkdir(process.env.TOMIDEV_CONFIG_HOME);
+			await writeFile(join(process.env.TOMIDEV_CONFIG_HOME, "models.json"),
 				JSON.stringify({ [representatives[owner].replace(/\.md$/, "")]: "test/installer-must-not-apply" }));
 			const ctx = createCtx(fixture, true);
-			const command = commands.get(`gentle:install-${owner}`);
+			const command = commands.get(`td:install-${owner}`);
 			assert.ok(command, `missing owner installer: ${owner}`);
 			await command.handler("", ctx);
 			for (const [candidate, name] of Object.entries(representatives)) {
@@ -1189,76 +927,76 @@ async function run() {
 			assert.equal(await readFile(selectedPath, "utf8"), userEdit);
 			assert.equal(existsSync(join(agentHome, "subagents.json")), false,
 				"owner installers must not apply model routing");
-			await commands.get("gentle:status").handler("", ctx);
+			await commands.get("td:status").handler("", ctx);
 			const label = owner;
 			assert.ok(ctx.ui.notifications.at(-1).message.includes(`Global ${label} user overrides: 1 file(s)`));
 		} finally {
-			process.env.GENTLE_PI_CONFIG_HOME = globalConfigHome;
-			process.env.GENTLE_PI_AGENT_HOME = globalAgentHome;
+			process.env.TOMIDEV_CONFIG_HOME = globalConfigHome;
+			process.env.TOMIDEV_AGENT_HOME = globalAgentHome;
 			await rm(fixture, { recursive: true, force: true });
 		}
 	}
 
 	const repairFixture = await tempWorkspace();
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = join(repairFixture, "agent-home");
+		process.env.TOMIDEV_AGENT_HOME = join(repairFixture, "agent-home");
 		const ctx = createCtx(repairFixture, true);
-		for (const diagnostic of ["gentle:status", "gentle:doctor"]) {
+		for (const diagnostic of ["td:status", "td:doctor"]) {
 			await commands.get(diagnostic).handler("", ctx);
 			const message = ctx.ui.notifications.at(-1).message;
-			assert.match(message, /Global delegation assets stale: [1-9]\d* file\(s\).*\/gentle:install-delegation --force/,
+			assert.match(message, /Global delegation assets stale: [1-9]\d* file\(s\).*\/td:install-delegation --force/,
 				`${diagnostic} must provide a repair for missing delegation assets`);
-			assert.match(message, /Global review assets stale: [1-9]\d* file\(s\).*\/gentle:install-review --force/,
+			assert.match(message, /Global review assets stale: [1-9]\d* file\(s\).*\/td:install-review --force/,
 				`${diagnostic} must provide a repair for missing review assets`);
 			assert.doesNotMatch(message, /install-sdd --force/);
 		}
-		await commands.get("gentle:install-delegation").handler("", ctx);
-		await commands.get("gentle:install-review").handler("", ctx);
-		const manifest = JSON.parse(await readFile(join(process.env.GENTLE_PI_AGENT_HOME, "gentle-ai", "managed-assets.json"), "utf8"));
+		await commands.get("td:install-delegation").handler("", ctx);
+		await commands.get("td:install-review").handler("", ctx);
+		const manifest = JSON.parse(await readFile(join(process.env.TOMIDEV_AGENT_HOME, "gentle-ai", "managed-assets.json"), "utf8"));
 		for (const key of Object.keys(manifest.assets)) {
-			await rm(join(process.env.GENTLE_PI_AGENT_HOME, key));
+			await rm(join(process.env.TOMIDEV_AGENT_HOME, key));
 		}
-		for (const diagnostic of ["gentle:status", "gentle:doctor"]) {
+		for (const diagnostic of ["td:status", "td:doctor"]) {
 			await commands.get(diagnostic).handler("", ctx);
 			const message = ctx.ui.notifications.at(-1).message;
-			assert.match(message, /Global delegation assets stale: [1-9]\d* file\(s\).*\/gentle:install-delegation --force/);
-			assert.match(message, /Global review assets stale: [1-9]\d* file\(s\).*\/gentle:install-review --force/);
+			assert.match(message, /Global delegation assets stale: [1-9]\d* file\(s\).*\/td:install-delegation --force/);
+			assert.match(message, /Global review assets stale: [1-9]\d* file\(s\).*\/td:install-review --force/);
 			assert.doesNotMatch(message, /install-sdd --force|on demand/,
 				"managed installation evidence must survive missing delegation and review files");
 		}
 	} finally {
-		process.env.GENTLE_PI_AGENT_HOME = globalAgentHome;
+		process.env.TOMIDEV_AGENT_HOME = globalAgentHome;
 		await rm(repairFixture, { recursive: true, force: true });
 	}
 
 	const staleAssetsCwd = await tempWorkspace();
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	try {
-		process.env.GENTLE_PI_AGENT_HOME = join(staleAssetsCwd, "agent-home");
+		process.env.TOMIDEV_AGENT_HOME = join(staleAssetsCwd, "agent-home");
 		process.env.HOME = staleAssetsCwd;
 		process.env.USERPROFILE = staleAssetsCwd;
 		const ctx = createCtx(staleAssetsCwd, true);
-		await commands.get("gentle:doctor").handler("", ctx);
-		assert.match(ctx.ui.notifications.at(-1).message, /el Gentleman doctor/);
+		await commands.get("td:doctor").handler("", ctx);
+		assert.match(ctx.ui.notifications.at(-1).message, /Tomidev doctor/);
 		assert.match(ctx.ui.notifications.at(-1).message, /Sensitive-path guard active/);
-		for (const diagnostic of ["gentle:status", "gentle:doctor"]) {
+		for (const diagnostic of ["td:status", "td:doctor"]) {
 			await commands.get(diagnostic).handler("", ctx);
 			const message = ctx.ui.notifications.at(-1).message;
 			assert.match(message, /Organic Driven Development \(ODD\): active/);
 			assert.doesNotMatch(message, /OpenSpec|openspec\/config\.yaml|SDD/);
 		}
 		pi.setActiveTools([{ name: "engram.mem_save" }]);
-		await commands.get("gentle:doctor").handler("", ctx);
+		await commands.get("td:doctor").handler("", ctx);
 		assert.match(ctx.ui.notifications.at(-1).message, /Engram memory tools active/);
 		pi.setActiveTools([{ name: "engram_mem_save" }]);
-		await commands.get("gentle:doctor").handler("", ctx);
+		await commands.get("td:doctor").handler("", ctx);
 		assert.match(ctx.ui.notifications.at(-1).message, /Engram memory tools not active in this session/);
 	} finally {
 		pi.setActiveTools(["read", "bash", "edit", "write"]);
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		if (previousHome === undefined) delete process.env.HOME;
 		else process.env.HOME = previousHome;
 		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
@@ -1313,7 +1051,7 @@ async function run() {
 			modelPanelOpened = true;
 			return Promise.resolve({ type: "close" });
 		};
-		await commands.get("gentle:profiles").handler("", legacyCtx);
+		await commands.get("td:profiles").handler("", legacyCtx);
 		assert.equal(modelPanelOpened, true);
 		assert.equal(await readFile(globalModelsPath, "utf8"), "{ invalid json");
 		await writeFile(globalModelsPath, JSON.stringify({}, null, 2));
@@ -1634,7 +1372,7 @@ async function run() {
 			{ provider: "safe", id: "model" },
 			{ provider: "evil\u001b]52;c;Zm9v\u0007", id: "model" },
 		];
-		// /gentle:profiles opens the models screen on the profile this repository
+		// /td:profiles opens the models screen on the profile this repository
 		// resolves: one table, profiles as tabs. Its render contract: a bordered
 		// card filling the terminal, scroll indicators for long agent lists, and
 		// sanitized labels everywhere, including the model card.
@@ -1676,7 +1414,7 @@ async function run() {
 				panel.handleInput("\u001b"); // close the card
 				panel.handleInput("\u001b"); // close the screen: nothing changed, one esc is enough
 			});
-		await commands.get("gentle:profiles").handler("", ctx);
+		await commands.get("td:profiles").handler("", ctx);
 		assert.equal(panelVisits, 1, "closing an unchanged screen ends the command");
 
 		await hooks.get("session_start")[0]({ reason: "startup" }, ctx);
@@ -1688,7 +1426,7 @@ async function run() {
 		assert.doesNotMatch(legacyAppliedAgent, /thinking:/);
 
 		// Save writes the table into the profile store only (kind
-		// gentle-pi.agent_model_profiles). Global models.json, subagents.json, and
+		// tomidev.agent_model_profiles). Global models.json, subagents.json, and
 		// agent frontmatter stay untouched — Make default is the guarded global apply.
 		const projectSubagentsBefore = await readFile(
 			join(modelsCwd, ".pi", "subagents.json"),
@@ -1720,12 +1458,12 @@ async function run() {
 				}
 				panel.handleInput("\u001b");
 			});
-		await commands.get("gentle:profiles").handler("", ctx);
+		await commands.get("td:profiles").handler("", ctx);
 		assert.equal(saveVisits, 2, "Save reopens the screen once before it closes");
 
 		const profilesPath = join(globalConfigHome, "profiles.json");
 		const savedStore = JSON.parse(await readFile(profilesPath, "utf8"));
-		assert.equal(savedStore.kind, "gentle-pi.agent_model_profiles");
+		assert.equal(savedStore.kind, "tomidev.agent_model_profiles");
 		assert.equal(savedStore.version, 1);
 		assert.deepEqual(savedStore.profiles.current["sdd-apply"], { model: "safe/model", thinking: "high" });
 		assert.deepEqual(savedStore.profiles.current["project-special"], { model: "safe/model", thinking: "high" });
@@ -1777,7 +1515,7 @@ async function run() {
 				}
 				panel.handleInput("\u001b");
 			});
-		await commands.get("gentle:profiles").handler("", ctx);
+		await commands.get("td:profiles").handler("", ctx);
 		assert.equal(customVisits, 3);
 		const customSavedStore = JSON.parse(await readFile(profilesPath, "utf8"));
 		assert.deepEqual(customSavedStore.profiles.current["sdd-apply"], {
@@ -1802,7 +1540,7 @@ async function run() {
 				}
 				panel.handleInput("\u001b"); // nothing changed: one esc closes
 			});
-		await commands.get("gentle:profiles").handler("", ctx);
+		await commands.get("td:profiles").handler("", ctx);
 		assert.equal(invalidCustomVisits, 2);
 		const rejectedCustomStore = JSON.parse(await readFile(profilesPath, "utf8"));
 		assert.deepEqual(rejectedCustomStore.profiles.current["sdd-apply"], {
@@ -1816,22 +1554,22 @@ async function run() {
 			screenOpened = true;
 			return Promise.resolve({ type: "close" });
 		};
-		await commands.get("gentle:profiles").handler("export-routing", ctx);
+		await commands.get("td:profiles").handler("export-routing", ctx);
 		const exported = JSON.parse(await readFile(join(globalConfigHome, "models.export.json"), "utf8"));
-		assert.equal(exported.kind, "gentle-pi.agent_model_routing");
+		assert.equal(exported.kind, "tomidev.agent_model_routing");
 		assert.equal(exported.version, 1);
 		assert.deepEqual(exported.agents["sdd-apply"], { model: "openai/gpt-5" }, "export reads the saved global routing");
 
 		await writeFile(
 			join(globalConfigHome, "models.export.json"),
 			JSON.stringify({
-				kind: "gentle-pi.agent_model_routing",
+				kind: "tomidev.agent_model_routing",
 				version: 1,
 				agents: { "sdd-apply": { model: "restore/provider", thinking: "high" } },
 			}, null, 2),
 		);
 		ctx.ui.confirm = async () => true;
-		await commands.get("gentle:profiles").handler("restore-routing", ctx);
+		await commands.get("td:profiles").handler("restore-routing", ctx);
 		assert.equal(screenOpened, false, "export and restore never open the screen");
 		const restoredConfig = JSON.parse(await readFile(globalModelsPath, "utf8"));
 		assert.deepEqual(restoredConfig["sdd-apply"], { model: "restore/provider", thinking: "high" });
@@ -1862,7 +1600,7 @@ async function run() {
 				}
 				panel.handleInput("\u001b");
 			});
-		await commands.get("gentle:profiles").handler("", ctx);
+		await commands.get("td:profiles").handler("", ctx);
 		assert.equal(maxVisits, 2);
 		const maxStore = JSON.parse(await readFile(profilesPath, "utf8"));
 		assert.equal(maxStore.profiles.current["sdd-apply"].thinking, "max");

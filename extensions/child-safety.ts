@@ -2,6 +2,7 @@ import type { ExtensionAPI, ToolCallEventResult } from "@earendil-works/pi-codin
 import { SHELL_COMMAND_TOOLS } from "../lib/background-jobs.ts";
 import { recognizeDestructiveCommands } from "../lib/destructive-command-guard.ts";
 import { evaluateExecutionSurfaceTool } from "../lib/execution-surface-guard.ts";
+import { ENV_AGENTS_CHILD } from "../lib/brand.ts";
 
 export function blockChildDestructiveCommand(command: string): ToolCallEventResult | undefined {
 	if (recognizeDestructiveCommands(command).length === 0) return undefined;
@@ -12,7 +13,7 @@ export function blockChildDestructiveCommand(command: string): ToolCallEventResu
 // primary is inert. No UI or inherited delivery permission can waive this guard.
 export function createChildSafetyExtension(env: NodeJS.ProcessEnv = process.env): (pi: ExtensionAPI) => void {
 	return (pi) => {
-		if (env.GENTLE_PI_AGENTS_CHILD !== "1") return;
+		if (env[ENV_AGENTS_CHILD] !== "1") return;
 		pi.on("tool_call", (event) => {
 			const surfaceDenied = evaluateExecutionSurfaceTool(event.toolName, event.input);
 			if (surfaceDenied) return surfaceDenied;

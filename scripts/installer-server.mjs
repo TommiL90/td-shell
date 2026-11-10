@@ -1,15 +1,16 @@
+import { BRAND_DISPLAY_NAME, GIT_SOURCE } from "../runtime/brand.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
-import { goAcquisition, requirements } from "./installer-preflight.mjs";
+import { requirements } from "./installer-preflight.mjs";
 
 // Local wizard host: a dependency-free loopback HTTP server with a fixed route
 // allowlist. The browser never sends commands, paths, plans or environment:
 // plans are built here, stored here and handed to the injected runner here.
 
 const HOST = "127.0.0.1";
-const COOKIE = "gentle_install_session";
+const COOKIE = "tomidev_install_session";
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const defaultLimits = Object.freeze({
@@ -52,8 +53,8 @@ const sessionPage = [
 	"<!doctype html>",
 	'<meta charset="utf-8">',
 	'<meta http-equiv="refresh" content="0; url=/">',
-	"<title>Gentle Shell installation wizard</title>",
-	'<p><a href="/">Continue to the Gentle Shell installation wizard</a></p>',
+	`<title>${BRAND_DISPLAY_NAME} installation wizard</title>`,
+	`<p><a href="/">Continue to the ${BRAND_DISPLAY_NAME} installation wizard</a></p>`,
 	"",
 ].join("\n");
 
@@ -69,27 +70,23 @@ export const actionDescriptions = Object.freeze({
 	"configure-npm-prefix": "Point npm's user-level global prefix at PNPM_HOME when its default would be inside pnpm's store.",
 	"persist-npm": "Install npm under PNPM_HOME with `pnpm add -g`.",
 	"persist-pnpm": "Install pnpm under PNPM_HOME with `pnpm add -g`.",
-	"acquire-go": "Download the installer's pinned Go from go.dev and verify it, only to build Gentle AI.",
-	"verify-go": "Check that the downloaded Go runs and reports the pinned version.",
 	"install-pi": "Resolve the latest stable Pi and install that exact version globally with pnpm.",
-	"install-shell": `Install Gentle Shell (gentle-pi) globally with pnpm. pnpm may put another Pi next to it ` +
-		`(at least Pi ${requirements.pi}), and Gentle Shell runs that Pi.`,
-	"provision-native": "Provision the package-native Gentle AI binary with the existing installer.",
-	"setup-shell": "Run the normal `gentle-shell setup`.",
+	"install-shell": `Install ${BRAND_DISPLAY_NAME} (tomidev) globally with pnpm. pnpm may put another Pi next to it ` +
+		`(at least Pi ${requirements.pi}), and ${BRAND_DISPLAY_NAME} runs that Pi.`,
+	"setup-shell": "Run the normal `tomidev setup`.",
 	"verify-readiness": "Verify that the installed stack is ready.",
-	"build-gentle-ai-main": "Build Gentle AI from the latest commit of its `main` branch with Go, verified by Go's checksum database, and use it instead of the pinned release binary.",
-	"install-shell-main": "Install Gentle Shell from the latest commit of its `main` branch with pnpm, replacing the release package.",
-	"record-channel": "Remember the `main` channel, so `gentle-shell upgrade` keeps following `main`.",
-	"update-shell-release": "Update Gentle Shell to the latest release with the package manager that installed it (pnpm or npm).",
-	"update-shell-main": "Update Gentle Shell and Gentle AI to the latest commits of `main`, built on this computer, with the package manager that installed Gentle Shell.",
+	"install-shell-main": "Install Tomidev Shell from the latest commit of its `main` branch with pnpm, replacing the release package.",
+	"record-channel": "Remember the `main` channel, so `tomidev upgrade` keeps following `main`.",
+	"update-shell-release": `Update ${BRAND_DISPLAY_NAME} to the latest release with the package manager that installed it (pnpm or npm).`,
+	"update-shell-main": "Update tomidev from the fork's latest main commit, packed locally with pnpm and installed with the package manager that owns it.",
 	"update-pi": "Update Pi with the package manager that installed it (pnpm or npm).",
 	// The bundled install (T1c): the plan's own versions and paths come from bundledDescription.
-	"bundled-prefix": "Create Gentle Shell's private folder for its own runtimes, versions and launcher.",
-	"bundled-runtime": "Download Gentle Shell's pinned Node.js with its npm, and pnpm, and verify their pinned checksums.",
-	"bundled-version": "Install Gentle Shell with its pinned Pi from the release's lockfile.",
-	"bundled-activate": "Make this version the active one and write the `gentle-shell` launcher.",
-	"bundled-path": "Make new terminals find `gentle-shell`.",
-	"bundled-setup": "Run `gentle-shell setup` with the bundled launcher.",
+	"bundled-prefix": `Create ${BRAND_DISPLAY_NAME}'s private folder for its own runtimes, versions and launcher.`,
+	"bundled-runtime": `Download ${BRAND_DISPLAY_NAME}'s pinned Node.js with its npm, and pnpm, and verify their pinned checksums.`,
+	"bundled-version": `Install ${BRAND_DISPLAY_NAME} with its pinned Pi from the release's lockfile.`,
+	"bundled-activate": "Make this version the active one and write the `tomidev` launcher.",
+	"bundled-path": "Make new terminals find `tomidev`.",
+	"bundled-setup": "Run `tomidev setup` with the bundled launcher.",
 	"remove-global-shell": "Remove the old global gentle-pi with the package manager that installed it.",
 });
 
@@ -100,18 +97,17 @@ export const guidance = Object.freeze({
 		"invalid-request": "The installation request was not an unmodified plan. Reload the wizard to get a fresh plan.",
 		"consent-required": "Nothing was installed because consent was not given. Review the plan and confirm to continue.",
 		"preflight-blocked": "Preflight found a blocker, so nothing was installed. Resolve the listed blockers and run the installer again.",
-		"go-required": `Windows needs Go ${requirements.go} or newer before Gentle AI can be provisioned, and this plan neither reuses nor downloads one. Run the installer again to check this computer again.`,
-		"unsupported-plan": "This machine needs steps the wizard does not run yet, such as updating an existing installation. Use `gentle-shell upgrade` or follow the README.",
+		"unsupported-plan": "This machine needs steps the wizard does not run yet, such as updating an existing installation. Use `tomidev upgrade` or follow the README.",
 		"pnpm-home-unknown": "The pnpm home directory could not be determined. Set PNPM_HOME to an absolute directory, then run the installer again.",
 		"pnpm-home-changed": "The pnpm home folder is not the one the plan was made for. Nothing was installed; run the installer again to check this computer again.",
 		"node-unavailable": "The installer could not find its own Node.js executable. Run the installer again from the bootstrap script.",
 		"pnpm-unavailable": "pnpm could not be started. Run the installer again from the bootstrap script so it can provide pnpm.",
-		"npm-unavailable": "No working npm was found on PATH. Gentle AI needs it; check that `npm --version` works in a new terminal, then run the installer again.",
+		"npm-unavailable": "No working npm was found on PATH. Companion setup needs it; check that `npm --version` works in a new terminal, then run the installer again.",
 		"npm-shadowed": "Another `npm` program appears on PATH before Node.js's npm. Remove or reorder it, then run the installer again.",
 		"global-bin-mismatch": "pnpm reported a different global bin directory than expected. Check PNPM_HOME, then run the installer again.",
 		"global-list-unavailable": "pnpm could not list global packages. Check that `pnpm list -g` works, then run the installer again.",
-		"existing-stack": "Pi or Gentle Shell is already installed globally. Nothing was changed; use `gentle-shell upgrade` instead.",
-		"existing-stack-unverified": "The installed Pi and Gentle Shell changed after the plan was made, or are no longer the versions this installer set up. Nothing was changed; run the installer again to check this computer again.",
+		"existing-stack": "Pi or Tomidev Shell is already installed globally. Nothing was changed; use `tomidev upgrade` instead.",
+		"existing-stack-unverified": `The installed Pi and ${BRAND_DISPLAY_NAME} changed after the plan was made, or are no longer the versions this installer set up. Nothing was changed; run the installer again to check this computer again.`,
 	}),
 	failed: Object.freeze({
 		"prepare-pnpm-home": "The private pnpm folder (%USERPROFILE%\\.pnpm) could not be created, or kept, with access for you, SYSTEM and Administrators only, or it changed after the plan was made. Nothing was installed. " +
@@ -124,32 +120,28 @@ export const guidance = Object.freeze({
 		"verify-persistent-pnpm": `pnpm was not found in the pnpm global bin directory after installation. ${tryAgain}`,
 		"check-npm": `The installed npm could not be verified as genuine npm. ${tryAgain}`,
 		"configure-npm-prefix": `npm's global prefix could not be checked or set to PNPM_HOME. Your npm configuration was left as it was. ${tryAgain}`,
-		"acquire-go": `Go ${goAcquisition.version} could not be downloaded from go.dev and verified against its pinned checksum, so nothing was installed. Check your network connection. ${tryAgain}`,
-		"verify-go": `The downloaded Go did not run or did not report Go ${goAcquisition.version}, so nothing was installed. ${tryAgain}`,
-		"install-global": `Installing Pi and Gentle Shell with pnpm failed. Check your network connection. ${tryAgain}`,
-		"verify-global-list": `The installed Pi and Gentle Shell packages could not be verified under PNPM_HOME. ${tryAgain}`,
-		"verify-shell-bin": `The gentle-shell command was not found in the pnpm global bin directory. ${tryAgain}`,
-		"verify-gentle-ai": `The package-native Gentle AI binary could not be verified. ${tryAgain}`,
-		"shell-setup": "`gentle-shell setup` did not finish. Run `gentle-shell setup` in a terminal to see the details.",
+		"install-global": `Installing Pi and ${BRAND_DISPLAY_NAME} with pnpm failed. Check your network connection. ${tryAgain}`,
+		"verify-global-list": `The installed Pi and ${BRAND_DISPLAY_NAME} packages could not be verified under PNPM_HOME. ${tryAgain}`,
+		"verify-shell-bin": `The tomidev command was not found in the pnpm global bin directory. ${tryAgain}`,
+		"shell-setup": "`tomidev setup` did not finish. Run `tomidev setup` in a terminal to see the details.",
 		"persist-path": "`pnpm setup` could not add the global bin directory to your PATH. Run `pnpm setup` in a terminal, then open a new terminal.",
-		"build-gentle-ai-main": `Gentle AI could not be built from its latest \`main\` commit. Check your network connection and that \`go\` runs in a terminal. ${tryAgain}`,
-		"install-shell-main": `Gentle Shell could not be installed from its latest \`main\` commit. Check your network connection. ${tryAgain}`,
-		"record-channel": "Gentle Shell is installed from `main`, but the channel could not be saved under `~/.pi/gentle-ai`. Check that folder's permissions, then run the installer again.",
+		"install-shell-main": `${BRAND_DISPLAY_NAME} could not be installed from its latest \`main\` commit. Check your network connection. ${tryAgain}`,
+		"record-channel": "Tomidev Shell is installed from `main`, but the channel could not be saved under `~/.pi/gentle-ai`. Check that folder's permissions, then run the installer again.",
 		"resolve-pi-version": `The latest stable Pi could not be resolved or did not meet the minimum. No packages were installed. Check your network connection. ${tryAgain}`,
-		"install-pi": `Installing Pi with pnpm failed. Your existing Gentle Shell was not changed. Check your network connection. ${tryAgain}`,
-		"update-shell": "Updating Gentle Shell failed. Run `gentle-shell upgrade` in a terminal to see the details.",
-		"verify-updated-shell": "Gentle Shell did not report the expected version after the update. Run `gentle-shell --version`, then `gentle-shell upgrade` in a terminal.",
-		"update-pi": `Updating Pi with the package manager that installed it failed. Gentle Shell was not changed. Check your network connection. ${tryAgain}`,
-		"verify-updated-pi": "After the update, this installer could not find a single Pi at the expected version from the same package manager. Gentle Shell was not changed. Run `pi --version` in a terminal, then run the installer again.",
-		"verify-installed-pi": "After installing Pi, this installer could not find it at the expected version in pnpm's global packages. Gentle Shell and your other Pi were not changed. Run `pnpm list -g` in a terminal, then run the installer again.",
-		"claim-prefix": "Gentle Shell's private folder could not be created, or kept private to your account, so nothing was installed. If that folder holds files this installer did not put there, or another account can change it, fix that, then run the installer again.",
-		"copy-npm-settings": `Your npm registry, authentication and proxy settings could not be read from your npm configuration (~/.npmrc, or NPM_CONFIG_USERCONFIG) and copied into Gentle Shell's private folder. Check that the file is readable. ${tryAgain}`,
-		"install-runtime": `Gentle Shell's pinned Node.js, npm and pnpm (and Go on Windows) could not be downloaded and verified against their pinned checksums. Check your network connection. ${tryAgain}`,
-		"install-version": `Installing Gentle Shell from the release's lockfile failed. Check your network connection and your npm registry and authentication settings. ${tryAgain}`,
+		"install-pi": `Installing Pi with pnpm failed. Your existing ${BRAND_DISPLAY_NAME} was not changed. Check your network connection. ${tryAgain}`,
+		"update-shell": "Updating Tomidev Shell failed. Run `tomidev upgrade` in a terminal to see the details.",
+		"verify-updated-shell": "Tomidev Shell did not report the expected version after the update. Run `tomidev --version`, then `tomidev upgrade` in a terminal.",
+		"update-pi": `Updating Pi with the package manager that installed it failed. ${BRAND_DISPLAY_NAME} was not changed. Check your network connection. ${tryAgain}`,
+		"verify-updated-pi": "After the update, this installer could not find a single Pi at the expected version from the same package manager. Tomidev Shell was not changed. Run `pi --version` in a terminal, then run the installer again.",
+		"verify-installed-pi": "After installing Pi, this installer could not find it at the expected version in pnpm's global packages. Tomidev Shell and your other Pi were not changed. Run `pnpm list -g` in a terminal, then run the installer again.",
+		"claim-prefix": `${BRAND_DISPLAY_NAME}'s private folder could not be created, or kept private to your account, so nothing was installed. If that folder holds files this installer did not put there, or another account can change it, fix that, then run the installer again.`,
+		"copy-npm-settings": `Your npm registry, authentication and proxy settings could not be read from your npm configuration (~/.npmrc, or NPM_CONFIG_USERCONFIG) and copied into ${BRAND_DISPLAY_NAME}'s private folder. Check that the file is readable. ${tryAgain}`,
+		"install-runtime": `${BRAND_DISPLAY_NAME}'s pinned Node.js, npm and pnpm could not be downloaded and verified against their pinned checksums. Check your network connection. ${tryAgain}`,
+		"install-version": `Installing ${BRAND_DISPLAY_NAME} from the release's lockfile failed. Check your network connection and your npm registry and authentication settings. ${tryAgain}`,
 		"activate-version": `The installed version could not be made the active one. ${tryAgain}`,
-		"write-launcher": `The \`gentle-shell\` launcher could not be written in Gentle Shell's private folder. ${tryAgain}`,
-		"bundled-path": "Gentle Shell is installed, but the PATH change could not be made, or it is no longer the one the plan showed, so nothing was changed. Run the installer again to see the current PATH plan.",
-		"verify-launcher": `The new \`gentle-shell\` launcher did not report the expected Gentle Shell and Pi versions, so your old global Gentle Shell was kept. ${tryAgain}`,
+		"write-launcher": `The \`tomidev\` launcher could not be written in ${BRAND_DISPLAY_NAME}'s private folder. ${tryAgain}`,
+		"bundled-path": `${BRAND_DISPLAY_NAME} is installed, but the PATH change could not be made, or it is no longer the one the plan showed, so nothing was changed. Run the installer again to see the current PATH plan.`,
+		"verify-launcher": `The new \`tomidev\` launcher did not report the expected ${BRAND_DISPLAY_NAME} and Pi versions, so your old global ${BRAND_DISPLAY_NAME} was kept. ${tryAgain}`,
 	}),
 	blockers: Object.freeze({
 		"unsupported-target": "This operating system or CPU is not supported by the wizard. Follow the README for a manual installation.",
@@ -159,21 +151,19 @@ export const guidance = Object.freeze({
 			"Remove that account's write access, or set PNPM_HOME to a private folder such as %USERPROFILE%\\.pnpm, then select Check again.",
 	}),
 	outcomes: Object.freeze({
-		ready: "Gentle Shell is installed. Run `gentle-shell` in a terminal.",
-		"terminal-action-required": "Gentle Shell is installed. Open a new terminal so it picks up the updated PATH, then run `gentle-shell`.",
-		"add-path-line": "Gentle Shell is installed. Add the line below to your shell profile, open a new terminal, then run `gentle-shell`.",
+		ready: "Tomidev Shell is installed. Run `tomidev` in a terminal.",
+		"terminal-action-required": "Tomidev Shell is installed. Open a new terminal so it picks up the updated PATH, then run `tomidev`.",
+		"add-path-line": "Tomidev Shell is installed. Add the line below to your shell profile, open a new terminal, then run `tomidev`.",
 	}),
 	// A migration whose old global gentle-pi could not be removed: the install stays.
 	removeGlobalFailed: "The old global gentle-pi could not be removed, so a terminal may still find it first. Remove it with the command below.",
 	// A failed install, main-channel or update step whose detail shows GitHub's anonymous API limit.
 	githubRateLimit: "GitHub's limit for anonymous API requests was reached on this network, so the installation could not finish. Wait up to an hour, then run the installer again.",
 	// A failed shell-setup whose detail shows GitHub's anonymous API limit.
-	setupRateLimit: "`gentle-shell setup` could not finish because GitHub's limit for anonymous API requests was reached on this network. Wait up to an hour, then run the installer again.",
-	// A failed acquire-go whose detail names a Go folder the installer did not publish.
-	goDestinationConflict: `A Go folder from an earlier, interrupted installer run is in the way, and the installer never replaces a folder it cannot prove it published. Remove that folder (shown below), then run the installer again. Nothing was installed.`,
-	// A failed install whose detail shows Windows refused to start the gentle-ai.exe gentle-pi's postinstall built.
-	codeIntegrityBlocked: "Windows refused to run the Gentle AI program (gentle-ai.exe) that the installation builds on this computer, most likely because Smart App Control or another code integrity policy blocks unsigned programs. " +
-		"Windows offers no exception for a single program. Keep using Gentle Shell in WSL, or turn Smart App Control off in Windows Security and run the installer again; on Windows 11 it cannot be turned back on without reinstalling Windows.",
+	setupRateLimit: "`tomidev setup` could not finish because GitHub's limit for anonymous API requests was reached on this network. Wait up to an hour, then run the installer again.",
+	// A failed install whose detail shows Windows refused to start an unsigned program.
+	codeIntegrityBlocked: "Windows refused to run an installed program, most likely because Smart App Control or another code integrity policy blocks unsigned programs. " +
+		`Windows offers no exception for a single program. Keep using ${BRAND_DISPLAY_NAME} in WSL, or turn Smart App Control off in Windows Security and run the installer again; on Windows 11 it cannot be turned back on without reinstalling Windows.`,
 	// A failed persist-path whose detail shows pnpm could not tell the shell (POSIX SHELL missing or unsupported).
 	persistPathShell: "`pnpm setup` could not tell which shell profile to edit because the SHELL environment variable is missing or names an unsupported shell. Open a regular terminal and run the installer again, or add `$PNPM_HOME/bin` to your PATH yourself.",
 	fallback: "The installation stopped for an unexpected reason. Nothing else will run; check the terminal and run the installer again.",
@@ -189,7 +179,6 @@ function setupDetail(value) {
 }
 const rateLimited = (detail) => /rate limit/i.test(detail) || (/GitHub API/i.test(detail) && /\b403\b/.test(detail));
 const unknownShell = (detail) => /ERR_PNPM_(?:UNKNOWN|UNSUPPORTED)_SHELL/.test(detail);
-const goConflict = (detail) => detail.startsWith("Conflicting Go destination: ");
 // libuv reports a CreateProcess refusal it has no code for, such as a Windows code integrity block
 // (Smart App Control, event 3077), as spawn UNKNOWN.
 const codeIntegrityBlocked = (detail) => /\bspawn UNKNOWN\b/.test(detail);
@@ -199,17 +188,17 @@ const githubLimited = (detail) => rateLimited(detail) || (/\bmain-commit-unavail
 // The bundled steps send a detail only for a migration (its error message); a new install's send none.
 const bundledDetail = Object.fromEntries(["claim-prefix", "copy-npm-settings", "install-runtime", "activate-version", "write-launcher", "verify-launcher", "bundled-path"]
 	.map((step) => [step, () => false]));
-const detailSteps = Object.freeze({ ...bundledDetail, "shell-setup": rateLimited, "install-version": codeIntegrityBlocked, "persist-path": unknownShell, "acquire-go": goConflict,
-	"install-global": (detail) => githubLimited(detail) || codeIntegrityBlocked(detail), "install-shell-main": githubLimited, "build-gentle-ai-main": githubLimited, "update-shell": githubLimited });
+const detailSteps = Object.freeze({ ...bundledDetail, "shell-setup": rateLimited, "install-version": codeIntegrityBlocked, "persist-path": unknownShell,
+	"install-global": (detail) => githubLimited(detail) || codeIntegrityBlocked(detail), "install-shell-main": githubLimited, "update-shell": githubLimited });
 // A step whose detail can match more than one pattern names its guidance by detail.
-const detailGuidance = Object.freeze({ "shell-setup": "setupRateLimit", "persist-path": "persistPathShell", "acquire-go": "goDestinationConflict",
-	"install-version": "codeIntegrityBlocked", "install-global": (detail) => (githubLimited(detail) ? "githubRateLimit" : "codeIntegrityBlocked"), "install-shell-main": "githubRateLimit", "build-gentle-ai-main": "githubRateLimit", "update-shell": "githubRateLimit" });
+const detailGuidance = Object.freeze({ "shell-setup": "setupRateLimit", "persist-path": "persistPathShell",
+	"install-version": "codeIntegrityBlocked", "install-global": (detail) => (githubLimited(detail) ? "githubRateLimit" : "codeIntegrityBlocked"), "install-shell-main": "githubRateLimit", "update-shell": "githubRateLimit" });
 
 const ID = /^[a-z][a-z0-9-]{0,63}$/;
 function identifier(value, fallback = "unknown") {
 	return typeof value === "string" && ID.test(value) ? value : fallback;
 }
-// Preflight tool names include camelCase keys such as gentleAi and globalBin.
+// Preflight tool names include camelCase keys such as globalBin.
 const TOOL = /^[a-z][A-Za-z0-9-]{0,63}$/;
 function toolName(value) {
 	return typeof value === "string" && TOOL.test(value) ? value : "unknown";
@@ -239,13 +228,13 @@ function fingerprint(collected) {
 const minimumTools = Object.freeze({
 	node: { label: "Node.js", where: "" },
 	pi: { label: "Pi", where: "" },
-	shell: { label: "Gentle Shell", where: " globally with pnpm",
-		remedy: (required) => `Update it with \`pnpm add -g gentle-pi@${required}\`, or remove it with \`pnpm remove -g gentle-pi\`` },
+	shell: { label: `${BRAND_DISPLAY_NAME}`, where: " globally with pnpm",
+		remedy: (required) => `Update it with \`pnpm add -g ${GIT_SOURCE}#v${required}\`, or remove it with \`pnpm remove -g tomidev\`` },
 });
 // A Pi whose version cannot be read, or a Gentle Shell neither pnpm nor npm manages.
 const unmanaged = Object.freeze({
 	pi: "Pi is already installed, but `pi --version` did not report a version this installer can check. Make sure `pi --version` works in a terminal, then select Check again.",
-	shell: "Gentle Shell is already installed, but neither pnpm nor npm manages it (a linked source checkout, for example), so this installer cannot update it. Nothing was replaced. Update it the way you installed it, then select Check again.",
+	shell: `${BRAND_DISPLAY_NAME} is already installed, but neither pnpm nor npm manages it (a linked source checkout, for example), so this installer cannot update it. Nothing was replaced. Update it the way you installed it, then select Check again.`,
 });
 const STABLE = /^v?(\d{1,6})\.(\d{1,6})\.(\d{1,6})$/;
 function older(found, required) {
@@ -354,19 +343,11 @@ function actionDescription(action, plan) {
 	const bare = (version) => version.replace(/^v/, "");
 	if (action.id === "update-pi" && action.version === "latest" && ["pnpm", "npm"].includes(pi?.owner) && stable(pi.version, pi.required)) {
 		return `Update Pi ${bare(pi.version)} to the latest stable version with ${pi.owner}, the package manager that installed it. ` +
-			`Gentle Shell needs Pi ${bare(pi.required)} or newer.`;
+			`${BRAND_DISPLAY_NAME} needs Pi ${bare(pi.required)} or newer.`;
 	}
 	if (action.id === "install-pi" && pi?.status === "needs-install" && stable(pi.version)) {
-		return `Install the latest stable Pi globally with pnpm for Gentle Shell. The Pi ${bare(pi.version)} already on this computer ` +
-			"was not installed with pnpm or npm, so it is left unchanged. Gentle Shell uses the installer's Pi; the `pi` command in a terminal may still run the older one.";
-	}
-	// The pinned Go: its version, the Go found (older, unchecked or missing), and what stays unchanged.
-	const go = plan.tools?.go;
-	if (action.id === "acquire-go" && go?.status === "needs-acquire" && stable(action.version, go.required)) {
-		const found = stable(go.found) ? `Go ${bare(go.found)} on this computer is older than ${bare(go.required)}`
-			: go.unchecked === true ? "The Go on this computer did not report a version this installer can check" : "Go is missing on this computer";
-		return `${found}, so the installer downloads Go ${bare(action.version)} from go.dev, verifies its pinned SHA-256 checksum and uses it only to build Gentle AI. ` +
-			"It is kept in the installer's own folder (~/.pi/gentle-ai/tools/go); your Go, PATH and shell profile are not changed.";
+		return `Install the latest stable Pi globally with pnpm for ${BRAND_DISPLAY_NAME}. The Pi ${bare(pi.version)} already on this computer ` +
+			"was not installed with pnpm or npm, so it is left unchanged. Tomidev Shell uses the installer's Pi; the `pi` command in a terminal may still run the older one.";
 	}
 	return actionDescriptions[action.id] ?? "Prepare the installation.";
 }
@@ -412,12 +393,12 @@ const gitInstall = Object.freeze({
 function gitNoticeView(inventory) {
 	if (inventory?.git?.available !== false) return null;
 	const install = gitInstall[inventory.platform] ?? gitInstall.linux;
-	return { description: "Git was not found on this computer. Gentle Shell installs and starts without it, but code review, worktrees and other " +
+	return { description: `Git was not found on this computer. ${BRAND_DISPLAY_NAME} installs and starts without it, but code review, worktrees and other ` +
 		`repository features need it. Install it with ${install}, then open a new terminal. This is not a blocker.` };
 }
 
 // S6 notice: reused tools whose folders another account can change (never a blocker).
-const folderTools = Object.freeze({ node: "Node.js", npm: "npm", go: "Go", pi: "Pi", shell: "Gentle Shell" });
+const folderTools = Object.freeze({ node: "Node.js", npm: "npm", pi: "Pi", shell: `${BRAND_DISPLAY_NAME}` });
 function sharedFoldersView(plan) {
 	const reused = Array.isArray(plan.tools?.folders?.reused) ? plan.tools.folders.reused.filter((entry) => Object.hasOwn(folderTools, entry?.tool)) : [];
 	if (reused.length === 0) return null;
@@ -430,7 +411,7 @@ function sharedFoldersView(plan) {
 	return {
 		tools: reused.map((entry) => entry.tool),
 		description: `These tools are reused as they are, ${where}. ${found}. ` +
-			"The installer never creates or runs its own programs there, but whoever can change those folders can change what these tools run for you, including for Gentle Shell. " +
+			`The installer never creates or runs its own programs there, but whoever can change those folders can change what these tools run for you, including for ${BRAND_DISPLAY_NAME}. ` +
 			`This is an accepted risk and not a blocker. To remove it, ${remedies}, then select Check again.`,
 	};
 }
@@ -438,19 +419,18 @@ function sharedFoldersView(plan) {
 /** A bundled action's text, from the plan's own versions and paths (plain text). */
 function bundledDescription(action, bundled) {
 	const [root, bin, file] = [plainText(bundled.root), plainText(bundled.bin), plainText(bundled.path?.file)];
-	const go = STABLE.test(bundled.go ?? "") ? ` and Go ${bundled.go}` : "";
 	switch (action.id) {
-	case "bundled-prefix": return `Create Gentle Shell's private folder, ${root}, for its own runtimes, its installed versions and the \`gentle-shell\` launcher.`;
-	case "bundled-runtime": return `Download Gentle Shell's pinned Node.js ${plainText(bundled.node)} with its npm and pnpm ${plainText(bundled.pnpm)}${go}, verify their pinned checksums and keep them in that folder. ` +
-		"Your own Node.js, npm, pnpm and Go are not used or changed.";
-	case "bundled-version": return `Install Gentle Shell ${plainText(bundled.shell)} with Pi ${plainText(bundled.pi)} from the release's lockfile with \`pnpm install --frozen-lockfile\`, ` +
+	case "bundled-prefix": return `Create ${BRAND_DISPLAY_NAME}'s private folder, ${root}, for its own runtimes, its installed versions and the \`tomidev\` launcher.`;
+	case "bundled-runtime": return `Download ${BRAND_DISPLAY_NAME}'s pinned Node.js ${plainText(bundled.node)} with its npm and pnpm ${plainText(bundled.pnpm)}, verify their pinned checksums and keep them in that folder. ` +
+		"Your own Node.js, npm and pnpm are not used or changed.";
+	case "bundled-version": return `Install ${BRAND_DISPLAY_NAME} ${plainText(bundled.shell)} with Pi ${plainText(bundled.pi)} from the release's lockfile with \`pnpm install --frozen-lockfile\`, ` +
 		"so every package is the exact version the release verified. Your npm registry, authentication and proxy settings are respected. Any Pi already on this computer is not used or changed.";
-	case "bundled-path": return bundled.path?.kind === "registry" ? `Add ${bin} to your user PATH so new terminals find \`gentle-shell\`.`
-		: bundled.path?.kind === "symlink" ? `Link ${file} to the \`gentle-shell\` launcher; that folder is already on your PATH.`
-		: `Add one line to ${file} so new terminals find \`gentle-shell\`.`;
-	case "bundled-setup": return "Run `gentle-shell setup` with the bundled launcher to set up Gentle Shell's own Pi home (~/.gentle-shell/agent).";
-	case "remove-global-shell": return `Once the new launcher reports Gentle Shell ${plainText(bundled.shell)} with Pi ${plainText(bundled.pi)}, remove the old global gentle-pi with ` +
-		`\`${plainText(bundled.migrate?.command)}\`. Your Pi and ~/.gentle-shell/agent are not changed.`;
+	case "bundled-path": return bundled.path?.kind === "registry" ? `Add ${bin} to your user PATH so new terminals find \`tomidev\`.`
+		: bundled.path?.kind === "symlink" ? `Link ${file} to the \`tomidev\` launcher; that folder is already on your PATH.`
+		: `Add one line to ${file} so new terminals find \`tomidev\`.`;
+	case "bundled-setup": return "Run `tomidev setup` with the bundled launcher to set up Tomidev Shell's own Pi home (~/.tomidev/agent).";
+	case "remove-global-shell": return `Once the new launcher reports ${BRAND_DISPLAY_NAME} ${plainText(bundled.shell)} with Pi ${plainText(bundled.pi)}, remove the old global gentle-pi with ` +
+		`\`${plainText(bundled.migrate?.command)}\`. Your Pi and ~/.tomidev/agent are not changed.`;
 	default: return actionDescriptions[action.id] ?? "Prepare the installation.";
 	}
 }
@@ -460,12 +440,11 @@ function bundledView(planId, plan, inventory) {
 	const [root, bin, file, line] = [plainText(bundled.root), plainText(bundled.bin), plainText(bundled.path?.file), plainText(bundled.path?.line)];
 	const kind = bundled.path?.kind;
 	const profile = {
-		symlink: `The installer links ${file} to the \`gentle-shell\` launcher. That folder is already on your PATH, so no shell profile changes.`,
+		symlink: `The installer links ${file} to the \`tomidev\` launcher. That folder is already on your PATH, so no shell profile changes.`,
 		profile: `The installer adds one line to ${file} so new terminals find ${bin}. Open a new terminal afterwards.`,
-		registry: `The installer adds ${bin} to your user PATH so new terminals find \`gentle-shell\`. Open a new terminal afterwards.`,
+		registry: `The installer adds ${bin} to your user PATH so new terminals find \`tomidev\`. Open a new terminal afterwards.`,
 		manual: `The installer may not edit ${file} (a link, or a file it cannot write), so it changes nothing there: add this line to ${file} yourself, then open a new terminal: ${line}`,
 	}[kind] ?? `Your PATH already finds ${bin}; no shell profile or PATH change is planned.`;
-	const go = STABLE.test(bundled.go ?? "");
 	return {
 		planId,
 		ready: false,
@@ -476,10 +455,10 @@ function bundledView(planId, plan, inventory) {
 		sharedFolders: null,
 		gitNotice: gitNoticeView(inventory),
 		persistence: {
-			tools: ["node", "npm", "pnpm", ...(go ? ["go"] : [])],
+			tools: ["node", "npm", "pnpm"],
 			pnpmHome: root,
-			description: `Gentle Shell installs as one self-contained product: its own pinned Node.js, npm, pnpm${go ? ", Go" : ""} and Pi, kept in ${root}. ` +
-				"Your own Node.js, npm, pnpm, Go and Pi are not used or changed. Only your npm registry, authentication and proxy settings (from ~/.npmrc) are copied into that folder and respected.",
+			description: `${BRAND_DISPLAY_NAME} installs as one self-contained product: its own pinned Node.js, npm, pnpm and Pi, kept in ${root}. ` +
+				"Your own Node.js, npm, pnpm and Pi are not used or changed. Only your npm registry, authentication and proxy settings (from ~/.npmrc) are copied into that folder and respected.",
 		},
 	};
 }
@@ -560,7 +539,7 @@ function outcomeView(result) {
 		view.guidance = guidance.outcomes[result.outcome];
 		// The Pi Gentle Shell runs, when pnpm put one other than the installer's next to it.
 		if (typeof result.piVersion === "string" && STABLE.test(result.piVersion)) {
-			view.guidance += ` Gentle Shell runs Pi ${result.piVersion.replace(/^v/, "")}, which pnpm installed next to it.`;
+			view.guidance += ` ${BRAND_DISPLAY_NAME} runs Pi ${result.piVersion.replace(/^v/, "")}, which pnpm installed next to it.`;
 		}
 		if (result.action === "open-new-terminal") view.action = "open-new-terminal";
 		// The bundled install's line for a profile it may not edit: plain text only.

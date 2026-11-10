@@ -7,7 +7,7 @@ import { VoiceSessionError, type VoiceSessionState, type VoiceTranscript } from 
 import { VOICE_COMMAND_NAME, type VoiceCommandDeps, type VoiceDictation } from "../lib/voice-command.ts";
 import type { PushToTalkTimers } from "../lib/voice-push-to-talk.ts";
 
-// /gentle:voice through its registered command, with fake UI, acquisition and
+// /td:voice through its registered command, with fake UI, acquisition and
 // session adapters: nothing here downloads, loads native code or opens a
 // microphone.
 
@@ -236,11 +236,11 @@ async function run(pi: ReturnType<typeof fakePi>, ui: ReturnType<typeof fakeCont
 
 // --- registration and refusals ------------------------------------------------
 
-test("registers only /gentle:voice and does no voice work at registration or session start", async () => {
+test("registers only /td:voice and does no voice work at registration or session start", async () => {
 	const h = harness();
 	const pi = register(h);
-	assert.equal(VOICE_COMMAND_NAME, "gentle:voice");
-	assert.deepEqual([...pi.commands.keys()], ["gentle:voice"]);
+	assert.equal(VOICE_COMMAND_NAME, "td:voice");
+	assert.deepEqual([...pi.commands.keys()], ["td:voice"]);
 	assert.match(pi.commands.get(VOICE_COMMAND_NAME)!.description, /dictation/i);
 	assert.equal(pi.counts.tools, 0, "no model-callable tool or shortcut");
 	await pi.fire("session_start");
@@ -248,7 +248,7 @@ test("registers only /gentle:voice and does no voice work at registration or ses
 });
 
 test("a delegated child session refuses before any probe, status read or UI", async () => {
-	const h = harness({ env: { GENTLE_PI_AGENTS_CHILD: "1" }, installed: true });
+	const h = harness({ env: { TOMIDEV_AGENTS_CHILD: "1" }, installed: true });
 	const pi = register(h);
 	const ui = fakeContext({ select: pick(/dictat/i) });
 	await run(pi, ui);
@@ -441,7 +441,7 @@ test("a session failure shows its fixed message with a user action and pastes no
 	assert.equal(ui.editor(), "draft: ");
 });
 
-test("a second /gentle:voice while one is active is refused with a notice", async () => {
+test("a second /td:voice while one is active is refused with a notice", async () => {
 	const h = harness({ installed: true });
 	const pi = register(h);
 	const ui = fakeContext({ select: pick(/start dictation/i) });
@@ -588,7 +588,7 @@ test("startup arms push-to-talk only when enabled, reading the toggle and nothin
 });
 
 test("child sessions and non-TUI modes never arm or read the toggle", async () => {
-	const child = harness({ installed: true, pushToTalk: true, env: { GENTLE_PI_AGENTS_CHILD: "1" } });
+	const child = harness({ installed: true, pushToTalk: true, env: { TOMIDEV_AGENTS_CHILD: "1" } });
 	const childPi = register(child);
 	const childUi = fakeContext();
 	await startSession(childPi, childUi);
@@ -672,7 +672,7 @@ test("not installed: the hold types its spaces, notifies once and disarms", asyn
 	holdSpace(h, ui, 3, false);
 	assert.equal(ui.editor(), `draft: ${SPACE.repeat(8)}`, "all eight spaces typed normally");
 	assert.equal(h.sessions.length, 0);
-	assert.match(ui.notices[0]!.message, /\/gentle:voice/);
+	assert.match(ui.notices[0]!.message, /\/td:voice/);
 	assert.equal(ui.terminal.unsubscribes, 1, "disarmed");
 	h.clock.advance(RELEASE);
 	holdSpace(h, ui, 4);
@@ -680,7 +680,7 @@ test("not installed: the hold types its spaces, notifies once and disarms", asyn
 	assert.equal(h.settings.writes.length, 0, "the saved choice is kept");
 });
 
-test("a hold while /gentle:voice is dictating does not start a second session", async () => {
+test("a hold while /td:voice is dictating does not start a second session", async () => {
 	const h = harness({ installed: true, pushToTalk: true });
 	const pi = register(h);
 	const ui = fakeContext({ select: pick(/start dictation/i) });
@@ -712,7 +712,7 @@ test("session shutdown cancels a held dictation, disarms and drops a late transc
 	assert.ok(!session.calls.includes("stop"));
 });
 
-test("the /gentle:voice menu toggles push-to-talk, persists it and arms or disarms immediately", async () => {
+test("the /td:voice menu toggles push-to-talk, persists it and arms or disarms immediately", async () => {
 	const h = harness({ installed: true, pushToTalk: true });
 	const pi = register(h);
 	const ui = fakeContext({ select: pick(/disable push-to-talk/i) });

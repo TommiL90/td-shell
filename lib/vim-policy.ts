@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -5,7 +6,7 @@ import { gentlePiConfigHome } from "./agent-home.ts";
 
 export const VIM_POLICY = { ON: "on", OFF: "off" } as const;
 export type VimPolicy = (typeof VIM_POLICY)[keyof typeof VIM_POLICY];
-export const VIM_SCHEMA = "gentle-pi.vim/v1";
+export const VIM_SCHEMA = brandSchema("vim", 1);
 interface VimOptions { gentlePiConfigHome?: string }
 export interface VimResolution {
 	policy: VimPolicy;
@@ -18,7 +19,7 @@ export function parseVimPolicyFile(raw: string): VimPolicy | undefined {
 	try {
 		const value: unknown = JSON.parse(raw);
 		if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-		if (Object.keys(value).length !== 2 || !("schema" in value) || value.schema !== VIM_SCHEMA || !("policy" in value)) return undefined;
+		if (Object.keys(value).length !== 2 || !("schema" in value) || !isBrandSchema(value.schema, "vim", 1) || !("policy" in value)) return undefined;
 		return value.policy === "on" || value.policy === "off" ? value.policy : undefined;
 	} catch { return undefined; }
 }

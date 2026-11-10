@@ -1,3 +1,4 @@
+import { brandSchema, isBrandSchema } from "./brand.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gentlePiConfigHome } from "./agent-home.ts";
@@ -39,7 +40,7 @@ export interface LoadBackgroundSubagentsOptions {
 	env?: Record<string, string | undefined>;
 }
 
-export const BACKGROUND_SUBAGENTS_SCHEMA = "gentle-pi.background-subagents/v1";
+export const BACKGROUND_SUBAGENTS_SCHEMA = brandSchema("background-subagents", 1);
 export const BACKGROUND_SUBAGENTS_FILE = "background-subagents.json";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -47,7 +48,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Strict decode of {"schema":"gentle-pi.background-subagents/v1","policy":"on"|"off"}.
+ * Strict decode of {"schema":"tomidev.background-subagents/v1","policy":"on"|"off"}.
  * Any malformed shape (bad JSON, wrong schema, unknown keys, invalid policy)
  * returns undefined so the caller fails closed to "off".
  */
@@ -61,7 +62,7 @@ export function parseBackgroundSubagentsPolicyFile(
 		return undefined;
 	}
 	if (!isRecord(parsed)) return undefined;
-	if (parsed.schema !== BACKGROUND_SUBAGENTS_SCHEMA) return undefined;
+	if (!isBrandSchema(parsed.schema, "background-subagents", 1)) return undefined;
 	if (parsed.policy !== "on" && parsed.policy !== "off") return undefined;
 	if (Object.keys(parsed).length !== 2) return undefined;
 	return parsed.policy;
@@ -73,8 +74,8 @@ export function parseBackgroundSubagentsPolicyFile(
  * Resolution order (first hit wins, mirroring loadRuntimeGuardrailsConfig):
  *   1. Project file `${cwd}/.pi/gentle-ai/background-subagents.json`
  *   2. Global file `${configHome}/background-subagents.json`
- *      (configHome honors GENTLE_PI_CONFIG_HOME, default ~/.pi/gentle-ai)
- *   3. Env var GENTLE_PI_BACKGROUND_SUBAGENTS ("on" | "off")
+ *      (configHome honors TOMIDEV_CONFIG_HOME, default ~/.pi/gentle-ai)
+ *   3. Env var TOMIDEV_BACKGROUND_SUBAGENTS ("on" | "off")
  *   4. Default "off"
  *
  * A present-but-malformed file fails closed to "off" instead of falling
@@ -91,7 +92,7 @@ export function resolveBackgroundSubagentsPolicy(
 	options: LoadBackgroundSubagentsOptions = {},
 ): BackgroundSubagentsResolution {
 	const env = options.env ?? process.env;
-	const envValue = env.GENTLE_PI_BACKGROUND_SUBAGENTS;
+	const envValue = env.TOMIDEV_BACKGROUND_SUBAGENTS;
 	let projectFile = "";
 	let globalFile = "";
 	try {

@@ -134,7 +134,7 @@ const options = [
 	{ label: "Preserve requested hash", description: "Keep the hash from the original request.", value: "preserve_requested_hash" },
 ];
 
-const INTERACTIVE_HOST_ENV = "GENTLE_SHELL_INTERACTIVE_HOST";
+const INTERACTIVE_HOST_ENV = "TOMIDEV_INTERACTIVE_HOST";
 
 function withInteractiveHostEnv(t: { after(fn: () => void): void }): void {
 	const previous = process.env[INTERACTIVE_HOST_ENV];
@@ -537,10 +537,10 @@ test("ask_user_choice stays unavailable on a plain rpc host without the interact
 	);
 });
 
-/** Expected `gentle-pi:ask-user-choice:blocked` sequence around one RPC-dialog turn. */
+/** Expected `td:ask-user-choice:blocked` sequence around one RPC-dialog turn. */
 const RPC_BLOCKED_SEQUENCE = [
-	{ channel: "gentle-pi:ask-user-choice:blocked", data: { active: true } },
-	{ channel: "gentle-pi:ask-user-choice:blocked", data: { active: false } },
+	{ channel: "td:ask-user-choice:blocked", data: { active: true } },
+	{ channel: "td:ask-user-choice:blocked", data: { active: false } },
 ];
 
 test("ask_user_choice resolves a selection through RPC dialogs on an interactive host", async (t) => {
@@ -625,8 +625,8 @@ test("ask_user_choice emits a private balanced lifecycle around selection and ca
 	assert.equal(selection.value, "preserve_requested_hash");
 	assert.deepEqual(sequence, ["active", "custom", "inactive"]);
 	assert.deepEqual(selectedRegistration.emittedEvents(), [
-		{ channel: "gentle-pi:ask-user-choice:blocked", data: { active: true } },
-		{ channel: "gentle-pi:ask-user-choice:blocked", data: { active: false } },
+		{ channel: "td:ask-user-choice:blocked", data: { active: true } },
+		{ channel: "td:ask-user-choice:blocked", data: { active: false } },
 	]);
 	assert.doesNotMatch(
 		JSON.stringify(selectedRegistration.emittedEvents()),
@@ -643,8 +643,8 @@ test("ask_user_choice emits a private balanced lifecycle around selection and ca
 	);
 	assert.equal(cancelled.details.cancelled, true);
 	assert.deepEqual(cancelledRegistration.emittedEvents(), [
-		{ channel: "gentle-pi:ask-user-choice:blocked", data: { active: true } },
-		{ channel: "gentle-pi:ask-user-choice:blocked", data: { active: false } },
+		{ channel: "td:ask-user-choice:blocked", data: { active: true } },
+		{ channel: "td:ask-user-choice:blocked", data: { active: false } },
 	]);
 });
 
@@ -662,8 +662,8 @@ test("ask_user_choice settles its lifecycle after a custom UI error and emits no
 		(error) => error === customError,
 	);
 	assert.deepEqual(failedRegistration.emittedEvents(), [
-		{ channel: "gentle-pi:ask-user-choice:blocked", data: { active: true } },
-		{ channel: "gentle-pi:ask-user-choice:blocked", data: { active: false } },
+		{ channel: "td:ask-user-choice:blocked", data: { active: true } },
+		{ channel: "td:ask-user-choice:blocked", data: { active: false } },
 	]);
 
 	const nonTuiRegistration = registerChoiceTool();

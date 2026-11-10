@@ -42,7 +42,7 @@ test("hooked consumer approves only the canonical local tarball file spec", () =
 				[`file:${realpathSync.native(tarball).split(sep).join("/")}`]: true,
 			},
 		});
-		assert.equal(manifest.allowScripts["gentle-pi"], undefined);
+		assert.equal(manifest.allowScripts["tomidev"], undefined);
 		assert.equal(manifest.allowScripts["*"], undefined);
 		for (const spec of Object.keys(manifest.allowScripts)) {
 			const filePath = spec.slice(5);

@@ -1,24 +1,24 @@
-# Removing Gentle Shell
+# Removing Tomidev Shell
 
-`gentle-shell self-uninstall` removes what Gentle Shell created and then the
-`gentle-pi` package. It always prints the full plan first, and nothing is removed
+`tomidev self-uninstall` removes what Tomidev Shell created and then the
+`tomidev` package. It always prints the full plan first, and nothing is removed
 until you confirm.
 
 ```bash
-gentle-shell self-uninstall --dry-run          # only print the plan
-gentle-shell self-uninstall                    # print the plan, then ask
-gentle-shell self-uninstall --yes              # remove without asking; keeps shared configuration
-gentle-shell self-uninstall --yes --include-shared
+tomidev self-uninstall --dry-run          # only print the plan
+tomidev self-uninstall                    # print the plan, then ask
+tomidev self-uninstall --yes              # remove without asking; keeps shared configuration
+tomidev self-uninstall --yes --include-shared
 ```
 
-`gentle-shell uninstall <source>` is a different command: it is Pi's own alias
+`tomidev uninstall <source>` is a different command: it is Pi's own alias
 for `remove`, forwarded to the resolved home, and stays unchanged.
 
 ## What it removes
 
 In this order:
 
-1. **Gentle Shell's own data**, each only when it is a real directory or file
+1. **Tomidev Shell's own data**, each only when it is a real directory or file
    (never a symbolic link):
    - `<config home>/main/`: main-channel builds, only when it holds nothing but
      what the main channel writes (`gentle-ai/<commit>/gentle-ai[.exe]`,
@@ -30,25 +30,25 @@ In this order:
      is kept.
    - `<config home>/tools/go`: the Go the installer downloaded for builds, only
      when every entry is a pinned-Go version folder carrying the installer's
-     `.gentle-shell-go` marker; otherwise it is listed as kept.
-   - The isolated home: `GENTLE_SHELL_HOME`, or `~/.gentle-shell/agent`. It holds
-     the sign-ins, chats and settings of Gentle Shell sessions. A
-     `GENTLE_SHELL_HOME` directory is removed only when Gentle Shell created it
-     (its `.gentle-shell-home` marker, or its setup record in
-     `~/.gentle-shell/config.json`); otherwise it is listed as kept.
-   - `~/.gentle-shell/gentle-ai`: the isolated home's own settings (profiles,
+     `.tomidev-go` marker; otherwise it is listed as kept.
+   - The isolated home: `TOMIDEV_HOME`, or `~/.tomidev/agent`. It holds
+     the sign-ins, chats and settings of Tomidev Shell sessions. A
+     `TOMIDEV_HOME` directory is removed only when Tomidev Shell created it
+     (its `.tomidev-home` marker, or its setup record in
+     `~/.tomidev/config.json`); otherwise it is listed as kept.
+   - `~/.tomidev/gentle-ai`: the isolated home's own settings (profiles,
      banner and the other preferences). The `gentle-ai` folder next to a
-     `GENTLE_SHELL_HOME` is only listed as kept, since it may not be Gentle
-     Shell's. When `GENTLE_PI_CONFIG_HOME` names it, the config home rules
+     `TOMIDEV_HOME` is only listed as kept, since it may not be Gentle
+     Shell's. When `TOMIDEV_CONFIG_HOME` names it, the config home rules
      below apply instead.
-   - `~/.gentle-shell/config.json`: the launcher settings.
+   - `~/.tomidev/config.json`: the launcher settings.
 2. **Shared Gentle AI configuration**, only when you accept it (see below).
-3. **The `gentle-pi` package**, with the package manager that owns it:
-   `pnpm remove -g gentle-pi` under `PNPM_HOME`, otherwise
-   `npm uninstall -g gentle-pi`.
-4. **`~/.gentle-shell`**, only when it is empty.
+3. **The `tomidev` package**, with the package manager that owns it:
+   `pnpm remove -g tomidev` under `PNPM_HOME`, otherwise
+   `npm uninstall -g tomidev`.
+4. **`~/.tomidev`**, only when it is empty.
 
-The config home is `GENTLE_PI_CONFIG_HOME`, or `~/.pi/gentle-ai`: the one Pi
+The config home is `TOMIDEV_CONFIG_HOME`, or `~/.pi/gentle-ai`: the one Pi
 with Gentle AI, `--link` and custom homes use, and where the main channel keeps
 its builds. The isolated home's own folder is removed with the data above.
 
@@ -69,9 +69,9 @@ Only those exact files are removed; anything else in the config home stays.
 ## What it never touches
 
 - Your Pi home (`~/.pi/agent`, `PI_CODING_AGENT_DIR` or
-  `GENTLE_SHELL_USER_PI_HOME`) and its `settings.json`.
+  `TOMIDEV_USER_PI_HOME`) and its `settings.json`.
 - Custom homes used with `--home <path>`, recorded in
-  `~/.gentle-shell/config.json`; the plan lists them as not touched.
+  `~/.tomidev/config.json`; the plan lists them as not touched.
 - Gentle AI's own state in `~/.gentle-ai`, and each project's `.pi/gentle-ai`
   folder.
 - Tools the web installer may have added. The plan lists them with how to remove
@@ -83,14 +83,14 @@ Only those exact files are removed; anything else in the config home stays.
 ## Refusals and exit codes
 
 It refuses, before removing anything, when one of the places it removes from —
-the isolated home, the config home or `~/.gentle-shell` — checked at its real
+the isolated home, the config home or `~/.tomidev` — checked at its real
 path (after following symbolic links, including linked parent folders):
 
 - is or contains your home directory;
 - is, contains or lies inside your Pi home (`~/.pi/agent`, `PI_CODING_AGENT_DIR`
-  or `GENTLE_SHELL_USER_PI_HOME`) or Gentle AI's state in `~/.gentle-ai`. Inside
-  a Gentle Shell session, `PI_CODING_AGENT_DIR` is the isolated home itself and
-  your Pi home travels in `GENTLE_SHELL_USER_PI_HOME`: when that variable names
+  or `TOMIDEV_USER_PI_HOME`) or Gentle AI's state in `~/.gentle-ai`. Inside
+  a Tomidev Shell session, `PI_CODING_AGENT_DIR` is the isolated home itself and
+  your Pi home travels in `TOMIDEV_USER_PI_HOME`: when that variable names
   an existing directory other than the isolated home, a `PI_CODING_AGENT_DIR`
   equal to the isolated home is not treated as your Pi home, so the command
   also works from inside a session;
@@ -101,7 +101,7 @@ path (after following symbolic links, including linked parent folders):
   other;
 - would remove a path that is, holds or lies inside a custom `--home` home or
   another path the plan lists as not touched;
-- `GENTLE_SHELL_HOME` or `GENTLE_PI_CONFIG_HOME` is not an absolute path;
+- `TOMIDEV_HOME` or `TOMIDEV_CONFIG_HOME` is not an absolute path;
 - neither pnpm nor npm owns the installation (an `npm link` of a source checkout,
   for example), or the owning package manager is not on `PATH`. Remove that
   installation the way you made it.
@@ -120,24 +120,24 @@ At the questions:
   it cancels (exit 1, nothing removed); at the shared-configuration question it
   keeps the shared files and the uninstall goes on.
 
-A refused plan lists no Gentle Shell data to remove, so no path ever appears both
+A refused plan lists no Tomidev Shell data to remove, so no path ever appears both
 as removed and as not touched.
 
-When a removal fails, it stops there: the `gentle-pi` package and everything
-after it are kept, so `gentle-shell self-uninstall` is still there to run again.
+When a removal fails, it stops there: the `tomidev` package and everything
+after it are kept, so `tomidev self-uninstall` is still there to run again.
 When only the package removal fails, it prints the command to run yourself.
 
 It runs before any Pi runtime check, so it also works when Pi is missing.
 
 ## Windows
 
-pnpm and npm run the same verified way `gentle-shell upgrade` runs them: through
+pnpm and npm run the same verified way `tomidev upgrade` runs them: through
 node.exe and the package manager's own JavaScript entry (or its native `.exe`),
 never a `.cmd` or `.bat` shim, which cannot run without a shell. A package manager
 that resolves only to such a shim counts as missing, and the command refuses
 before removing anything.
 
-Removing the running `gentle-pi` package with pnpm or npm on Windows has not been
-verified yet. If the package manager fails, Gentle Shell's data is already gone
-and the command prints the exact `pnpm remove -g gentle-pi` or
-`npm uninstall -g gentle-pi` to run from a new terminal.
+Removing the running `tomidev` package with pnpm or npm on Windows has not been
+verified yet. If the package manager fails, Tomidev Shell's data is already gone
+and the command prints the exact `pnpm remove -g tomidev` or
+`npm uninstall -g tomidev` to run from a new terminal.

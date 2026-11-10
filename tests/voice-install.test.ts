@@ -109,7 +109,7 @@ async function rejects(promise: Promise<unknown>, code: string): Promise<VoiceIn
 }
 
 test("the voice home lives under the Gentle AI config home and reports components as missing", async (t) => {
-	const env = { GENTLE_PI_CONFIG_HOME: join(repoRoot, "tmp", "voice-config") };
+	const env = { TOMIDEV_CONFIG_HOME: join(repoRoot, "tmp", "voice-config") };
 	assert.equal(resolveVoiceHome(env), join(gentlePiConfigHome(env), "voice"));
 	const voiceHome = scratch(t);
 	const status = await readVoiceComponentStatus({ voiceHome, kind: "model", manifest: modelManifest() });

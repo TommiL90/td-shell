@@ -7,7 +7,7 @@ import test from "node:test";
 import { applyModelConfig, applyModelConfigAsync, applySavedModelConfig } from "../extensions/gentle-ai.ts";
 
 // gentle-ai#4946: the activation sweep re-applies saved routing without user
-// consent. Persisted clear entries (an "inherit" saved from /gentle:profiles is
+// consent. Persisted clear entries (an "inherit" saved from /td:profiles is
 // `{}`) must not delete `model_profiles` entries the user authored in the
 // agent-home `subagents.json`. Clearing stays owned by the consented flows
 // that issue it: the panel save and a confirmed profile apply.
@@ -18,21 +18,21 @@ function preservedProfilesFixture(t: test.TestContext) {
 	for (const dir of [configHome, join(agentHome, "agents")]) {
 		mkdirSync(dir, { recursive: true });
 	}
-	const previousConfigHome = process.env.GENTLE_PI_CONFIG_HOME;
-	const previousAgentHome = process.env.GENTLE_PI_AGENT_HOME;
+	const previousConfigHome = process.env.TOMIDEV_CONFIG_HOME;
+	const previousAgentHome = process.env.TOMIDEV_AGENT_HOME;
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	const isolatedHome = join(root, "home");
 	mkdirSync(isolatedHome, { recursive: true });
 	process.env.HOME = isolatedHome;
 	process.env.USERPROFILE = isolatedHome;
-	process.env.GENTLE_PI_CONFIG_HOME = configHome;
-	process.env.GENTLE_PI_AGENT_HOME = agentHome;
+	process.env.TOMIDEV_CONFIG_HOME = configHome;
+	process.env.TOMIDEV_AGENT_HOME = agentHome;
 	t.after(() => {
-		if (previousConfigHome === undefined) delete process.env.GENTLE_PI_CONFIG_HOME;
-		else process.env.GENTLE_PI_CONFIG_HOME = previousConfigHome;
-		if (previousAgentHome === undefined) delete process.env.GENTLE_PI_AGENT_HOME;
-		else process.env.GENTLE_PI_AGENT_HOME = previousAgentHome;
+		if (previousConfigHome === undefined) delete process.env.TOMIDEV_CONFIG_HOME;
+		else process.env.TOMIDEV_CONFIG_HOME = previousConfigHome;
+		if (previousAgentHome === undefined) delete process.env.TOMIDEV_AGENT_HOME;
+		else process.env.TOMIDEV_AGENT_HOME = previousAgentHome;
 		if (previousHome === undefined) delete process.env.HOME;
 		else process.env.HOME = previousHome;
 		if (previousUserProfile === undefined) delete process.env.USERPROFILE;
@@ -66,7 +66,7 @@ function preservedProfilesFixture(t: test.TestContext) {
 
 test("startup sweep keeps user model_profiles entries for persisted clears", async (t) => {
 	const fixture = preservedProfilesFixture(t);
-	// Saved routing as /gentle:profiles leaves it after pressing "inherit" on
+	// Saved routing as /td:profiles leaves it after pressing "inherit" on
 	// worker: a persisted clear entry. The sweep must not delete the entries.
 	writeFileSync(fixture.globalModelsPath, JSON.stringify({ worker: {} }));
 	const result = await applySavedModelConfig(fixture.context);

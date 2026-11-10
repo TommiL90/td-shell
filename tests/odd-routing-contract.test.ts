@@ -12,7 +12,7 @@ const delegation = readDelegationDetail();
 const memory = read("assets/orchestrator-memory.md");
 // The harness as rendered by extensions/gentle-ai.ts, including the ODD steps
 // it takes from the mirrored provider bundle's routing/pi.md.
-const wrapper = __testing.buildGentlePrompt("gentleman");
+const wrapper = __testing.buildGentlePrompt();
 
 function containsAll(text: string, clauses: readonly string[]): void {
 	for (const clause of clauses) assert.ok(text.includes(clause), `missing contract: ${clause}`);
@@ -28,8 +28,8 @@ test("organic entry stays read-only without authorization and loads detail befor
 	// above) is mandatory on every request" pointer restated the harness; the
 	// mandatory workflow and its detail pointers are stated once in the harness.
 	containsAll(wrapper, [
-		"Default workflow: Organic Driven Development (MANDATORY)",
-		"Every request enters it",
+		"Default workflow: Organic Driven Development (fallback)",
+		"Use these useful defaults only for aspects the project leaves undefined",
 		"Detail for steps 3–7: `orchestrator-delegation.md` and `orchestrator-memory.md`.",
 	]);
 	containsAll(delegation, [
@@ -64,7 +64,7 @@ test("task sizing is explicitly advisory and forwarded without cosmetic savings"
 	containsAll(delegation, [
 		"about 400 authored changed lines",
 		"additions plus deletions",
-		"not a task acceptance criterion, hard cap, counter-trigger, automatic stop, forced split, or RDD trigger",
+		"not a task acceptance criterion, hard cap, counter-trigger, automatic stop, or forced split",
 		"Forward this same advisory-only instruction",
 		"Never delete spaces, blank lines, or comments",
 		"never omit tests, minify, add gratuitous abstractions, or split artificially",
@@ -74,8 +74,8 @@ test("task sizing is explicitly advisory and forwarded without cosmetic savings"
 
 test("organic progress preserves both complete feature copies and reconciles actual evidence", () => {
 	containsAll(memory, [
-		"odd/tasks/<feature-name>.md",
-		"odd/<feature-name>/tasks",
+		".agents/designs/features/<feature-name>/",
+		"features/<feature-name>/state",
 		"stable task IDs",
 		"full current document",
 		"repository-relative file locator",
@@ -98,143 +98,49 @@ test("organic progress preserves both complete feature copies and reconciles act
 	assert.doesNotMatch(memory, /`todo` tool is an optional session\/UI projection/);
 });
 
-test("assumption challenge and task checks do not activate or duplicate native review", () => {
+test("assumption challenge and task checks do not activate or duplicate code review", () => {
 	containsAll(delegation, [
 		"at most one scoped independent read-only assumption challenge",
 		"high-consequence unproven premise",
 		"Deterministic failures need fixes",
-		"native RDD refuter",
-		"functional checks per task",
-		"native review runs at that work-unit commit or PR slice boundary",
-		"native candidate risk assessment",
-		"gentle_review` with `{\"operation\":\"assess\"}",
-		"Passive/low",
-		"no reviewer or consent ceremony",
-		"only on grant",
-		"decline continues under ordinary policy",
-		"never infer low risk from a failed assessment",
-		"When RDD is disabled, do not start or prompt for RDD",
+		"Run applicable functional checks per task; a TODO checkbox never triggers a review or verifier run.",
+		"Code review (`requesting-code-review`) runs only on explicit request or at the final checkpoint",
+		"Checklists grant no approval and never skip an existing delivery gate.",
 	]);
 });
 
-// S14: commit per reviewable slice. The exact canon sentence for ODD step 6,
-// identical in gentle-ai routing.go and this harness.
-const S14_COMMIT_SENTENCE =
-	"Commit work units in reviewable slices of about 400 authored changed lines on the feature branch (branch first when on the default branch), with tests and docs alongside the behavior and a Conventional Commit message; a unit whose Risk line names a high-risk item gets its own commit so native review can take it alone, and the last slice closes the feature. Record the commit that holds each task in the feature document as evidence.";
-const PER_TASK_COMMIT_SENTENCE =
-	"Every tracked task closes with at least one work-unit commit on the feature branch, branch first when on the default branch, with tests and docs alongside the behavior, using a Conventional Commit message; record the commit identity in the feature document as evidence.";
+// S2/S11: never commit without an explicit ask in the turn.
+const S2_COMMIT_SENTENCE =
+	"Never stage, commit, or push unless explicitly requested by the user in the current turn. When commit is explicitly requested, run `.agents/scripts/private_harness_guard.py --root .` before committing if the script is present.";
 
-test("S14: the rendered parent prompt commits per reviewable slice, not per task", () => {
+test("S2/S11: the rendered parent prompt enforces no commits without explicit request", () => {
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
-		assert.equal(prompt.split(S14_COMMIT_SENTENCE).length - 1, 1, `[${persona}] the parent prompt must carry the S14 sentence once`);
-		assert.ok(!prompt.includes(PER_TASK_COMMIT_SENTENCE), `[${persona}] the parent prompt keeps the per-task commit sentence`);
-		assert.ok(
-			prompt.includes(`${S14_COMMIT_SENTENCE} Work-unit commits on the feature branch are part of authorized large ODD implementation;`),
-			`[${persona}] step 6 must keep its authorization sentence right after the S14 sentence`,
-		);
+		const prompt = __testing.buildGentlePrompt();
+		assert.ok(prompt.includes(S2_COMMIT_SENTENCE), `[${persona}] the parent prompt must carry the S2 commit sentence`);
 	}
 });
 
-// S14: commit per reviewable slice. Step 6 commits slices of about 400 authored
-// changed lines (a high-risk unit alone) instead of closing every task with a commit.
-test("ODD commits work units in reviewable slices and reviews the commit or PR slice", () => {
-	containsAll(wrapper, [
-		"Commit work units in reviewable slices of about 400 authored changed lines on the feature branch (branch first when on the default branch)",
-		"with tests and docs alongside the behavior and a Conventional Commit message",
-		"a unit whose Risk line names a high-risk item gets its own commit so native review can take it alone",
-		"Record the commit that holds each task in the feature document as evidence",
-		"Work-unit commits on the feature branch are part of authorized large ODD implementation; push, pull request creation, and merge remain the user's decisions",
-		"The native review candidate is a work-unit commit or a PR slice, never a TODO checkbox and never the accumulated feature branch",
-	]);
-	// S11 T3: deduplicated. The harness principle that re-listed the ODD steps
-	// ("close each tracked task with a work-unit commit") is gone; step 6 above is
-	// the single statement. Core Safety allows exactly those commits and no others.
-	assert.ok(!wrapper.includes("close each tracked task with a work-unit commit"), "the ODD steps are re-listed outside step 6");
+test("ODD enforces no commits without explicit request in core Safety", () => {
 	assert.ok(
-		core.includes("- Never commit unless the user explicitly asks, except the work-unit commits authorized large ODD implementation makes on its feature branch (ODD step 6)."),
-		"core Safety must allow only the ODD step 6 work-unit commits without an explicit ask",
+		core.includes("- Never stage, commit, or push unless explicitly requested by the user in the current turn."),
+		"core Safety must block commits without an explicit ask",
 	);
-	assert.ok(!core.includes("- Never commit unless the user explicitly asks."), "core Safety contradicts ODD step 6 work-unit commits");
-	containsAll(delegation, [
-		'after each work-unit commit, assess it with that same call and `{"baseRef":"<last reviewed boundary>","committedOnly":true}`',
-		"Passive/low: silent structural checks, no reviewer or consent ceremony, and the boundary advances",
-		'start native review on it right away at that base with `gentle_review` `{"operation":"start"}`',
-		"Medium: defer to the PR slice",
-		"bounded by the delivery budget of about 400 authored changed lines",
-		"The first boundary is the branch point, and every reviewed boundary becomes the next base",
-		// S14: commit per reviewable slice; one commit may hold several tasks, so outcomes are recorded per commit.
-		"Record per commit the assessed tier and outcome: granted, declined, passive, deferred to slice, or unavailable",
-		"Delivery follows work units",
-		"forecast authored changed lines (additions plus deletions, generated files excluded) from the task list",
-		"keep a running count from work-unit commits",
-		"`ask-on-risk` (default), `auto-chain`, `single-pr`, or `exception-ok`",
-		"apply the chosen strategy before the next commit",
-		"`ask-on-risk` asks once using the ordered oversized-delivery menu",
-		"`auto-chain` asks only for a missing chain strategy and slices automatically",
-		"Cache both choices, and record slice boundaries",
-		"Resolve the `work-unit-commits` and `chained-pr` skills by registry name",
-		"never hardcode their paths",
-		"The delivery budget below reads the accumulated branch, not this per-task heuristic",
-	]);
-	assert.ok(!wrapper.includes("Every tracked task closes with at least one work-unit commit"), "step 6 keeps the per-task commit rule");
-	const docs = read("docs/readme-reference.md");
-	containsAll(docs, [
-		"Commit work units in reviewable slices of about 400 authored changed lines on the feature branch (branch first when on the default branch)",
-		"a unit whose Risk line names a high-risk item gets its own commit so native review can take it alone",
-		"the feature document records the commit that holds each task as evidence",
-		"The native review candidate is a work-unit commit or a PR slice, never a TODO checkbox and never the accumulated feature branch",
-		"**Delivery:**",
-		"Commit at a slice boundary; a high-risk unit alone",
-		"RDD enabled at work-unit commit boundary",
-		"Running authored lines over 400",
-		"Apply selected delivery strategy",
-		"Single PR; no chain artifacts",
-	]);
-	assert.ok(!docs.includes("Every task closes with at least one work-unit commit"), "docs keep the per-task commit rule");
-	const skill = read("skills/work-unit-commits/SKILL.md");
-	containsAll(skill, [
-		"Committing ODD work in reviewable slices of about 400 authored changed lines.",
-		"ODD commits work units in reviewable slices of about 400 authored changed lines, not one commit per task:",
-		"A unit whose Risk line names a high-risk item gets its own commit, so native review takes it alone.",
-	]);
-	assert.ok(!skill.includes("Every ODD task closes with at least one work-unit commit"), "the skill keeps the per-task commit rule");
 });
 
-test("delivery instructions and docs preserve localized ordered outcomes and override chaining", () => {
+test("delivery instructions defer to the delivery skill without a strategy menu", () => {
 	for (const text of [delegation, read("docs/readme-reference.md")]) {
-		// English prose is documentation evidence, not mandatory runtime UI copy.
-		const outcomes = ["chain_strategy=feature-branch-chain", "chain_strategy=stacked-to-main", "delivery_strategy=single-pr"];
-		let previous = -1;
-		for (const outcome of outcomes) {
-			const index = text.indexOf(outcome);
-			assert.ok(index > previous, `missing or out-of-order semantic outcome: ${outcome}`);
-			previous = index;
-		}
-		assert.match(text, /1\. .*feature\/tracker.*feature-branch-chain/i);
-		assert.match(text, /2\. .*verified default\/main.*stacked-to-main/i);
-		assert.match(text, /3\. .*single PR.*least recommended.*delivery_strategy=single-pr/i);
-		containsAll(text, [
-			"delivery_strategy=single-pr", "not a `chain_strategy` token",
-			"overrides the pending chaining path", "clear the chain choice",
-			"suppress later chain prompts", "not automatically select `exception-ok`",
-			"destination repository's documented contribution/size policy",
-			"not a universal label requirement", "no tracker, child dependency diagram, or Chain Context",
-			"complete user-facing question", "every option label, description, and recommendation marker",
-			"active user's conversation language", "unchanged and untranslated",
-			"English examples are illustrative and localizable, not mandatory copy",
-		]);
-		assert.doesNotMatch(text, /single-pr.*requires? `size:exception`/i);
+		containsAll(text, ["`delivery` skill", "only when asked, usually after code review", "`diff_budget` reports >400 production lines and >=2 independent units"]);
+		assert.doesNotMatch(text, /delivery_strategy=|chain_strategy=/);
 	}
 });
 
-test("user documentation shows recovery and candidate-level consent without claiming model proof", () => {
+test("user documentation shows recovery and independent verification without claiming model proof", () => {
 	const docs = read("docs/readme-reference.md");
 	containsAll(docs, [
 		"## Organic Driven Development",
 		"```mermaid",
 		"Full feature memory and actual task file",
-		"Native candidate risk",
+		"Independent verification by lane and named risk",
 		"advisory",
 		"Static prompt tests",
 		"autonomous",
@@ -245,7 +151,7 @@ test("user documentation shows recovery and candidate-level consent without clai
 
 test("one feature document carries intent, accepted rationale and worker context", () => {
 	containsAll(memory, [
-		"one feature document, not a separate plan file or topic",
+		"one feature directory, not a separate plan file or topic",
 		"verification evidence, progress, and next step",
 		"rationale for meaningful accepted changes",
 		"Routine corrections stay brief; no exhaustive decision journal",
@@ -254,11 +160,10 @@ test("one feature document carries intent, accepted rationale and worker context
 		"add genuinely new tasks or reopen invalidated items with a reason",
 		"Findings alone never authorize scope expansion or automatic acceptance",
 		"Before implementation or resume, the parent reads both the actual file and full observation",
-		"passes the locator, task IDs, and linked `S#`; workers read the document until `## Log` before edits",
 	]);
 	containsAll(read("assets/agents/gentle-ai-worker.md"), [
-		"Read the parent's ODD feature document locator before edits",
-		"Preserve valid completed work; return proposed intent/task changes and their reasons",
+		".agents/designs/features/<feature>/",
+		"Preserve every unrelated tracked or untracked file",
 	]);
 });
 
@@ -280,10 +185,10 @@ test("feature document is the verbatim specification subagents read by reference
 		"reproduce it before deciding it already works",
 	];
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		containsAll(prompt, [...always,
 			// Parity with the gentle-ai canon (gentle-ai#5215).
-			"name the document, task, and specs (for example `Spec: odd/tasks/<feature>.md, T2, S3-S4`), tell workers to read until `## Log`",
+			"tell workers to read until `## Log`",
 			"runs the spec's examples the parent authorized, against isolated state when they mutate data",
 		]);
 		assert.doesNotMatch(prompt, /\(read until \\?`## Log\\?`\)\. Do T#/, "inline code spans cannot nest backticks");
@@ -301,34 +206,41 @@ test("feature document is the verbatim specification subagents read by reference
 		"never translate, condense, or paraphrase the user's requirements",
 		"Reproduce a user-reported failure",
 	]);
-	containsAll(read("assets/agents/gentle-ai-worker.md"), ["until `## Log`", "which `S#` the change covers"]);
+	containsAll(read("assets/agents/gentle-ai-worker.md"), [".agents/designs/features/", "plan.md", "checks.md", "which check items the change covers"]);
 	containsAll(read("assets/agents/gentle-ai-verify.md"), [
 		"execute only exact test, build, lint, or spec example commands explicitly authorized by the parent",
-		"verbatim user entries in `## Log`",
-		"verdict per `S#`",
+		"project-owned artifacts in their existing formats and paths",
+		"return a verdict per project acceptance ID with evidence",
+		"Project workflow, criteria and delivery gates are authoritative",
+		"do not require builtin lanes, duplicate plans/checks or Engram tracking",
+		"When the builtin feature contract is selected, read all of its `plan.md`/`checks.md` or feature document, including verbatim entries in `## Log`, and use `S#`/`C#` IDs",
 		"compare the exact output and error text",
 		"isolated state",
 	]);
-	containsAll(read("assets/agents/gentle-ai-explore.md"), ["until `## Log`"]);
+	containsAll(read("assets/agents/gentle-ai-explore.md"), [
+		"project-owned artifacts in their existing formats and paths",
+		"Use the project's acceptance IDs and workflow",
+		"do not require builtin lanes, `plan.md`, `checks.md`, or Engram tracking",
+		"When the builtin feature contract is selected or the project leaves artifact conventions undefined, read the supplied `.agents/designs/features/<feature>/` artifacts (`plan.md`, `checks.md`) for requirements and context",
+	]);
 });
 
 test("ODD defaults to applicable test-first without chat or TUI activation", () => {
 	const worker = read("assets/agents/gentle-ai-worker.md");
 	const verify = read("assets/agents/gentle-ai-verify.md");
 	const support = read("assets/support/strict-tdd.md") + read("assets/support/strict-tdd-verify.md");
-	const skill = read("skills/gentle-ai/SKILL.md");
 	// S11 T3: deduplicated. The core sits after the harness in the same system
 	// prompt; its pointer sentence restated the harness test-first policy, so the
 	// rendered parent prompt (harness + core) now carries that policy exactly
 	// once, from the harness, instead of the core carrying its own copy.
-	const rendered = __testing.buildGentlePrompt("gentleman");
-	for (const text of [rendered, delegation, worker, verify, support, skill, wrapper]) {
+	const rendered = __testing.buildGentlePrompt();
+	for (const text of [rendered, delegation, worker, verify, support, wrapper]) {
 		containsAll(text, ["applicable", "RED", "GREEN"]);
 		assert.doesNotMatch(text, /(?:configured TDD mode|Strict TDD Mode is enabled|explicit user choice|test presence does not enable it|tests existing does not activate it)/i);
 	}
 	assert.equal(rendered.split("use test-first by default").length - 1, 1, "the parent prompt states the test-first policy once");
 	assert.ok(!core.includes("GREEN"), "core restates the harness test-first policy");
-	for (const [actor, text] of [["delegation", delegation], ["extension", wrapper], ["skill", skill]] as const) {
+	for (const [actor, text] of [["delegation", delegation], ["extension", wrapper]] as const) {
 		assert.match(text, /behavior changes with applicable runnable deterministic tests and a clear expected outcome/i, `${actor} must require applicability, not test presence`);
 		assert.match(text, /passive documentation/i, `${actor} must handle passive docs`);
 		assert.match(text, /unavailable runner/i, `${actor} must handle unavailable runners`);
@@ -337,8 +249,7 @@ test("ODD defaults to applicable test-first without chat or TUI activation", () 
 	containsAll(delegation, ["by default", "Forward this policy"]);
 	containsAll(worker, ["before implementation", "ordinary functional or structural verification", "no meaningful RED"]);
 	containsAll(verify, ["observed RED", "observed GREEN", "exception"]);
-	assert.doesNotMatch(skill, /SDD|OpenSpec/i, "the ODD-only skill must not prime SDD");
-	assert.doesNotMatch(core + delegation + worker + support + skill + wrapper, /If tests exist, use strict TDD/i);
+	assert.doesNotMatch(core + delegation + worker + support + wrapper, /If tests exist, use strict TDD/i);
 });
 
 // S9 canon change (gentle-ai 87a3b2eb): "These triggers are mandatory, not
@@ -414,7 +325,6 @@ test("evidence-budget numbers agree across routing surfaces and retired triggers
 	const surfaces: Record<string, string> = {
 		"assets/orchestrator.md": core,
 		"assets/orchestrator-delegation.md": delegation,
-		"skills/gentle-ai/SKILL.md": read("skills/gentle-ai/SKILL.md"),
 	};
 	for (const [path, text] of Object.entries(surfaces)) {
 		containsAll(text, [
@@ -442,15 +352,15 @@ test("context backstop prompt text defers to the runtime signal instead of a fix
 		assert.ok(text.includes("several steps"), `${path} must say only a unit needing several steps is delegated`);
 	}
 	const docs = read("docs/readme-reference.md");
-	containsAll(docs, ["GENTLE_PI_CONTEXT_BACKSTOP_TOKENS", "GENTLE_PI_CONTEXT_BACKSTOP_FRACTION", "min(", "`getContextUsage()`", "re-armed"]);
+	containsAll(docs, ["TOMIDEV_CONTEXT_BACKSTOP_TOKENS", "TOMIDEV_CONTEXT_BACKSTOP_FRACTION", "min(", "`getContextUsage()`", "re-armed"]);
 	assert.doesNotMatch(docs, /~150k tokens|150,000-token context backstop/, "docs still describe the fixed backstop");
 });
 
-test("ODD protocol is always-on in the rendered system prompt and runs by default", () => {
+test("ODD fallback remains delivered after project composition without a mandatory second workflow", () => {
 	const orderedClauses = [
-		"Default workflow: Organic Driven Development (MANDATORY)",
-		"predefined workflow of this orchestrator",
-		"Never describe this workflow only when asked about it: run it.",
+		"## Project harness composition",
+		"Project owns workflow and lane names",
+		"Default workflow: Organic Driven Development (fallback)",
 		"1. **Authorize.**",
 		"2. **Explore.**",
 		"3. **Resolve uncertainty.**",
@@ -458,15 +368,15 @@ test("ODD protocol is always-on in the rendered system prompt and runs by defaul
 		"Size the task by the orchestrator's Task Size section",
 		"5. **Track before the first write.**",
 		"create or rebuild the visible `todo` list from the reconciled feature tasks",
-		"Tell the user in one line which feature document was created and how many tasks it holds",
+		"Tell the user in one line which feature directory was created and how many tasks it holds",
 		"6. **Implement task by task.**",
 		"7. **Close.**",
 		"call `gentle_odd_phase` only when the primary session's ODD phase actually changes",
 		"Harness principles:",
-		"# el Gentleman Orchestrator",
+		"# Tomidev Shell Orchestrator",
 	];
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
+		const prompt = __testing.buildGentlePrompt();
 		let cursor = -1;
 		for (const clause of orderedClauses) {
 			const index = prompt.indexOf(clause);
@@ -483,23 +393,18 @@ test("ODD protocol is always-on in the rendered system prompt and runs by defaul
 	// both restated the mandatory workflow; the steps' own header (asserted in
 	// order above as "predefined workflow of this orchestrator") is the one statement.
 	for (const persona of ["gentleman", "neutral"] as const) {
-		const prompt = __testing.buildGentlePrompt(persona);
-		assert.equal(prompt.split("is the predefined workflow").length - 1, 1, `[${persona}] the ODD workflow is declared more than once`);
+		const prompt = __testing.buildGentlePrompt();
+		assert.equal(prompt.split("Default workflow: Organic Driven Development (fallback)").length - 1, 1, `[${persona}] the fallback is declared once`);
+		assert.doesNotMatch(prompt, /Every request enters it|is the predefined workflow/);
 		assert.ok(!prompt.includes("ODD (Default Workflow, harness section above)"), `[${persona}] the core restates the ODD workflow`);
 	}
 	containsAll(core, ["orchestrator-delegation.md", "orchestrator-memory.md"]);
 	assert.doesNotMatch(core + delegation + memory, /SDD|sdd-|OpenSpec|openspec/i);
 });
 
-// S14: commit per reviewable slice. Mirrors gentle-ai 06ad2776: a high-risk unit that follows pending medium commits
-// closes the open slice first, so native review takes the high-risk commit alone; outcomes are recorded per commit,
-// since one commit may hold several tasks.
-test("S14: RDD tracking closes the open slice before a high-risk commit and records outcomes per commit", () => {
+// Delivery follows work units: the chaining text points at the delivery skill, never at the retired skills.
+test("delivery guidance names the delivery skill and no retired chaining skill", () => {
 	const tracking = readFileSync(join(import.meta.dirname, "..", "assets", "orchestrator-tracking.md"), "utf8");
-	assert.ok(
-		tracking.includes("When a high-risk unit follows pending medium commits still under the slice budget, close the open slice first, assessing and reviewing it as the slice, so the high-risk commit is then reviewed alone against the new boundary."),
-		"tracking must close the open slice before a high-risk commit",
-	);
-	assert.ok(tracking.includes("Record per commit the assessed tier and outcome"), "tracking must record outcomes per commit");
-	assert.ok(!tracking.includes("Record per task the assessed tier and outcome"), "tracking must not record outcomes per task");
+	assert.ok(tracking.includes("Resolve the `delivery` skill by registry name"), "tracking must resolve the delivery skill by name");
+	assert.doesNotMatch(tracking, /work-unit-commits|chained-pr|native review|RDD/, "tracking must not name retired skills or review mechanics");
 });
