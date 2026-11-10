@@ -195,7 +195,7 @@ function writePiScript(path: string, version: string) {
 			"const args = process.argv.slice(2);",
 			`if (args.includes("--version")) { console.log(${JSON.stringify(version)}); process.exit(0); }`,
 			"const [command, source] = args;",
-			"const managed = ['npm:gentle-engram', 'npm:pi-web-access', 'npm:pi-btw', 'npm:@juicesharp/rpiv-ask-user-question', 'npm:gentle-pi'];",
+			"const managed = ['npm:gentle-engram', 'npm:pi-web-access', 'npm:pi-btw', 'npm:pi-antigravity', 'npm:pi-cursor-sdk', 'npm:@juicesharp/rpiv-ask-user-question', 'npm:gentle-pi'];",
 			"if ((command === 'install' || command === 'remove') && managed.includes(source)) {",
 			"  const agentDir = process.env.PI_CODING_AGENT_DIR;",
 			"  if (process.env.FAKE_PI_LOG) fs.appendFileSync(process.env.FAKE_PI_LOG, JSON.stringify({ command, source, PI_CODING_AGENT_DIR: agentDir, script: process.argv[1] }) + '\\n');",
@@ -400,7 +400,13 @@ test("Pi real resource loader deduplicates the bridge across discovery, explicit
 // spawns gentle-ai. These read what the fake pi recorded, in call order, and
 // the home's own settings and provisioning record.
 
-const COMPANIONS = ["npm:gentle-engram", "npm:pi-web-access", "npm:pi-btw"];
+const COMPANIONS = [
+	"npm:gentle-engram",
+	"npm:pi-web-access",
+	"npm:pi-btw",
+	"npm:pi-antigravity",
+	"npm:pi-cursor-sdk",
+];
 const RPIV_SOURCE = "npm:@juicesharp/rpiv-ask-user-question";
 const LEGACY_TOMIDEV_SOURCE = "npm:gentle-pi";
 
@@ -602,7 +608,7 @@ test("a --home filled by home import-pi is still auto-provisioned as gentle-shel
 		const launch = run(env, ["--home", target, "--mode", "rpc"]);
 		assert.equal(launch.status, 0, launch.stderr);
 		assert.doesNotMatch(launch.stderr, /already has content and was not set up by tomidev/);
-		assert.equal(installedSources(f).length, 3 * (index + 1), `auto-provisioning ran for ${target}`);
+		assert.equal(installedSources(f).length, 5 * (index + 1), `auto-provisioning ran for ${target}`);
 	}
 });
 
@@ -839,8 +845,8 @@ test("tomidev setup skips a companion the home already declares, whatever its ve
 	writeSettings(f.gentleShellHome, { packages: ["npm:pi-btw@0.3.0"] });
 	const result = run(f.env, ["setup"]);
 	assert.equal(result.status, 0, result.stderr);
-	assert.deepEqual(installedSources(f), ["npm:gentle-engram", "npm:pi-web-access"]);
-	assert.deepEqual(readSettings(f.gentleShellHome).packages, ["npm:pi-btw@0.3.0", "npm:gentle-engram", "npm:pi-web-access"]);
+	assert.deepEqual(installedSources(f), ["npm:gentle-engram", "npm:pi-web-access", "npm:pi-antigravity", "npm:pi-cursor-sdk"]);
+	assert.deepEqual(readSettings(f.gentleShellHome).packages, ["npm:pi-btw@0.3.0", "npm:gentle-engram", "npm:pi-web-access", "npm:pi-antigravity", "npm:pi-cursor-sdk"]);
 });
 
 test("tomidev setup removes only a declared rpiv ask-user-question package, before it installs the companions", (t) => {
@@ -850,9 +856,9 @@ test("tomidev setup removes only a declared rpiv ask-user-question package, befo
 	assert.equal(result.status, 0, result.stderr);
 	assert.deepEqual(
 		piCalls(f).map((call) => `${call.command} ${call.source}`),
-		[`remove ${RPIV_SOURCE}`, "install npm:gentle-engram", "install npm:pi-web-access"],
+		[`remove ${RPIV_SOURCE}`, "install npm:gentle-engram", "install npm:pi-web-access", "install npm:pi-antigravity", "install npm:pi-cursor-sdk"],
 	);
-	assert.deepEqual(readSettings(f.gentleShellHome).packages, ["npm:pi-btw", "npm:gentle-engram", "npm:pi-web-access"]);
+	assert.deepEqual(readSettings(f.gentleShellHome).packages, ["npm:pi-btw", "npm:gentle-engram", "npm:pi-web-access", "npm:pi-antigravity", "npm:pi-cursor-sdk"]);
 });
 
 test("tomidev setup removes a declared npm:gentle-pi once, then leaves it alone", (t) => {
@@ -1043,7 +1049,7 @@ test("tomidev setup accepts a home selector before it and provisions that home",
 	const target = join(f.root, "custom-home");
 	const result = run(f.env, ["--home", target, "setup"]);
 	assert.equal(result.status, 0, result.stderr);
-	assert.equal(installedSources(f).length, 3);
+	assert.equal(installedSources(f).length, 5);
 	assert.ok(piCalls(f).every((call) => call.PI_CODING_AGENT_DIR === target));
 	assert.equal(readSettings(target).tuiMode, "fullscreen");
 });
@@ -1060,7 +1066,7 @@ test("a successful manual setup records the home with the launcher's setup versi
 	const setup = run(env, ["setup"]);
 	assert.equal(setup.status, 0, setup.stderr);
 	const entry = readProvisioned(f.home)?.[realpathSync(f.gentleShellHome)];
-	assert.equal(entry?.setupVersion, 1);
+	assert.equal(entry?.setupVersion, 2);
 	assert.equal(entry?.gentlePi, ownGentlePiVersion());
 	assert.equal(entry?.gentleAi, undefined, "the record no longer names a gentle-ai pin");
 	assert.equal(typeof entry?.at, "string");
@@ -1068,7 +1074,7 @@ test("a successful manual setup records the home with the launcher's setup versi
 	const launch = run(env, ["--mode", "rpc"]);
 	assert.equal(launch.status, 0, launch.stderr);
 	assert.doesNotMatch(launch.stderr, /first run in/);
-	assert.equal(installedSources(f).length, 3, "the first launch must not install the companions again");
+	assert.equal(installedSources(f).length, 5, "the first launch must not install the companions again");
 });
 
 test("an entry written by the gentle-ai based setup re-provisions exactly once, then is rewritten", (t) => {
@@ -1084,15 +1090,15 @@ test("an entry written by the gentle-ai based setup re-provisions exactly once, 
 
 	const first = run(env, ["--mode", "rpc"]);
 	assert.equal(first.status, 0, first.stderr);
-	assert.match(first.stderr, /setup version changed \(unknown -> 1\)/);
+	assert.match(first.stderr, /setup version changed \(unknown -> 2\)/);
 	assert.deepEqual(installedSources(f), COMPANIONS);
 	const entry = readProvisioned(f.home)?.[realpathSync(home)];
-	assert.equal(entry?.setupVersion, 1);
+	assert.equal(entry?.setupVersion, 2);
 	assert.equal(entry?.gentleAi, undefined);
 
 	const second = run(env, ["--mode", "rpc"]);
 	assert.equal(second.status, 0, second.stderr);
-	assert.equal(installedSources(f).length, 3, "the rewritten record stops further re-provisioning");
+	assert.equal(installedSources(f).length, 5, "the rewritten record stops further re-provisioning");
 });
 
 test("a declared npm:gentle-pi is removed before a failing companion install, and the launch then injects the local package", (t) => {
@@ -1159,7 +1165,7 @@ test("first launch auto-provisions the isolated home, writes the record, then la
 
 	assert.match(result.stderr, /tomidev: first run in .+: installing the companion packages \(one time; set TOMIDEV_NO_AUTO_SETUP=1 to skip\)/);
 	const entry = readProvisioned(f.home)?.[realpathSync(f.gentleShellHome)];
-	assert.equal(entry?.setupVersion, 1);
+	assert.equal(entry?.setupVersion, 2);
 	assert.equal(entry?.gentlePi, ownGentlePiVersion());
 	assert.equal(typeof entry?.at, "string");
 	assert.equal(existsSync(join(f.gentleShellHome, ".tomidev-setup.lock")), false);
@@ -1171,12 +1177,12 @@ test("a second launch against an already-provisioned home skips the flow entirel
 
 	const first = run(env, []);
 	assert.equal(first.status, 0, first.stderr);
-	assert.equal(installedSources(f).length, 3);
+	assert.equal(installedSources(f).length, 5);
 
 	const second = run(env, []);
 	assert.equal(second.status, 0, second.stderr);
 	assert.doesNotMatch(second.stderr, /first run in|setup version changed|tomidev package changed/);
-	assert.equal(installedSources(f).length, 3, "pi must not install the companions a second time");
+	assert.equal(installedSources(f).length, 5, "pi must not install the companions a second time");
 });
 
 // A record without a `gentlePi` field predates launcher version tracking: it
@@ -1273,7 +1279,7 @@ test("a failing automatic setup removes declared npm:gentle-pi only once, even a
 	const retry = enableAutoProvision(f.env);
 	assert.equal(run(retry, ["--mode", "rpc"]).status, 0);
 	assert.deepEqual(removedSources(f), [LEGACY_TOMIDEV_SOURCE]);
-	assert.deepEqual(installedSources(f), ["npm:gentle-engram", "npm:gentle-engram", "npm:pi-web-access", "npm:pi-btw"]);
+	assert.deepEqual(installedSources(f), ["npm:gentle-engram", "npm:gentle-engram", "npm:pi-web-access", "npm:pi-btw", "npm:pi-antigravity", "npm:pi-cursor-sdk"]);
 });
 
 test("TOMIDEV_NO_AUTO_SETUP=1 skips auto-provisioning entirely", (t) => {
@@ -1418,8 +1424,8 @@ test("a --home directory gentle-shell itself bootstrapped is retried after its f
 	const second = run(enableAutoProvision(f.env), ["--home", target, "--mode", "rpc"]);
 	assert.equal(second.status, 0, second.stderr);
 	assert.doesNotMatch(second.stderr, /already has content and was not set up by tomidev/);
-	assert.equal(installedSources(f).length, 4, "the retry must install the companions into the previously-failed home");
-	assert.equal(readProvisioned(f.home)?.[realpathSync(target)]?.setupVersion, 1);
+	assert.equal(installedSources(f).length, 6, "the retry must install the companions into the previously-failed home");
+	assert.equal(readProvisioned(f.home)?.[realpathSync(target)]?.setupVersion, 2);
 });
 
 // --- auto-provisioning interrupts, resilience, timeouts, atomic writes -----
@@ -1524,7 +1530,7 @@ test("manual setup never times out even past the auto-mode ceiling override", (t
 	const result = run(env, ["setup"]);
 	assert.equal(result.status, 0, result.stderr);
 	assert.doesNotMatch(result.stderr, /timed out/);
-	assert.equal(installedSources(f).length, 3);
+	assert.equal(installedSources(f).length, 5);
 });
 
 test("the provisioning record write leaves no stray temp file behind", (t) => {
@@ -1656,7 +1662,7 @@ test("the exclusion is ensured after automatic setup rewrites settings.json", (t
 	assert.deepEqual(settings.extensions, [CODEMODE_EXCLUSION]);
 	assert.deepEqual(settings.packages, COMPANIONS);
 	assert.equal(settings.theme, "chosen");
-	assert.equal(installedSources(f).length, 3, "Pi rewrote settings for the three companion installs");
+	assert.equal(installedSources(f).length, 5, "Pi rewrote settings for the five companion installs");
 });
 
 test("an owned home without settings.json is not given one", (t) => {
