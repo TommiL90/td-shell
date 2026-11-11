@@ -121,6 +121,11 @@ function projectSkillDirs(cwd: string): string[] {
 	];
 }
 
+function builtinSkillDirs(): string[] {
+	const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+	return [join(packageRoot, "skills")];
+}
+
 // gentle-shell#373: only storage-capacity/permission faults degrade the
 // registry to a typed unavailable result. Anything else (ELOOP, ENOSPC, a
 // failing device) keeps its own diagnostic through the ordinary error path.
@@ -296,12 +301,31 @@ function dedupeBySkillName(entries: SkillEntry[], cwd: string): SkillEntry[] {
 			e.scope?.startsWith("project") ||
 			(e.scope === undefined && comparablePath(e.path).startsWith(projectPrefix)),
 		);
-		out.push(projectScoped ?? list[0]);
+		if (projectScoped) {
+			out.push(projectScoped);
+			continue;
+		}
+		const userScoped = list.find((e) => e.scope?.startsWith("user"));
+		if (userScoped) {
+			out.push(userScoped);
+			continue;
+		}
+		const builtinScoped = list.find((e) => e.scope?.startsWith("builtin"));
+		if (builtinScoped) {
+			out.push(builtinScoped);
+			continue;
+		}
+		out.push(list[0]);
 	}
 	return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function resolvedScopeLabel(skill: ResolvedSkill): string {
+	for (const dir of builtinSkillDirs()) {
+		if (comparablePath(skill.filePath).startsWith(comparablePath(dir))) {
+			return "builtin";
+		}
+	}
 	const scope = skill.sourceInfo?.scope === "project" ? "project" : "user";
 	return skill.sourceInfo?.origin === "package" ? `${scope} · package` : scope;
 }
@@ -388,7 +412,11 @@ function mergeResolvedWithLoose(
 function scopeForPath(cwd: string, path: string): string {
 	const cleanCwd = comparablePath(cwd);
 	const projectPrefix = cleanCwd.endsWith(sep) ? cleanCwd : `${cleanCwd}${sep}`;
-	return comparablePath(path).startsWith(projectPrefix) ? "project" : "user";
+	if (comparablePath(path).startsWith(projectPrefix)) return "project";
+	for (const dir of builtinSkillDirs()) {
+		if (comparablePath(path).startsWith(comparablePath(dir))) return "builtin";
+	}
+	return "user";
 }
 
 function markdownCell(value: string): string {

@@ -29,10 +29,10 @@ Code review is `requesting-code-review` and runs only on explicit request or at 
 
 ## Frontend and in-browser verification
 
-For web frontend code, user interfaces, and browser-facing components, prefer observed in-browser verification with `ego-browser` (Ego Lite) over simulated DOM or unit tests alone. When a local dev server can be started:
+For web frontend code and UI components, prefer observed in-browser verification with `ego-browser` (Ego Lite) over simulated DOM alone. When a local dev server is available:
 1. Ensure the dev server is active or start it in background.
-2. Use `ego-browser nodejs` to open the local route (`localhost:<port>`).
-3. Take snapshots/screenshots and inspect console errors to verify layout, rendering, and interactive behavior.
+2. Open the local route (`localhost:<port>`).
+3. Take snapshots/screenshots and check console errors to verify visual and interactive behavior.
 4. Cite observed browser state in the verification result.
 
 ## Verifier preparation failure
